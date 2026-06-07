@@ -434,4 +434,14 @@ $RECYCLE.BIN/
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
 
-# custom files that will be ignored later
+# ── Azure / Bicep ────────────────────────────────────────────────
+.azure/
+*.bicepparam.local
+*.bicepparam.dev
+
+# ── Alembic ───────────────────────────────────────────────────────
+backend/alembic/versions/__pycache__/
+
+# ── Local Docker overrides ────────────────────────────────────────
+docker-compose.override.yml
+
