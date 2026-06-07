@@ -1,0 +1,30 @@
+# AEGIS CODEOWNERS
+
+# Syntax: <pattern> <@github-username> ...
+
+# GitHub automatically requests review from owners when a PR touches their paths.
+
+# Global fallback — team lead reviews everything
+
+-                           @vijethph
+
+# Backend (FastAPI, scoring, WebSocket) → M1 + M4
+
+/backend/ @vijethph @member4-github
+
+# Frontend (React exam shell + professor console) → M6
+
+/frontend/ @member6-github
+
+# Infra / Bicep / CI-CD → M5
+
+/infra/ @member5-github
+/.github/workflows/ @member5-github
+
+# Database migrations → M4
+
+/backend/alembic/ @member4-github
+
+# Docs
+
+/docs/ @vijethph
