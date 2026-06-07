@@ -4,26 +4,33 @@
 
 # GitHub automatically requests review from owners when a PR touches their paths.
 
+# | **Team Lead - @vijethph** | Backend architect, Azure infra | FastAPI skeleton, JWT auth, WebSocket gateway, Docker Compose | Azure Container Apps deploy, CI/CD, final integration |
+# | **Member 2 - @lakshmikirancm** | Signal scorer, question formats | Rule-based scorer logic, Service Bus consumer | Image-only question format (if time), scorer unit tests |
+# | **Member 3 - @jeevikabt27** | ML pipeline, evaluation | Baseline calibration, confidence score aggregation, evaluation metrics design | Pilot data analysis, evaluation report |
+# | **Member 4 - @Tejas1107** | Database, API integration | DB schema, Alembic migrations, quiz CRUD, exam session API | Integration tests, test data generation |
+# | **Member 5 - @raushannerkar** | DevOps, system integration | Docker Compose, GitHub Actions CI, env config management | Azure deployment support, load test setup |
+# | **Member 6 - @tejas-td** | Frontend (React + TypeScript) | Exam shell, login/register UI, telemetry SDK (React hook) | Professor console, event timeline UI, demo recording lead |
+
 # Global fallback — team lead reviews everything
 
--                           @vijethph
+* *@vijethph
 
 # Backend (FastAPI, scoring, WebSocket) → M1 + M4
 
-/backend/ @vijethph @member4-github
+/backend/ @vijethph @Tejas1107
 
 # Frontend (React exam shell + professor console) → M6
 
-/frontend/ @member6-github
+/frontend/ @tejas-td
 
 # Infra / Bicep / CI-CD → M5
 
-/infra/ @member5-github
-/.github/workflows/ @member5-github
+/infra/ @raushannerkar
+/.github/workflows/ @raushannerkar
 
 # Database migrations → M4
 
-/backend/alembic/ @member4-github
+/backend/alembic/ @Tejas1107
 
 # Docs
 
