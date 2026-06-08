@@ -1,5 +1,26 @@
-from . import models
-from .database import engine, SessionLocal
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-#the below command is not needed if you are using alembic because it automatically create the table
-models.Base.metadata.create_all(bind=engine)
+from app.config import settings
+from app.routers import quizzes
+
+app = FastAPI(
+    title="AEGIS",
+    description="Adaptive Exam Guardian and Integrity System",
+    version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.backend_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(quizzes.router)
+
+
+@app.get("/healthz", tags=["health"])
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}
