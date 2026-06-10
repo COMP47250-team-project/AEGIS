@@ -1,0 +1,144 @@
+name: CI
+
+# Jira: AEGIS-24 — GitHub Actions CI workflow (lint + test on PR)
+#
+# Runs on every push to main and every PR targeting main. The workflow is
+# split into two independent jobs (backend / frontend) that run in parallel.
+#
+# The repo currently has no application code. Each job auto-detects whether its
+# stack is present (pyproject.toml / package.json) and skips gracefully if not,
+# so the pipeline stays green on an empty repo and "switches on" automatically
+# the moment real code + dependency manifests are committed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref so we never queue stale work.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # Backend — Python 3.12 · ruff · pyright · pytest
+  # ────────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend (lint · types · tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect backend code
+        id: detect
+        shell: bash
+        run: |
+          if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Backend dependency manifest found — running full pipeline."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Backend skipped::No pyproject.toml/requirements.txt yet — backend checks skipped."
+          fi
+
+      - name: Set up Python 3.12
+        if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip
+        if: steps.detect.outputs.present == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/pyproject.toml', 'backend/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f pyproject.toml ]; then
+            pip install -e ".[dev]"
+          else
+            pip install -r requirements.txt
+            pip install ruff pyright pytest
+          fi
+
+      - name: Ruff (lint)
+        if: steps.detect.outputs.present == 'true'
+        run: ruff check .
+
+      - name: Pyright (type check)
+        if: steps.detect.outputs.present == 'true'
+        run: pyright
+
+      - name: Pytest (tests)
+        if: steps.detect.outputs.present == 'true'
+        run: pytest -q
+
+  # ────────────────────────────────────────────────────────────────────
+  # Frontend — Node 22 · eslint · tsc --noEmit
+  # ────────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (lint · types)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect frontend code
+        id: detect
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "✅ package.json found — running full pipeline."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Frontend skipped::No package.json yet — frontend checks skipped."
+          fi
+
+      - name: Set up Node 22
+        if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # Built-in npm cache, keyed on the lockfile.
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: ESLint (lint)
+        if: steps.detect.outputs.present == 'true'
+        run: npx eslint .
+
+      - name: tsc --noEmit (type check)
+        if: steps.detect.outputs.present == 'true'
+        run: npx tsc --noEmit
