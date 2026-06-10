@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import quizzes
+from app.routers import exams, quizzes
 
 app = FastAPI(
     title="AEGIS",
@@ -19,6 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(quizzes.router)
+app.include_router(exams.router)
 
 
 @app.get("/healthz", tags=["health"])

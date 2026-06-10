@@ -6,7 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 # Import models so Alembic autogenerate can detect them
 from app.database import Base  # noqa: F401
-from app.models import quiz  # noqa: F401
+from app.models import exam, quiz  # noqa: F401
 
 config = context.config
 
