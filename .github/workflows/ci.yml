@@ -26,6 +26,26 @@ permissions:
 
 jobs:
   # ────────────────────────────────────────────────────────────────────
+  # Secret scan — gitleaks · blocks any leaked credential on push/PR
+  # ────────────────────────────────────────────────────────────────────
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan every commit on a push,
+          # not just the tip.
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ────────────────────────────────────────────────────────────────────
   # Backend — Python 3.12 · ruff · pyright · pytest
   # ────────────────────────────────────────────────────────────────────
   backend:
