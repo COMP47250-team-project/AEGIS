@@ -1,6 +1,6 @@
 name: CI
 
-# Jira: AEGIS-XXX — GitHub Actions CI workflow (lint + test on PR)
+# Jira: AEGIS-24 — GitHub Actions CI workflow (lint + test on PR)
 #
 # Runs on every push to main and every PR targeting main. The workflow is
 # split into two independent jobs (backend / frontend) that run in parallel.
