@@ -123,6 +123,36 @@ async def update_question(
     return question
 
 
+@router.post("/{quiz_id}/publish", response_model=QuizRead)
+async def publish_quiz(
+    quiz_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user_id),
+) -> Quiz:
+    quiz = await _get_quiz_or_404(db, quiz_id)
+
+    if quiz.is_published:
+        result = await db.execute(
+            select(Quiz).where(Quiz.id == quiz_id).options(selectinload(Quiz.questions))
+        )
+        return result.scalar_one()
+
+    result = await db.execute(select(Question).where(Question.quiz_id == quiz_id))
+    if not result.scalars().first():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A quiz must have at least 1 question before it can be published",
+        )
+
+    quiz.is_published = True
+    await db.commit()
+
+    result = await db.execute(
+        select(Quiz).where(Quiz.id == quiz_id).options(selectinload(Quiz.questions))
+    )
+    return result.scalar_one()
+
+
 @router.delete("/{quiz_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_question(
     quiz_id: uuid.UUID,

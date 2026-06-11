@@ -239,6 +239,46 @@ async def test_delete_question_not_found_returns_404(client: AsyncClient) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Publish quiz
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publish_quiz_with_questions_returns_200(client: AsyncClient) -> None:
+    create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
+    quiz_id = create_resp.json()["id"]
+    await client.post(f"/quizzes/{quiz_id}/questions", json=SHORT_PAYLOAD)
+
+    response = await client.post(f"/quizzes/{quiz_id}/publish")
+
+    assert response.status_code == 200
+    assert response.json()["is_published"] is True
+
+
+@pytest.mark.asyncio
+async def test_publish_quiz_with_no_questions_returns_400(client: AsyncClient) -> None:
+    create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
+    quiz_id = create_resp.json()["id"]
+
+    response = await client.post(f"/quizzes/{quiz_id}/publish")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_publish_quiz_is_idempotent(client: AsyncClient) -> None:
+    create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
+    quiz_id = create_resp.json()["id"]
+    await client.post(f"/quizzes/{quiz_id}/questions", json=SHORT_PAYLOAD)
+    await client.post(f"/quizzes/{quiz_id}/publish")
+
+    response = await client.post(f"/quizzes/{quiz_id}/publish")
+
+    assert response.status_code == 200
+    assert response.json()["is_published"] is True
+
+
+# ---------------------------------------------------------------------------
 # Auth guard
 # ---------------------------------------------------------------------------
 

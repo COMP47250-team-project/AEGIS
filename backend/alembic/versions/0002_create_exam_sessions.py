@@ -1,4 +1,4 @@
-"""create exam_sessions and enrollments tables
+"""create exam_sessions and exam_enrollments tables
 
 Revision ID: 0002
 Revises: 0001
@@ -48,7 +48,7 @@ def upgrade() -> None:
     op.create_index("ix_exam_sessions_state", "exam_sessions", ["state"])
 
     op.create_table(
-        "enrollments",
+        "exam_enrollments",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column(
             "exam_id",
@@ -65,14 +65,14 @@ def upgrade() -> None:
         ),
     )
 
-    op.create_index("ix_enrollments_exam_id", "enrollments", ["exam_id"])
+    op.create_index("ix_exam_enrollments_exam_id", "exam_enrollments", ["exam_id"])
     op.create_unique_constraint(
-        "uq_enrollments_exam_student", "enrollments", ["exam_id", "student_id"]
+        "uq_exam_enrollments_exam_student", "exam_enrollments", ["exam_id", "student_id"]
     )
 
 
 def downgrade() -> None:
-    op.drop_table("enrollments")
+    op.drop_table("exam_enrollments")
     op.drop_index("ix_exam_sessions_state", "exam_sessions")
     op.drop_index("ix_exam_sessions_course_id", "exam_sessions")
     op.drop_index("ix_exam_sessions_quiz_id", "exam_sessions")

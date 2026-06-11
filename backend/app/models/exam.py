@@ -1,14 +1,10 @@
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-
-if TYPE_CHECKING:
-    pass
 
 
 class ExamSession(Base):
@@ -42,7 +38,7 @@ class ExamSession(Base):
 
 
 class Enrollment(Base):
-    __tablename__ = "enrollments"
+    __tablename__ = "exam_enrollments"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     exam_id: Mapped[uuid.UUID] = mapped_column(

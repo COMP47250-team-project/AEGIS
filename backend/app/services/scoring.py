@@ -60,7 +60,9 @@ async def dispatch_score_job(exam_id: uuid.UUID) -> None:
 
                 await sender.send_messages(ServiceBusMessage(message_body))
 
-        logger.info("Score job dispatched for exam %s → queue '%s'", exam_id, settings.score_queue_name)
+        logger.info(
+            "Score job dispatched for exam %s → queue '%s'", exam_id, settings.score_queue_name
+        )
 
     except Exception:
         # Log but do not re-raise — scoring is async and can be retried separately
