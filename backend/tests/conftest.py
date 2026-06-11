@@ -1,6 +1,7 @@
 """Pytest fixtures for the AEGIS backend test suite."""
 
-import pytest
+from collections.abc import AsyncGenerator
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
@@ -29,7 +30,7 @@ async def create_tables():
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncSession:
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
     async with _TestSessionLocal() as session:
         yield session
 
@@ -39,7 +40,7 @@ def _make_token(user_id: str = "prof-001") -> str:
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession) -> AsyncClient:
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     async def _override_db():
         yield db_session
 
