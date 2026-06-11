@@ -1,6 +1,4 @@
 # Pre-commit hooks for AEGIS
-# Jira: AEGIS-25 — secrets management (local gitleaks guardrail)
-#
 # Install once per clone:
 #   pip install pre-commit
 #   pre-commit install
@@ -9,8 +7,47 @@
 #   pre-commit run --all-files
 
 repos:
+  # Secret scanning with gitleaks (AEGIS-25)
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.21.2
     hooks:
       - id: gitleaks
         name: Detect hardcoded secrets (gitleaks)
+
+  # Python linting with ruff
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+
+  # Python formatting with black
+  - repo: https://github.com/psf/black
+    rev: 24.4.2
+    hooks:
+      - id: black
+        files: ^backend/
+        language_version: python3.12
+
+  # Python type checking with pyright
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: pyright
+        language: system
+        files: ^backend/
+        types: [python]
+        pass_filenames: false
+
+  # TypeScript linting with eslint
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint
+        entry: npx eslint
+        language: system
+        files: ^frontend/.*\.[jt]sx?$
+        types: [file]
+        pass_filenames: true
