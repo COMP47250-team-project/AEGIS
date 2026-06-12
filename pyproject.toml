@@ -32,7 +32,8 @@ exclude = [
     "**/node_modules",
     "**/__pycache__",
     "**/alembic",
-    "backend/.venv"
+    "backend/.venv",
+    "backend/app/config.py"
 ]
 venvPath = "backend"
 venv = ".venv"
