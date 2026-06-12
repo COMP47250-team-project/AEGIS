@@ -44,6 +44,7 @@ class Course(Base):
     professor: Mapped[Optional["User"]] = relationship("User",back_populates="taught_courses",foreign_keys=[professor_id])
     quizzes: Mapped[List["Quiz"]] = relationship("Quiz", back_populates='course', cascade='all, delete-orphan')
     enrollments: Mapped[List["Enrollment"]] = relationship("Enrollment",back_populates='course',cascade='all, delete-orphan')
+    access_code: Mapped[str] = mapped_column(String(6), nullable=False, unique=True)
 
 
 #--------------------------------------------
