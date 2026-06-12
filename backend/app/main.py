@@ -1,5 +1,5 @@
 from . import models
-from .database import engine, SessionLocal
+from .database import engine
 
-#the below command is not needed if you are using alembic because it automatically create the table
+# the below command is not needed if you are using alembic because it automatically create the table
 models.Base.metadata.create_all(bind=engine)
