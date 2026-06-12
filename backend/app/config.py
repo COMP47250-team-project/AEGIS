@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+<<<<<<< HEAD
     model_config = SettingsConfigDict(env_file=".env.example", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis"
@@ -19,6 +20,10 @@ class Settings(BaseSettings):
     azure_service_bus_connection_string: str | None = None
     azure_service_bus_queue_name: str = "telemetry-events"
     score_queue_name: str = "score-jobs"
+=======
+    database_url: str
+    database_url_sync: str
+>>>>>>> 76fb0a1 (Fix SQLAlchemy + Database URL)
 
 
 settings = Settings()
