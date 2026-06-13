@@ -38,6 +38,20 @@ async def create_exam(
     return ExamRead.model_validate(exam)
 
 
+@router.get("", response_model=list[ExamRead])
+async def list_exams(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> list[ExamRead]:
+    result = await db.execute(
+        select(ExamSession)
+        .where(ExamSession.created_by == user_id)
+        .order_by(ExamSession.created_at.desc())
+    )
+    exams = result.scalars().all()
+    return [ExamRead.from_orm_with_count(e, 0) for e in exams]
+
+
 @router.get("/{exam_id}", response_model=ExamRead)
 async def get_exam(
     exam_id: uuid.UUID,

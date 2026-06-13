@@ -26,11 +26,24 @@ async def create_quiz(
     quiz = Quiz(**body.model_dump(), created_by=user_id)
     db.add(quiz)
     await db.commit()
-    # Re-fetch with questions eagerly loaded so the response is complete
     result = await db.execute(
         select(Quiz).where(Quiz.id == quiz.id).options(selectinload(Quiz.questions))
     )
     return result.scalar_one()
+
+
+@router.get("", response_model=list[QuizRead])
+async def list_quizzes(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> list[Quiz]:
+    result = await db.execute(
+        select(Quiz)
+        .where(Quiz.created_by == user_id)
+        .options(selectinload(Quiz.questions))
+        .order_by(Quiz.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 @router.get("/{quiz_id}", response_model=QuizRead)

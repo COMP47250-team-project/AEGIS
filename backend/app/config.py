@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env.example", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis"
     database_url_sync: str = "postgresql://aegis:aegis_dev_pw@localhost:5432/aegis"
