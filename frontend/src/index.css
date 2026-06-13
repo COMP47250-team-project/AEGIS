@@ -1,0 +1,14 @@
+/* frontend/src/index.css */
+/*
+  These three lines are Tailwind CSS "directives". They tell the Tailwind
+  PostCSS plugin to inject:
+    @tailwind base       → normalises browser default styles
+    @tailwind components → any custom component classes (none yet)
+    @tailwind utilities  → all the utility classes (bg-*, text-*, flex, etc.)
+  
+  Without these three lines, Tailwind classes won't work.
+*/
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
