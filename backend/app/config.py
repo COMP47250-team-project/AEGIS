@@ -21,9 +21,7 @@ class Settings(BaseSettings):
     azure_service_bus_queue_name: str = "telemetry-events"
     score_queue_name: str = "score-jobs"
 =======
-    database_url: str
-    database_url_sync: str
->>>>>>> 76fb0a1 (Fix SQLAlchemy + Database URL)
+
 
 
 settings = Settings()
