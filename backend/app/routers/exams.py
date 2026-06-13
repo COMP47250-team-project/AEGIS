@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -71,7 +72,14 @@ async def enroll_student(
         )
     enrollment = Enrollment(exam_id=exam.id, student_id=body.student_id)
     db.add(enrollment)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Student is already enrolled in this exam session",
+        )
     await db.refresh(enrollment)
     return enrollment
 

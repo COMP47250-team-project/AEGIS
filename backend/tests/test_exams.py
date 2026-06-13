@@ -145,6 +145,17 @@ async def test_enrollment_reflected_in_enrollment_count(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
+async def test_duplicate_enrollment_returns_409(client: AsyncClient) -> None:
+    quiz_id = await _create_quiz(client)
+    exam_id = await _create_exam(client, quiz_id)
+
+    await client.post(f"/exams/{exam_id}/enrollments", json=STUDENT_A)
+    response = await client.post(f"/exams/{exam_id}/enrollments", json=STUDENT_A)
+
+    assert response.status_code == 409
+
+
+@pytest.mark.asyncio
 async def test_enroll_student_in_open_exam_returns_409(client: AsyncClient) -> None:
     quiz_id = await _create_quiz(client)
     exam_id = await _create_exam(client, quiz_id)

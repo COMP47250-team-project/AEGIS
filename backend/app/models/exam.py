@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -39,6 +39,9 @@ class ExamSession(Base):
 
 class Enrollment(Base):
     __tablename__ = "exam_enrollments"
+    __table_args__ = (
+        UniqueConstraint("exam_id", "student_id", name="uq_exam_enrollments_exam_student"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     exam_id: Mapped[uuid.UUID] = mapped_column(
