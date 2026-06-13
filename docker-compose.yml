@@ -29,14 +29,20 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Run migrations then start the server; alembic reads DATABASE_URL_SYNC (sync driver)
     command: >
-      uvicorn app.main:app
-        --host 0.0.0.0
-        --port 8000
-        --reload
-        --reload-dir /app
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-appdb}
+      # asyncpg (async engine used by the app)
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-appdb}
+      # psycopg2 (sync engine used by Alembic migrations)
+      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-dev}:${POSTGRES_PASSWORD:-dev}@db:5432/${POSTGRES_DB:-appdb}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change_me_to_a_random_64_char_string}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 480
+      APP_ENV: development
+      LOG_LEVEL: DEBUG
       AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tiq1/DummyKey==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
     ports:
       - "8000:8000"
@@ -48,11 +54,11 @@ services:
       azurite:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
 
   # ─────────────────────────────────────────
   # Vite frontend (HMR)
@@ -74,7 +80,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5173 || exit 1"]
+      test: ["CMD", "node", "-e", "require('net').connect(5173,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -99,11 +105,11 @@ services:
     volumes:
       - azurite_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10000 || exit 1"]
+      test: ["CMD", "node", "-e", "require('net').connect(10000,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
 
 # ─────────────────────────────────────────
 # Named volumes — all wiped by `down -v`
