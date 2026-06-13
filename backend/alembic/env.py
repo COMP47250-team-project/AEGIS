@@ -17,7 +17,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Use the async URL directly — no psycopg2 required
-db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+_raw_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+if not _raw_url:
+    raise RuntimeError("DATABASE_URL environment variable is not set")
+db_url: str = _raw_url
 target_metadata = Base.metadata
 
 
