@@ -1,6 +1,7 @@
 ## Jira ticket
 
 <!-- Link to Jira: https://comp47250-ucd.atlassian.net/browse/AEGIS-XXX -->
+
 Closes AEGIS-
 
 ## What does this PR do?
@@ -29,5 +30,4 @@ Closes AEGIS-
 - [ ] CI checks pass (lint, type-check, tests, build)
 - [ ] No secrets or credentials committed
 - [ ] Added / updated tests for changed logic
-- [ ] CONTRIBUTING.md guidelines followed
 - [ ] Assigned reviewer(s) per CODEOWNERS

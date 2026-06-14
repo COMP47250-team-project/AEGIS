@@ -42,6 +42,50 @@ class ExamRead(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Answer submission schemas
+# ---------------------------------------------------------------------------
+
+
+class AnswerItem(BaseModel):
+    question_id: uuid.UUID
+    answer: str = Field(default="")
+
+
+class AnswerSubmit(BaseModel):
+    answers: list[AnswerItem] = Field(..., min_length=1)
+
+
+class AnswerItemRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    student_id: str
+    question_id: uuid.UUID
+    answer: str
+    saved_at: datetime
+
+
+class AnswerSubmitResponse(BaseModel):
+    saved: int
+    answers: list[AnswerItemRead]
+
+
+# ---------------------------------------------------------------------------
+# Student session / consent schemas
+# ---------------------------------------------------------------------------
+
+
+class StudentSessionRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    student_id: str
+    consent_at: datetime | None
+
+
+# ---------------------------------------------------------------------------
 # Enrollment schemas
 # ---------------------------------------------------------------------------
 
