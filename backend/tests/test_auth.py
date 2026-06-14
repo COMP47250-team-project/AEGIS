@@ -1,15 +1,17 @@
-# tests for JWT auth endpoints 
+# tests for JWT auth endpoints - June 2026
 import pytest
 from fastapi.testclient import TestClient
 from auth.main import app
 
 client = TestClient(app)
 
+TEST_PASSWORD = "SecurePass123"
+
 VALID_USER = {
     "email": "testuser@example.com",
-    "password": "SecurePass123",
+    "password": TEST_PASSWORD,
     "role": "user",
-    "full_name": "Test User"
+    "full_name": "Test User",
 }
 
 
@@ -24,7 +26,7 @@ def register_and_login():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": VALID_USER["password"]
+        "password": TEST_PASSWORD,
     })
     return res.json()
 
@@ -49,7 +51,7 @@ def test_login_returns_200_with_tokens():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": VALID_USER["password"]
+        "password": TEST_PASSWORD,
     })
     assert res.status_code == 200
     body = res.json()
@@ -61,7 +63,7 @@ def test_login_wrong_password_returns_401():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": "wrongpassword"
+        "password": "wrongpassword",
     })
     assert res.status_code == 401
 
@@ -69,7 +71,7 @@ def test_login_wrong_password_returns_401():
 def test_login_nonexistent_email_returns_401():
     res = client.post("/auth/login", json={
         "email": "ghost@example.com",
-        "password": "anything"
+        "password": "anything",
     })
     assert res.status_code == 401
 
@@ -79,11 +81,11 @@ def test_login_wrong_password_and_nonexistent_email_same_message():
 
     wrong_pass = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": "wrongpassword"
+        "password": "wrongpassword",
     })
     ghost = client.post("/auth/login", json={
         "email": "ghost@example.com",
-        "password": "anything"
+        "password": "anything",
     })
 
     assert wrong_pass.json()["detail"] == ghost.json()["detail"]
@@ -140,7 +142,7 @@ def test_register_login_protected_flow():
 
     login = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": VALID_USER["password"]
+        "password": TEST_PASSWORD,
     })
     assert login.status_code == 200
 

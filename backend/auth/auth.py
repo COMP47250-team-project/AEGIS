@@ -1,13 +1,14 @@
+import os
 import time
 import uuid
+from pathlib import Path
 from typing import Dict, Optional
 
 import bcrypt
 import jwt
 
-from pathlib import Path
-
 KEY_DIR = Path(__file__).parent / "keys"
+
 
 def _load_or_generate_keys():
     priv_p = KEY_DIR / "private.pem"
@@ -19,9 +20,9 @@ def _load_or_generate_keys():
         pass
 
     try:
-        from cryptography.hazmat.primitives.asymmetric import rsa
-        from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
 
         key = rsa.generate_private_key(
             public_exponent=65537, key_size=2048, backend=default_backend()
@@ -47,8 +48,6 @@ REFRESH_EXPIRES = 7 * 24 * 3600
 
 USERS: Dict[str, Dict] = {}
 BLACKLISTED_JTIS = set()
-
-import os
 
 # Random bytes hashed at startup, used only to keep bcrypt timing constant
 # when the email does not exist. Never compared against real input successfully.
