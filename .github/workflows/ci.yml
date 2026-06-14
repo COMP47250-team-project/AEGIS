@@ -82,6 +82,12 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: ruff check .
 
+      - name: Debug
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          pip list | grep -i jwt
+          python -c "import jwt; print(jwt.__version__)"
+
       - name: Pyright (type check)
         if: steps.detect.outputs.present == 'true'
         run: python -m pyright
