@@ -67,12 +67,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Debug files
-        run: |
-          pwd
-          ls -la
-          cat requirements.txt
-
       - name: Install dependencies
         if: steps.detect.outputs.present == 'true'
         run: |
@@ -90,7 +84,7 @@ jobs:
 
       - name: Pyright (type check)
         if: steps.detect.outputs.present == 'true'
-        run: python -m pyright
+        run: pyright
 
       - name: Pytest (tests)
         if: steps.detect.outputs.present == 'true'

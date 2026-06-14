@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import bcrypt
-import jwt
+from jose import jwt
 
 KEY_DIR = Path(__file__).parent / "keys"
 
