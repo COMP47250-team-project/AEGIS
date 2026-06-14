@@ -23,7 +23,9 @@ def _load_or_generate_keys():
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.backends import default_backend
 
-        key = rsa.generate_private_key(public_exponent=65537, key_size=2048, backend=default_backend())
+        key = rsa.generate_private_key(
+            public_exponent=65537, key_size=2048, backend=default_backend()
+        )
         priv = key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.TraditionalOpenSSL,
@@ -46,9 +48,11 @@ REFRESH_EXPIRES = 7 * 24 * 3600
 USERS: Dict[str, Dict] = {}
 BLACKLISTED_JTIS = set()
 
-# A pre-hashed dummy value used to keep bcrypt timing constant
-# when the email doesn't exist, preventing user enumeration via timing.
-_DUMMY_HASH = bcrypt.hashpw(b"dummy", bcrypt.gensalt(rounds=12)).decode()
+import os
+
+# Random bytes hashed at startup, used only to keep bcrypt timing constant
+# when the email does not exist. Never compared against real input successfully.
+_DUMMY_HASH = bcrypt.hashpw(os.urandom(32), bcrypt.gensalt(rounds=12)).decode()
 
 
 def hash_password(plain: str) -> str:
