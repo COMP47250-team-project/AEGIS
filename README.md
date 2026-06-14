@@ -102,8 +102,10 @@ Professors create and schedule online exams. During an exam, the student's brows
 |------|----------------|-------|
 | Docker + Docker Compose | 24.x / 2.x | `docker --version` |
 | Node.js (for manual setup) | 22 | `node --version` |
-| Python (for manual setup) | 3.12 | `python --version` |
+| uv (for manual setup) | 0.4+ | `uv --version` |
 | PostgreSQL (for manual setup) | 16 | `psql --version` |
+
+Install uv via the [official installer](https://docs.astral.sh/uv/getting-started/installation/): `curl -LsSf https://astral.sh/uv/install.sh \| sh`
 
 ---
 
@@ -162,12 +164,8 @@ CREATE DATABASE appdb OWNER dev;
 ```sh
 cd backend
 
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-# Install the package in editable mode with dev extras
-pip install -e ".[dev]"
+# Install all dependencies (creates .venv automatically)
+uv sync
 
 # Set required environment variables
 export DATABASE_URL="postgresql+asyncpg://dev:dev@localhost:5432/appdb"
@@ -175,10 +173,10 @@ export DATABASE_URL_SYNC="postgresql://dev:dev@localhost:5432/appdb"
 export JWT_SECRET_KEY="change_me_to_a_random_64_char_string"
 
 # Run database migrations
-alembic upgrade head
+uv run alembic upgrade head
 
 # Start the development server (hot-reload)
-uvicorn app.main:app --reload
+uv run uvicorn app.main:app --reload
 ```
 
 The API is now available at http://localhost:8000. Interactive docs at http://localhost:8000/docs.
@@ -241,16 +239,15 @@ The CI pipeline runs two independent jobs on every push and pull request to `mai
 
 ```sh
 cd backend
-source .venv/bin/activate
 
 # Lint (ruff)
-ruff check .
+uv run ruff check .
 
 # Type check (pyright)
-pyright
+uv run pyright
 
 # Tests (pytest)
-pytest -q
+uv run pytest -q
 ```
 
 ### Frontend (Node)
