@@ -1,6 +1,5 @@
 FROM python:3.12-slim
 
-# Copy uv binary from the official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
@@ -10,12 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libpq-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python deps before copying source so this layer is cached.
-# UV_SYSTEM_PYTHON=1 installs into the system Python (not a project .venv),
-# so docker-compose volume mounts don't shadow installed packages.
-ENV UV_SYSTEM_PYTHON=1
+# Place the venv outside /app so docker-compose volume mounts don't shadow it.
+# UV_SYSTEM_PYTHON=1 only applies to `uv pip` — `uv sync` always uses a venv.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV PATH=/opt/venv/bin:$PATH
+
+# Install dependencies before copying source (layer caching).
+# --no-install-project: the source isn't here yet, so skip installing the local
+# aegis-backend package. All runtime deps (alembic, uvicorn, …) are installed.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
+RUN uv sync --frozen --no-install-project
 
 # Source is mounted at run time in development (see docker-compose volumes).
 # Copying here ensures the image is self-contained for CI / production builds.
