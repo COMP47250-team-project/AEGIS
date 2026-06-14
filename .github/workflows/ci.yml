@@ -67,6 +67,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Debug files
+        run: |
+          pwd
+          ls -la
+          cat requirements.txt
+
       - name: Install dependencies
         if: steps.detect.outputs.present == 'true'
         run: |
@@ -81,12 +87,6 @@ jobs:
       - name: Ruff (lint)
         if: steps.detect.outputs.present == 'true'
         run: ruff check .
-
-      - name: Debug
-        if: steps.detect.outputs.present == 'true'
-        run: |
-          pip list | grep -i jwt
-          python -c "import jwt; print(jwt.__version__)"
 
       - name: Pyright (type check)
         if: steps.detect.outputs.present == 'true'
