@@ -5,11 +5,13 @@ from auth.main import app
 
 client = TestClient(app)
 
-TEST_PASSWORD = "SecurePass123"
+TEST_PWD = "SecurePass123"
+WRONG_PWD = "wrongpassword"
+ANY_PWD = "anything"
 
 VALID_USER = {
     "email": "testuser@example.com",
-    "password": TEST_PASSWORD,
+    "password": TEST_PWD,
     "role": "user",
     "full_name": "Test User",
 }
@@ -26,7 +28,7 @@ def register_and_login():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": TEST_PASSWORD,
+        "password": TEST_PWD,
     })
     return res.json()
 
@@ -51,7 +53,7 @@ def test_login_returns_200_with_tokens():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": TEST_PASSWORD,
+        "password": TEST_PWD,
     })
     assert res.status_code == 200
     body = res.json()
@@ -63,7 +65,7 @@ def test_login_wrong_password_returns_401():
     client.post("/auth/register", json=VALID_USER)
     res = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": "wrongpassword",
+        "password": WRONG_PWD,
     })
     assert res.status_code == 401
 
@@ -71,7 +73,7 @@ def test_login_wrong_password_returns_401():
 def test_login_nonexistent_email_returns_401():
     res = client.post("/auth/login", json={
         "email": "ghost@example.com",
-        "password": "anything",
+        "password": ANY_PWD,
     })
     assert res.status_code == 401
 
@@ -81,11 +83,11 @@ def test_login_wrong_password_and_nonexistent_email_same_message():
 
     wrong_pass = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": "wrongpassword",
+        "password": WRONG_PWD,
     })
     ghost = client.post("/auth/login", json={
         "email": "ghost@example.com",
-        "password": "anything",
+        "password": ANY_PWD,
     })
 
     assert wrong_pass.json()["detail"] == ghost.json()["detail"]
@@ -142,7 +144,7 @@ def test_register_login_protected_flow():
 
     login = client.post("/auth/login", json={
         "email": VALID_USER["email"],
-        "password": TEST_PASSWORD,
+        "password": TEST_PWD,
     })
     assert login.status_code == 200
 
