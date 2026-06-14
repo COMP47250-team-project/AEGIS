@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated, Never, Optional
 import uuid
 
 from fastapi import FastAPI, HTTPException, Depends, Header
@@ -29,7 +29,7 @@ class LogoutIn(BaseModel):
     refresh_token: str
 
 
-def raise_401() -> None:
+def raise_401() -> Never:          # <-- Never, not None
     raise HTTPException(
         status_code=401,
         detail="Invalid credentials",
@@ -86,7 +86,7 @@ def refresh(body: RefreshIn):
     if not data:
         raise_401()
 
-    jti = data.get("jti")
+    jti = data.get("jti")           # data is narrowed to dict here
     if not jti or auth.is_jti_blacklisted(jti):
         raise_401()
 
@@ -103,7 +103,7 @@ def logout(body: LogoutIn):
     if not data:
         raise_401()
 
-    jti = data.get("jti")
+    jti = data.get("jti")           # data is narrowed to dict here
     if jti:
         auth.blacklist_jti(jti)
 
