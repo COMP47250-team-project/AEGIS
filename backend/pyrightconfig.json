@@ -1,5 +1,5 @@
 {
   "pythonVersion": "3.12",
-  "pythonPath": "/usr/bin/python3",
+  "pythonPath": "/opt/hostedtoolcache/Python/3.12.13/x64/bin/python3",
   "typeCheckingMode": "basic"
 }
