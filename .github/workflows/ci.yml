@@ -84,7 +84,7 @@ jobs:
 
       - name: Pyright (type check)
         if: steps.detect.outputs.present == 'true'
-        run: pyright
+        run: python -m pyright
 
       - name: Pytest (tests)
         if: steps.detect.outputs.present == 'true'
