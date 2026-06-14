@@ -55,8 +55,8 @@ def register(payload: RegisterIn):
         "full_name": payload.full_name,
     }
 
-    access = auth.create_access_token(payload.email, payload.role, user_id)
-    refresh = auth.create_refresh_token(payload.email, payload.role, user_id)
+    access = auth.create_access_token(payload.email, payload.role or "user", user_id)
+    refresh = auth.create_refresh_token(payload.email, payload.role or "user", user_id)
     return {"access_token": access, "refresh_token": refresh}
 
 
@@ -68,6 +68,8 @@ def login(payload: LoginIn):
     user = auth.USERS.get(payload.email)
     stored_hash = user["password"] if user else None
     if not auth.constant_time_verify(payload.password, stored_hash):
+        raise_401()
+    if not user:  
         raise_401()
 
     access = auth.create_access_token(user["email"], user["role"], user["id"])
