@@ -39,13 +39,13 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
   onDecline,
   isSubmitting,
 }) => (
-  <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-    <div className="max-w-lg w-full bg-white rounded-xl border border-slate-200 shadow-sm p-8">
+  <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+    <div className="max-w-lg w-full bg-surface-card rounded-md border border-hairline p-8">
       {/* Header */}
       <div className="flex items-start gap-4 mb-6">
-        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center">
+        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-accent-blue-soft border border-accent-blue/20 flex items-center justify-center">
           <svg
-            className="w-5 h-5 text-amber-600"
+            className="w-5 h-5 text-accent-blue"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -59,10 +59,10 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
           </svg>
         </div>
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">
+          <h1 className="text-lg font-semibold text-ink">
             Exam Integrity Monitoring
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-mute mt-0.5">
             Before you begin, please review what AEGIS collects during this
             exam.
           </p>
@@ -71,41 +71,41 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 
       {/* What is collected */}
       <div className="mb-6">
-        <p className="text-sm font-medium text-slate-700 mb-3">
+        <p className="text-sm font-medium text-body mb-3">
           AEGIS collects the following browser signals while the exam is open:
         </p>
-        <ul className="space-y-2 text-sm text-slate-600">
+        <ul className="space-y-2 text-sm text-body">
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5" />
+            <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-medium text-slate-800">
+              <strong className="font-semibold text-ink">
                 Keystroke timing
               </strong>{" "}
               — intervals between keystrokes (not key content or clipboard text)
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5" />
+            <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-medium text-slate-800">
+              <strong className="font-semibold text-ink">
                 Tab switching
               </strong>{" "}
               — when you leave and return to this browser tab
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5" />
+            <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-medium text-slate-800">
+              <strong className="font-semibold text-ink">
                 Paste events
               </strong>{" "}
               — when text is pasted into an answer field (not what was pasted)
             </span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="mt-0.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-slate-400 mt-1.5" />
+            <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-medium text-slate-800">
+              <strong className="font-semibold text-ink">
                 Window resize
               </strong>{" "}
               — changes in the browser window size during the exam
@@ -114,8 +114,8 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
         </ul>
       </div>
 
-      {/* Privacy note */}
-      <div className="mb-6 px-4 py-3 bg-slate-50 rounded-lg border border-slate-200 text-sm text-slate-600">
+      {/* Privacy note — banner-tip-green style */}
+      <div className="mb-6 px-4 py-3 bg-accent-green-soft rounded-md border-l-2 border-accent-green text-sm text-ink">
         No webcam, microphone, screen recording, or clipboard contents are ever
         collected. Signals are combined into a confidence score for human
         review only — no automatic academic-misconduct verdicts are issued.
@@ -126,14 +126,14 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
         <button
           onClick={onConsent}
           disabled={isSubmitting}
-          className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
+          className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
         >
           {isSubmitting ? "Starting exam…" : "I Consent — Begin Exam"}
         </button>
         <button
           onClick={onDecline}
           disabled={isSubmitting}
-          className="w-full py-3 px-4 bg-white hover:bg-slate-50 disabled:text-slate-300 text-slate-700 text-sm font-medium rounded-lg border border-slate-300 transition-colors"
+          className="w-full py-2.5 px-4 bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
         >
           Decline (leave exam)
         </button>
@@ -147,11 +147,11 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 // ---------------------------------------------------------------------------
 
 const ExamContent: React.FC = () => (
-  <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+  <div className="min-h-screen bg-canvas flex items-center justify-center">
     <div className="text-center">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-indigo-600 mb-4">
+      <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
         <svg
-          className="w-7 h-7 text-white"
+          className="w-7 h-7 text-on-dark"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -164,8 +164,8 @@ const ExamContent: React.FC = () => (
           />
         </svg>
       </div>
-      <h1 className="text-2xl font-semibold text-slate-800 mb-2">Exam</h1>
-      <p className="text-slate-400 text-xs">
+      <h1 className="text-2xl font-bold text-ink mb-2">Exam</h1>
+      <p className="text-ash text-xs">
         Exam shell — implemented by the frontend team.
       </p>
     </div>
@@ -235,20 +235,20 @@ const ExamShell: React.FC = () => {
 
   if (state.kind === "loading") {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
         <div className="text-center">
-          <p className="text-slate-600 mb-4">{state.message}</p>
+          <p className="text-body mb-4">{state.message}</p>
           <button
             onClick={() => setState({ kind: "loading" })}
-            className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg"
+            className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md"
           >
             Try again
           </button>
