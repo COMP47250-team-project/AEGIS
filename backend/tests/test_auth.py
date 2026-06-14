@@ -151,4 +151,3 @@ def test_register_login_protected_flow():
     token = login.json()["access_token"]
     protected = client.get("/protected", headers={"Authorization": f"Bearer {token}"})
     assert protected.status_code == 200
-    
