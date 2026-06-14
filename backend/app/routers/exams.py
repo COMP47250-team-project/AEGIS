@@ -8,8 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user_id
-from app.models.exam import Enrollment, ExamSession
-from app.schemas.exam import EnrollmentCreate, EnrollmentRead, ExamCreate, ExamRead
+from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
+from app.schemas.exam import (
+    AnswerItemRead,
+    AnswerSubmit,
+    AnswerSubmitResponse,
+    EnrollmentCreate,
+    EnrollmentRead,
+    ExamCreate,
+    ExamRead,
+    StudentSessionRead,
+)
 from app.services.scoring import dispatch_score_job
 
 router = APIRouter(prefix="/exams", tags=["exams"])
@@ -159,6 +168,134 @@ async def close_exam(
 
     count = await _enrollment_count(db, exam_id)
     return ExamRead.from_orm_with_count(exam, count)
+
+
+# ---------------------------------------------------------------------------
+# Answer submission (AEGIS-35)
+# ---------------------------------------------------------------------------
+
+@router.post("/{exam_id}/answers", response_model=AnswerSubmitResponse)
+async def submit_answers(
+    exam_id: uuid.UUID,
+    body: AnswerSubmit,
+    db: AsyncSession = Depends(get_db),
+    student_id: str = Depends(get_current_user_id),
+) -> AnswerSubmitResponse:
+    """Durably persist student answers.
+
+    Critical invariant: answers are committed to PostgreSQL before any
+    side effects. This endpoint MUST NOT fail due to WebSocket or Service
+    Bus unavailability — those are secondary concerns.
+    """
+    exam = await _get_exam_or_404(db, exam_id)
+    if exam.state != "open":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Answers can only be submitted while the exam is open",
+        )
+
+    now = datetime.now(timezone.utc)
+    saved: list[ExamAnswer] = []
+
+    for item in body.answers:
+        result = await db.execute(
+            select(ExamAnswer).where(
+                ExamAnswer.exam_id == exam_id,
+                ExamAnswer.student_id == student_id,
+                ExamAnswer.question_id == item.question_id,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            existing.answer = item.answer
+            existing.saved_at = now
+            saved.append(existing)
+        else:
+            new_answer = ExamAnswer(
+                exam_id=exam_id,
+                student_id=student_id,
+                question_id=item.question_id,
+                answer=item.answer,
+                saved_at=now,
+            )
+            db.add(new_answer)
+            saved.append(new_answer)
+
+    # Commit DB writes unconditionally — this is the durable store.
+    await db.commit()
+
+    for answer in saved:
+        await db.refresh(answer)
+
+    answer_reads = [AnswerItemRead.model_validate(a) for a in saved]
+    return AnswerSubmitResponse(saved=len(saved), answers=answer_reads)
+
+
+# ---------------------------------------------------------------------------
+# Student session / GDPR consent (AEGIS-38)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{exam_id}/session", response_model=StudentSessionRead)
+async def get_student_session(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    student_id: str = Depends(get_current_user_id),
+) -> StudentSessionRead:
+    """Return (or lazily create) the student session for an exam.
+
+    Used by the frontend to check whether the student has already consented.
+    The session row is created with consent_at=NULL on first access, so the
+    consent screen is always shown on a fresh navigation.
+    """
+    await _get_exam_or_404(db, exam_id)
+
+    result = await db.execute(
+        select(StudentSession).where(
+            StudentSession.exam_id == exam_id,
+            StudentSession.student_id == student_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None:
+        session = StudentSession(exam_id=exam_id, student_id=student_id)
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+
+    return StudentSessionRead.model_validate(session)
+
+
+@router.post("/{exam_id}/consent", response_model=StudentSessionRead)
+async def record_consent(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    student_id: str = Depends(get_current_user_id),
+) -> StudentSessionRead:
+    """Record the student's GDPR consent for monitoring.
+
+    Sets consent_at to the current UTC timestamp. Idempotent — calling it
+    again simply updates the timestamp.
+    """
+    await _get_exam_or_404(db, exam_id)
+
+    result = await db.execute(
+        select(StudentSession).where(
+            StudentSession.exam_id == exam_id,
+            StudentSession.student_id == student_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if session is None:
+        session = StudentSession(exam_id=exam_id, student_id=student_id, consent_at=now)
+        db.add(session)
+    else:
+        session.consent_at = now
+
+    await db.commit()
+    await db.refresh(session)
+    return StudentSessionRead.model_validate(session)
 
 
 # ---------------------------------------------------------------------------

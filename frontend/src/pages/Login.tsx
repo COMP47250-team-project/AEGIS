@@ -50,32 +50,34 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
       <div className="w-full max-w-md">
+        {/* Brand mark */}
         <div className="mb-8 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-indigo-600 mb-4">
-            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
+            <svg className="w-7 h-7 text-on-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
               />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold text-slate-800 tracking-tight">AEGIS</h1>
-          <p className="text-slate-500 text-sm mt-1">Adaptive Exam Guardian and Integrity System</p>
+          <h1 className="text-2xl font-bold text-ink tracking-tight">AEGIS</h1>
+          <p className="text-mute text-sm mt-1">Adaptive Exam Guardian and Integrity System</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-10 shadow-md">
-          <h2 className="text-lg font-medium text-slate-800 mb-6">Sign in</h2>
+        {/* Card — flat on canvas, no shadow */}
+        <div className="bg-surface-card border border-hairline rounded-md p-10">
+          <h2 className="text-lg font-semibold text-ink mb-6">Sign in</h2>
 
           {error && (
-            <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
+            <div className="mb-4 px-4 py-3 rounded-md bg-accent-red-soft border-l-2 border-accent-red text-ink text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-600 mb-1.5">
+              <label htmlFor="email" className="block text-sm font-medium text-body mb-1.5">
                 Email address
               </label>
               <input
@@ -86,12 +88,12 @@ const LoginPage: React.FC = () => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@ucd.ie"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 bg-surface-card border border-hairline rounded-md text-ink placeholder-ash text-sm focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/30 transition"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-600 mb-1.5">
+              <label htmlFor="password" className="block text-sm font-medium text-body mb-1.5">
                 Password
               </label>
               <input
@@ -102,22 +104,22 @@ const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className="w-full px-3 py-2 bg-surface-card border border-hairline rounded-md text-ink placeholder-ash text-sm focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/30 transition"
               />
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-300 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-white"
+              className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
             >
               {isLoading ? "Signing in…" : "Sign in"}
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-slate-400">
+          <p className="mt-6 text-center text-sm text-mute">
             Don't have an account?{" "}
-            <Link to="/register" className="text-indigo-600 hover:text-indigo-500 font-medium transition-colors">
+            <Link to="/register" className="text-link-teal font-medium">
               Register
             </Link>
           </p>
