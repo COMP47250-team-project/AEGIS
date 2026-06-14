@@ -69,7 +69,7 @@ def login(payload: LoginIn):
     stored_hash = user["password"] if user else None
     if not auth.constant_time_verify(payload.password, stored_hash):
         raise_401()
-    if not user:  
+    if not user:
         raise_401()
 
     access = auth.create_access_token(user["email"], user["role"], user["id"])
