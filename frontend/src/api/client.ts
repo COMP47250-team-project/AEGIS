@@ -9,15 +9,21 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Attach access token to every outgoing request
-// Stored in memory only — never written to localStorage
+// Tokens stored in memory only — never written to localStorage
 let accessToken: string | null = null;
+let refreshToken: string | null = null;
 
 export const setAccessToken = (token: string | null) => {
   accessToken = token;
 };
 
 export const getAccessToken = () => accessToken;
+
+export const setRefreshToken = (token: string | null) => {
+  refreshToken = token;
+};
+
+export const getRefreshToken = () => refreshToken;
 
 apiClient.interceptors.request.use((config) => {
   if (accessToken) {
@@ -71,7 +77,8 @@ apiClient.interceptors.response.use(
 
       try {
         const { data } = await apiClient.post<{ access_token: string }>(
-          "/auth/refresh"
+          "/auth/refresh",
+          { refresh_token: refreshToken }
         );
 
         const newToken = data.access_token;
@@ -82,6 +89,7 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         setAccessToken(null);
+        setRefreshToken(null);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

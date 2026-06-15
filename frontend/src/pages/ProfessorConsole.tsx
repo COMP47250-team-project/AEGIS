@@ -1,33 +1,126 @@
-// frontend/src/pages/ProfessorConsole.tsx
-// Placeholder — full implementation in Sprint 3
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import ExamList from "../components/professor/ExamList";
+import QuizBuilder from "../components/professor/QuizBuilder";
+import ExamScheduler from "../components/professor/ExamScheduler";
+
+type Tab = "exams" | "build" | "schedule";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "exams", label: "My Exams" },
+  { id: "build", label: "Build Quiz" },
+  { id: "schedule", label: "Schedule Exam" },
+];
 
 const ProfessorConsole: React.FC = () => {
   const { user, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>("exams");
+  // After building a quiz we jump to schedule and pre-select it
+  const [pendingQuizId, setPendingQuizId] = useState<string | undefined>();
+  // Bump this to force ExamList to re-fetch after scheduling
+  const [examListKey, setExamListKey] = useState(0);
+
+  function handleQuizCreated(quizId: string) {
+    setPendingQuizId(quizId);
+    setActiveTab("schedule");
+  }
+
+  function handleExamScheduled() {
+    setExamListKey((k) => k + 1);
+    setActiveTab("exams");
+  }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
-          <svg className="w-7 h-7 text-on-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
+    <div className="min-h-screen bg-canvas">
+      {/* Top bar */}
+      <header className="bg-surface-card border-b border-hairline px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-surface-dark">
+            <svg
+              className="w-4 h-4 text-on-dark"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+              />
+            </svg>
+          </span>
+          <span className="text-sm font-semibold text-ink">AEGIS</span>
+          <span className="text-hairline mx-1">|</span>
+          <span className="text-sm text-mute">Professor Console</span>
         </div>
-        <h1 className="text-2xl font-bold text-ink mb-2">Professor Console</h1>
-        <p className="text-body text-sm mb-1">
-          Welcome, <span className="text-ink font-semibold">{user?.name}</span>
-        </p>
-        <p className="text-mute text-xs mb-8">
-          Exam authoring and live cohort view coming soon — implemented in Sprint 3.
-        </p>
-        <button
-          onClick={logout}
-          className="px-4 py-2 bg-surface-soft text-ink text-sm font-bold rounded-md transition-colors"
-        >
-          Sign out
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-body">{user?.name}</span>
+          <button
+            onClick={logout}
+            className="text-xs text-mute hover:text-ink transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        {/* Tab nav */}
+        <nav className="flex border-b border-hairline mb-6" role="tablist">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === tab.id
+                  ? "border-ink text-ink"
+                  : "border-transparent text-mute hover:text-body"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Tab panels */}
+        {activeTab === "exams" && (
+          <section aria-label="My Exams">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-ink">Exams</h2>
+              <button
+                onClick={() => setActiveTab("build")}
+                className="px-3 py-1.5 bg-primary text-ink text-xs font-semibold rounded hover:bg-primary-pressed transition-colors"
+              >
+                + New quiz
+              </button>
+            </div>
+            <ExamList key={examListKey} />
+          </section>
+        )}
+
+        {activeTab === "build" && (
+          <section aria-label="Build Quiz">
+            <h2 className="text-base font-semibold text-ink mb-4">
+              Build a Quiz
+            </h2>
+            <QuizBuilder onCreated={handleQuizCreated} />
+          </section>
+        )}
+
+        {activeTab === "schedule" && (
+          <section aria-label="Schedule Exam">
+            <h2 className="text-base font-semibold text-ink mb-4">
+              Schedule an Exam
+            </h2>
+            <ExamScheduler
+              preselectedQuizId={pendingQuizId}
+              onScheduled={handleExamScheduled}
+            />
+          </section>
+        )}
       </div>
     </div>
   );
