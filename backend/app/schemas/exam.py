@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+QuestionType = Literal["mcq", "short"]
+
 
 # ---------------------------------------------------------------------------
 # Exam session schemas
@@ -94,7 +96,7 @@ class QuestionForStudent(BaseModel):
     model_config = {"from_attributes": True}
 
     id: uuid.UUID
-    type: str
+    type: QuestionType
     prompt: str
     options: list[str] | None
     position: int
