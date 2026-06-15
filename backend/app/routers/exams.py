@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user_id
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
+from app.models.quiz import Question
 from app.schemas.exam import (
     AnswerItemRead,
     AnswerSubmit,
@@ -17,6 +18,7 @@ from app.schemas.exam import (
     EnrollmentRead,
     ExamCreate,
     ExamRead,
+    QuestionForStudent,
     StudentSessionRead,
 )
 from app.services.scoring import dispatch_score_job
@@ -300,6 +302,49 @@ async def record_consent(
     await db.commit()
     await db.refresh(session)
     return StudentSessionRead.model_validate(session)
+
+
+# ---------------------------------------------------------------------------
+# Questions for students (AEGIS-39)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{exam_id}/questions", response_model=list[QuestionForStudent])
+async def get_exam_questions(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    student_id: str = Depends(get_current_user_id),
+) -> list[Question]:
+    """Return the exam's questions — correct_answer is never included.
+
+    Requires an open exam and a consented student session.
+    """
+    exam = await _get_exam_or_404(db, exam_id)
+    if exam.state != "open":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Exam is not open",
+        )
+
+    result = await db.execute(
+        select(StudentSession).where(
+            StudentSession.exam_id == exam_id,
+            StudentSession.student_id == student_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if session is None or session.consent_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Consent required before accessing exam questions",
+        )
+
+    q_result = await db.execute(
+        select(Question)
+        .where(Question.quiz_id == exam.quiz_id)
+        .order_by(Question.position)
+    )
+    return list(q_result.scalars().all())
 
 
 # ---------------------------------------------------------------------------

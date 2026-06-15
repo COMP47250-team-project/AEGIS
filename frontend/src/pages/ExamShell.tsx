@@ -1,11 +1,15 @@
 // frontend/src/pages/ExamShell.tsx
 // AEGIS-38: Exam shell with GDPR consent gate.
+// AEGIS-39: MCQ and short-answer question UI.
 //
 // Consent is always verified against the server on mount — navigating directly
 // to this URL never bypasses the consent screen.
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import apiClient from "../api/client";
+import QuestionRenderer from "../components/exam/QuestionRenderer";
+import ProgressSidebar from "../components/exam/ProgressSidebar";
+import type { ExamQuestion } from "../components/exam/QuestionRenderer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -18,14 +22,21 @@ interface StudentSession {
   consent_at: string | null;
 }
 
+type Answers = Record<string, string>;
+
 type PageState =
   | { kind: "loading" }
   | { kind: "consent-required"; session: StudentSession }
   | { kind: "exam-active"; session: StudentSession }
   | { kind: "error"; message: string };
 
+type ContentState =
+  | { kind: "loading" }
+  | { kind: "loaded"; questions: ExamQuestion[] }
+  | { kind: "error" };
+
 // ---------------------------------------------------------------------------
-// Consent screen component
+// Consent screen component (AEGIS-38)
 // ---------------------------------------------------------------------------
 
 interface ConsentScreenProps {
@@ -114,7 +125,7 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
         </ul>
       </div>
 
-      {/* Privacy note — banner-tip-green style */}
+      {/* Privacy note */}
       <div className="mb-6 px-4 py-3 bg-accent-green-soft rounded-md border-l-2 border-accent-green text-sm text-ink">
         No webcam, microphone, screen recording, or clipboard contents are ever
         collected. Signals are combined into a confidence score for human
@@ -143,34 +154,270 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 );
 
 // ---------------------------------------------------------------------------
-// Exam shell (rendered after consent)
+// Exam content component (AEGIS-39)
 // ---------------------------------------------------------------------------
 
-const ExamContent: React.FC = () => (
-  <div className="min-h-screen bg-canvas flex items-center justify-center">
-    <div className="text-center">
-      <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
-        <svg
-          className="w-7 h-7 text-on-dark"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-          />
-        </svg>
+const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
+  const navigate = useNavigate();
+  const [contentState, setContentState] = useState<ContentState>({
+    kind: "loading",
+  });
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [answers, setAnswers] = useState<Answers>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
+  // Ref keeps the auto-save interval closure from capturing stale answers
+  const answersRef = useRef<Answers>({});
+  // Tracks Ctrl+A → Ctrl+C → Ctrl+V sequence for paste telemetry
+  const keySeqRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  // Load questions on mount
+  useEffect(() => {
+    let cancelled = false;
+    apiClient
+      .get<ExamQuestion[]>(`/exams/${examId}/questions`)
+      .then(({ data }) => {
+        if (!cancelled) setContentState({ kind: "loaded", questions: data });
+      })
+      .catch(() => {
+        if (!cancelled) setContentState({ kind: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [examId]);
+
+  // Auto-save short-answer responses to the backend every 5 seconds
+  useEffect(() => {
+    if (contentState.kind !== "loaded") return;
+    const shortQuestions = contentState.questions.filter(
+      (q) => q.type === "short"
+    );
+    if (shortQuestions.length === 0) return;
+
+    const tick = () => {
+      const current = answersRef.current;
+      const items = shortQuestions
+        .filter((q) => current[q.id] !== undefined && current[q.id] !== "")
+        .map((q) => ({ question_id: q.id, answer: current[q.id] }));
+      if (items.length === 0) return;
+
+      setIsSaving(true);
+      apiClient
+        .post(`/exams/${examId}/answers`, { answers: items })
+        .then(() => {
+          setSaveError(false);
+          setIsSaving(false);
+        })
+        .catch(() => {
+          setSaveError(true);
+          setIsSaving(false);
+        });
+    };
+
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, [examId, contentState]);
+
+  // Ctrl+A → Ctrl+C → Ctrl+V sequence detection
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl) {
+        keySeqRef.current = [];
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "a") {
+        keySeqRef.current = ["ctrl+a"];
+      } else if (k === "c" && keySeqRef.current[keySeqRef.current.length - 1] === "ctrl+a") {
+        keySeqRef.current.push("ctrl+c");
+      } else if (k === "v") {
+        const seq = keySeqRef.current;
+        if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
+          // Sequence captured — telemetry endpoint added in a follow-up ticket
+          console.info("[AEGIS] Paste sequence: Ctrl+A → Ctrl+C → Ctrl+V");
+        }
+        keySeqRef.current = [];
+      } else {
+        keySeqRef.current = [];
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const handleAnswerChange = useCallback(
+    (questionId: string, value: string) => {
+      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+    },
+    []
+  );
+
+  // MCQ answers are persisted immediately on selection
+  const handleMcqChange = useCallback(
+    (questionId: string, value: string) => {
+      setAnswers((prev) => ({ ...prev, [questionId]: value }));
+      apiClient
+        .post(`/exams/${examId}/answers`, {
+          answers: [{ question_id: questionId, answer: value }],
+        })
+        .catch(() => {
+          /* local state is preserved on network failure */
+        });
+    },
+    [examId]
+  );
+
+  const handlePaste = useCallback((questionId: string) => {
+    console.info(`[AEGIS] Paste event on question ${questionId}`);
+  }, []);
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (contentState.kind !== "loaded") return;
+      setCurrentIndex(
+        Math.max(0, Math.min(index, contentState.questions.length - 1))
+      );
+    },
+    [contentState]
+  );
+
+  const handleFinish = useCallback(async () => {
+    if (contentState.kind !== "loaded") return;
+    const current = answersRef.current;
+    const allAnswers = contentState.questions.map((q) => ({
+      question_id: q.id,
+      answer: current[q.id] ?? "",
+    }));
+    try {
+      await apiClient.post(`/exams/${examId}/answers`, {
+        answers: allAnswers,
+      });
+    } catch {
+      /* best-effort final save */
+    }
+    navigate("/student/dashboard", { replace: true });
+  }, [examId, contentState, navigate]);
+
+  // --- Loading / error states ---
+
+  if (contentState.kind === "loading") {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
-      <h1 className="text-2xl font-bold text-ink mb-2">Exam</h1>
-      <p className="text-ash text-xs">
-        Exam shell — implemented by the frontend team.
-      </p>
+    );
+  }
+
+  if (contentState.kind === "error") {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+        <p className="text-sm text-body">
+          Failed to load exam questions. Please refresh the page.
+        </p>
+      </div>
+    );
+  }
+
+  const { questions } = contentState;
+
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+        <p className="text-sm text-body">No questions found for this exam.</p>
+      </div>
+    );
+  }
+
+  const current = questions[currentIndex];
+  const answeredCount = questions.filter(
+    (q) => answers[q.id] !== undefined && answers[q.id] !== ""
+  ).length;
+
+  return (
+    <div className="min-h-screen bg-canvas flex flex-col">
+      {/* Top bar — no nav, no footer per spec */}
+      <header className="flex items-center justify-between px-6 py-3 border-b border-hairline bg-surface-card">
+        <div>
+          <p className="text-sm font-semibold text-ink">AEGIS Exam</p>
+          <p className="text-xs text-mute">
+            Question {currentIndex + 1} of {questions.length}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {isSaving && <span className="text-xs text-mute">Saving…</span>}
+          {saveError && (
+            <span className="text-xs text-accent-red">
+              Auto-save failed — answers are safe locally
+            </span>
+          )}
+          <button
+            onClick={handleFinish}
+            className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md"
+          >
+            Finish Exam
+          </button>
+        </div>
+      </header>
+
+      {/* Main body */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Progress sidebar */}
+        <aside className="w-56 flex-shrink-0 border-r border-hairline bg-surface-card overflow-y-auto px-3 py-4">
+          <ProgressSidebar
+            questions={questions}
+            answers={answers}
+            currentIndex={currentIndex}
+            onSelect={goTo}
+          />
+        </aside>
+
+        {/* Question area */}
+        <main className="flex-1 overflow-y-auto px-8 py-8">
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-surface-card border border-hairline rounded-md p-6">
+              <QuestionRenderer
+                question={current}
+                answer={answers[current.id] ?? ""}
+                onAnswerChange={
+                  current.type === "mcq" ? handleMcqChange : handleAnswerChange
+                }
+                onPaste={handlePaste}
+              />
+            </div>
+
+            {/* Prev / Next navigation */}
+            <div className="flex items-center justify-between mt-6">
+              <button
+                onClick={() => goTo(currentIndex - 1)}
+                disabled={currentIndex === 0}
+                className="px-4 py-2 bg-surface-soft text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              >
+                ← Previous
+              </button>
+              <span className="text-xs text-mute">
+                {answeredCount} of {questions.length} answered
+              </span>
+              <button
+                onClick={() => goTo(currentIndex + 1)}
+                disabled={currentIndex === questions.length - 1}
+                className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ---------------------------------------------------------------------------
 // ExamShell page
@@ -223,7 +470,10 @@ const ExamShell: React.FC = () => {
       );
       setState({ kind: "exam-active", session: data });
     } catch {
-      setState({ kind: "error", message: "Failed to record consent. Please try again." });
+      setState({
+        kind: "error",
+        message: "Failed to record consent. Please try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -268,7 +518,7 @@ const ExamShell: React.FC = () => {
   }
 
   // state.kind === "exam-active"
-  return <ExamContent />;
+  return <ExamContent examId={state.session.exam_id} />;
 };
 
 export default ExamShell;
