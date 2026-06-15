@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     jwt_secret_key: str = "change_me_to_a_random_64_char_string"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 480
+    jwt_expire_minutes: int = 15
 
     app_env: str = "development"
     backend_cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
