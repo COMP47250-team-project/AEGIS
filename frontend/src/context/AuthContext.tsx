@@ -1,5 +1,6 @@
 // frontend/src/context/AuthContext.tsx
 // Auth context — provides user state and login/logout to the entire app
+/* eslint-disable react-refresh/only-export-components -- context + hook co-located intentionally */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
 import apiClient, { setAccessToken, setRefreshToken, getRefreshToken } from "../api/client";
