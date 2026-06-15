@@ -2,18 +2,19 @@
 // Auth context — provides user state and login/logout to the entire app
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import apiClient, { setAccessToken } from "../api/client";
+import apiClient, { setAccessToken, setRefreshToken, getRefreshToken } from "../api/client";
 
 // Types
 export interface User {
   id: string;
   email: string;
   role: "student" | "professor";
-  name: string;
+  name: string | null;
 }
 
 interface AuthResponse {
   access_token: string;
+  refresh_token: string;
   token_type: string;
   user: User;
 }
@@ -38,13 +39,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const isAuthenticated = user !== null;
 
-  // login — POST credentials, store token and user
+  // login — POST credentials, store tokens and user
   const login = useCallback(async (email: string, password: string) => {
     const { data } = await apiClient.post<AuthResponse>("/auth/login", {
       email,
       password,
     });
     setAccessToken(data.access_token);
+    setRefreshToken(data.refresh_token);
     setUser(data.user);
   }, []);
 
@@ -58,24 +60,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         role,
       });
       setAccessToken(data.access_token);
+      setRefreshToken(data.refresh_token);
       setUser(data.user);
     },
     []
   );
 
-  // logout — clear token, user, and server cookie
+  // logout — clear tokens, user, and revoke server-side refresh token
   const logout = useCallback(async () => {
     try {
-      await apiClient.post("/auth/logout");
+      await apiClient.post("/auth/logout", { refresh_token: getRefreshToken() });
     } catch {
       // clear client state even if server call fails
     } finally {
       setAccessToken(null);
+      setRefreshToken(null);
       setUser(null);
     }
   }, []);
 
-  // Broadcast auth state to all child components
   const value: AuthContextType = {
     user,
     isAuthenticated,
