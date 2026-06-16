@@ -7,12 +7,16 @@ from httpx import ASGITransport, AsyncClient
 from app.database import get_db
 from app.main import app
 
+_STUDENT_PW = "SecurePass1"  # noqa: S105
+_PROFESSOR_PW = "ProfPass123"  # noqa: S105
+_DUMMY_PW = "doesnotmatter"  # noqa: S105
+
 
 def _student(**overrides):
     uid = uuid.uuid4().hex[:8]
     return {
         "email": f"student-{uid}@ucd.ie",
-        "password": "SecurePass1",
+        "password": _STUDENT_PW,
         "role": "student",
         "name": "Alice",
         **overrides,
@@ -23,7 +27,7 @@ def _professor(**overrides):
     uid = uuid.uuid4().hex[:8]
     return {
         "email": f"prof-{uid}@ucd.ie",
-        "password": "ProfPass123",
+        "password": _PROFESSOR_PW,
         "role": "professor",
         "name": "Dr. Bob",
         **overrides,
@@ -43,11 +47,6 @@ async def anon_client(db_session):
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
-
-
-# ---------------------------------------------------------------------------
-# Register
-# ---------------------------------------------------------------------------
 
 
 async def test_register_student_returns_201_with_tokens_and_user(anon_client):
@@ -81,11 +80,6 @@ async def test_register_without_name_is_allowed(anon_client):
     assert res.json()["user"]["name"] is None
 
 
-# ---------------------------------------------------------------------------
-# Login
-# ---------------------------------------------------------------------------
-
-
 async def test_login_returns_200_with_tokens_and_user(anon_client):
     payload = _student()
     await anon_client.post("/auth/register", json=payload)
@@ -110,7 +104,7 @@ async def test_login_wrong_password_returns_401(anon_client):
 
 async def test_login_nonexistent_email_returns_401(anon_client):
     res = await anon_client.post(
-        "/auth/login", json={"email": "ghost@ucd.ie", "password": "doesnotmatter"}
+        "/auth/login", json={"email": "ghost@ucd.ie", "password": _DUMMY_PW}
     )
     assert res.status_code == 401
 
@@ -128,11 +122,6 @@ async def test_login_errors_have_same_message_for_wrong_password_and_missing_use
         "/auth/login", json={"email": "ghost2@ucd.ie", "password": "wrongpassword"}
     )
     assert wrong_pw.json()["detail"] == missing.json()["detail"]
-
-
-# ---------------------------------------------------------------------------
-# Refresh
-# ---------------------------------------------------------------------------
 
 
 async def test_refresh_returns_new_access_token(anon_client):
@@ -158,21 +147,11 @@ async def test_refresh_with_revoked_token_returns_401(anon_client):
     assert res.status_code == 401
 
 
-# ---------------------------------------------------------------------------
-# Logout
-# ---------------------------------------------------------------------------
-
-
 async def test_logout_returns_200(anon_client):
     reg = await anon_client.post("/auth/register", json=_student())
     refresh_token = reg.json()["refresh_token"]
     res = await anon_client.post("/auth/logout", json={"refresh_token": refresh_token})
     assert res.status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# Tokens work on protected routes
-# ---------------------------------------------------------------------------
 
 
 async def test_access_token_authorises_protected_routes(anon_client):
