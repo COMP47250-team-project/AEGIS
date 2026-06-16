@@ -12,7 +12,7 @@ const BASE_BACKOFF_MS = 1_000; // start at 1 second
  */
 export class TelemetryClient {
   private ws: WebSocket | null = null;
-  private buffer: CircularBuffer<TelemetryEvent>;
+  private readonly buffer: CircularBuffer<TelemetryEvent>;
   private readonly config: SDKConfig;
   private retryCount = 0;
   private retryTimeout: ReturnType<typeof setTimeout> | null = null;
