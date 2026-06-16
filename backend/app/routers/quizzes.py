@@ -8,7 +8,13 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.dependencies import get_current_user_id
 from app.models.quiz import Question, Quiz
-from app.schemas.quiz import QuestionCreate, QuestionRead, QuestionUpdate, QuizCreate, QuizRead
+from app.schemas.quiz import (
+    QuestionCreate,
+    QuestionRead,
+    QuestionUpdate,
+    QuizCreate,
+    QuizRead,
+)
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
@@ -16,6 +22,7 @@ router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 # ---------------------------------------------------------------------------
 # Quiz endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post("", response_model=QuizRead, status_code=status.HTTP_201_CREATED)
 async def create_quiz(
@@ -57,13 +64,16 @@ async def get_quiz(
     )
     quiz = result.scalar_one_or_none()
     if quiz is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found"
+        )
     return quiz
 
 
 # ---------------------------------------------------------------------------
 # Question endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.post(
     "/{quiz_id}/questions",
@@ -166,7 +176,9 @@ async def publish_quiz(
     return result.scalar_one()
 
 
-@router.delete("/{quiz_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{quiz_id}/questions/{question_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_question(
     quiz_id: uuid.UUID,
     question_id: uuid.UUID,
@@ -183,11 +195,14 @@ async def delete_question(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _get_quiz_or_404(db: AsyncSession, quiz_id: uuid.UUID) -> Quiz:
     result = await db.execute(select(Quiz).where(Quiz.id == quiz_id))
     quiz = result.scalar_one_or_none()
     if quiz is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found"
+        )
     return quiz
 
 
@@ -202,5 +217,7 @@ async def _get_question_or_404(
     )
     question = result.scalar_one_or_none()
     if question is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Question not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Question not found"
+        )
     return question

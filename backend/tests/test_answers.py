@@ -100,7 +100,10 @@ async def test_submit_answers_returns_200(client: AsyncClient) -> None:
             f"/exams/{exam_id}/answers",
             json={
                 "answers": [
-                    {"question_id": short_q_id, "answer": "TCP/IP is a networking protocol suite."},
+                    {
+                        "question_id": short_q_id,
+                        "answer": "TCP/IP is a networking protocol suite.",
+                    },
                     {"question_id": mcq_q_id, "answer": "Network"},
                 ]
             },
@@ -151,7 +154,11 @@ async def test_partial_save_upserts_existing_answer(client: AsyncClient) -> None
 
         second = await student.post(
             f"/exams/{exam_id}/answers",
-            json={"answers": [{"question_id": short_q_id, "answer": "Updated final answer"}]},
+            json={
+                "answers": [
+                    {"question_id": short_q_id, "answer": "Updated final answer"}
+                ]
+            },
         )
         assert second.status_code == 200
 
@@ -182,7 +189,9 @@ async def test_partial_save_subset_of_questions(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_answers_persisted_independent_of_side_effects(client: AsyncClient) -> None:
+async def test_answers_persisted_independent_of_side_effects(
+    client: AsyncClient,
+) -> None:
     """Answers are stored even when no external services are available.
 
     The endpoint must not call WebSocket or Service Bus directly.
@@ -194,7 +203,9 @@ async def test_answers_persisted_independent_of_side_effects(client: AsyncClient
     async with _student_client() as student:
         resp = await student.post(
             f"/exams/{exam_id}/answers",
-            json={"answers": [{"question_id": short_q_id, "answer": "Resilient answer"}]},
+            json={
+                "answers": [{"question_id": short_q_id, "answer": "Resilient answer"}]
+            },
         )
 
     # Must return 200 regardless of Service Bus / WebSocket availability
@@ -241,7 +252,9 @@ async def test_submit_answers_to_closed_exam_returns_409(client: AsyncClient) ->
 
 
 @pytest.mark.asyncio
-async def test_submit_answers_to_nonexistent_exam_returns_404(client: AsyncClient) -> None:
+async def test_submit_answers_to_nonexistent_exam_returns_404(
+    client: AsyncClient,
+) -> None:
     import uuid
 
     fake_exam_id = str(uuid.uuid4())
@@ -276,6 +289,7 @@ async def test_submit_answers_unauthenticated_returns_401_or_403() -> None:
         base_url="http://test",
     ) as unauthed:
         import uuid
+
         resp = await unauthed.post(
             f"/exams/{uuid.uuid4()}/answers",
             json={"answers": [{"question_id": str(uuid.uuid4()), "answer": "x"}]},

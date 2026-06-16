@@ -80,8 +80,12 @@ def upgrade() -> None:
         ),
     )
     op.create_index("ix_telemetry_events_exam_id", "telemetry_events", ["exam_id"])
-    op.create_index("ix_telemetry_events_student_id", "telemetry_events", ["student_id"])
-    op.create_index("ix_telemetry_events_occurred_at", "telemetry_events", ["occurred_at"])
+    op.create_index(
+        "ix_telemetry_events_student_id", "telemetry_events", ["student_id"]
+    )
+    op.create_index(
+        "ix_telemetry_events_occurred_at", "telemetry_events", ["occurred_at"]
+    )
 
     # ------------------------------------------------------------------
     # student_baselines
@@ -131,8 +135,12 @@ def upgrade() -> None:
         sa.Column("paste_score", sa.Float(), nullable=False, server_default="0"),
         sa.Column("keystroke_score", sa.Float(), nullable=False, server_default="0"),
         sa.Column("focus_loss_score", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("answer_timing_score", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("copy_sequence_score", sa.Float(), nullable=False, server_default="0"),
+        sa.Column(
+            "answer_timing_score", sa.Float(), nullable=False, server_default="0"
+        ),
+        sa.Column(
+            "copy_sequence_score", sa.Float(), nullable=False, server_default="0"
+        ),
         # Aggregate
         sa.Column("integrity_score", sa.Float(), nullable=False, server_default="0"),
         # Optional reviewer annotation

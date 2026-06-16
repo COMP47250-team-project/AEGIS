@@ -79,7 +79,9 @@ async def _setup_open_exam(client: AsyncClient) -> str:
 
 
 @pytest.mark.asyncio
-async def test_get_session_returns_null_consent_before_agreeing(client: AsyncClient) -> None:
+async def test_get_session_returns_null_consent_before_agreeing(
+    client: AsyncClient,
+) -> None:
     exam_id = await _setup_open_exam(client)
 
     async with _student_client() as student:

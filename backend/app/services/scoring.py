@@ -36,7 +36,8 @@ async def dispatch_score_job(exam_id: uuid.UUID) -> None:
     """
     if not _bus_configured():
         logger.warning(
-            "Service Bus not configured — skipping score job dispatch for exam %s", exam_id
+            "Service Bus not configured — skipping score job dispatch for exam %s",
+            exam_id,
         )
         return
 
@@ -61,7 +62,9 @@ async def dispatch_score_job(exam_id: uuid.UUID) -> None:
                 await sender.send_messages(ServiceBusMessage(message_body))
 
         logger.info(
-            "Score job dispatched for exam %s → queue '%s'", exam_id, settings.score_queue_name
+            "Score job dispatched for exam %s → queue '%s'",
+            exam_id,
+            settings.score_queue_name,
         )
 
     except Exception:
