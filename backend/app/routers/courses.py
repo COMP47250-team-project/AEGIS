@@ -1,7 +1,7 @@
 """Course management endpoints — create courses and manage enrollments."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
