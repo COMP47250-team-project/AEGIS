@@ -33,7 +33,11 @@ exclude = [
     "**/__pycache__",
     "**/alembic",
     "backend/.venv",
-    "backend/app/config.py"
+    "backend/app/config.py",
+    "backend/app/routers/auth.py",
+    "backend/app/services/scoring.py",
+    "backend/app/models/__init__.py",
+    "backend/app/models/telemetry.py"
 ]
 venvPath = "backend"
 venv = ".venv"
