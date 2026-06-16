@@ -31,6 +31,7 @@ SHORT_PAYLOAD = {
 # Quiz creation
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_create_quiz_returns_201(client: AsyncClient) -> None:
     response = await client.post("/quizzes", json=QUIZ_PAYLOAD)
@@ -59,6 +60,7 @@ async def test_create_quiz_invalid_duration_returns_422(client: AsyncClient) -> 
 # Get quiz
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_get_quiz_returns_quiz_with_questions(client: AsyncClient) -> None:
     create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
@@ -84,6 +86,7 @@ async def test_get_quiz_not_found_returns_404(client: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 # Add MCQ question
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_add_mcq_question_returns_201(client: AsyncClient) -> None:
@@ -142,6 +145,7 @@ async def test_add_mcq_missing_correct_answer_returns_422(client: AsyncClient) -
 # Add short-answer question
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_add_short_answer_question_returns_201(client: AsyncClient) -> None:
     create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
@@ -159,13 +163,18 @@ async def test_add_short_answer_question_returns_201(client: AsyncClient) -> Non
 # Questions ordered by position
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_questions_ordered_by_position(client: AsyncClient) -> None:
     create_resp = await client.post("/quizzes", json=QUIZ_PAYLOAD)
     quiz_id = create_resp.json()["id"]
 
-    await client.post(f"/quizzes/{quiz_id}/questions", json={**SHORT_PAYLOAD, "position": 2})
-    await client.post(f"/quizzes/{quiz_id}/questions", json={**MCQ_PAYLOAD, "position": 0})
+    await client.post(
+        f"/quizzes/{quiz_id}/questions", json={**SHORT_PAYLOAD, "position": 2}
+    )
+    await client.post(
+        f"/quizzes/{quiz_id}/questions", json={**MCQ_PAYLOAD, "position": 0}
+    )
     await client.post(
         f"/quizzes/{quiz_id}/questions",
         json={"type": "short", "prompt": "Middle question", "position": 1},
@@ -180,6 +189,7 @@ async def test_questions_ordered_by_position(client: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 # Edit question
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_edit_question_updates_prompt(client: AsyncClient) -> None:
@@ -211,6 +221,7 @@ async def test_edit_question_not_found_returns_404(client: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 # Delete question
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_delete_question_returns_204(client: AsyncClient) -> None:
@@ -281,6 +292,7 @@ async def test_publish_quiz_is_idempotent(client: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 # Auth guard
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_unauthenticated_request_returns_403() -> None:

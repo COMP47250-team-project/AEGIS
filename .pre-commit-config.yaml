@@ -46,8 +46,7 @@ repos:
     hooks:
       - id: eslint
         name: eslint
-        entry: npx eslint
+        entry: bash -c 'cd frontend && npx eslint --ext .ts,.tsx .'
         language: system
         files: ^frontend/.*\.[jt]sx?$
-        types: [file]
-        pass_filenames: true
+        pass_filenames: false

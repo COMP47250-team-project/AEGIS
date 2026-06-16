@@ -100,12 +100,16 @@ def _make_jwt(
     }
     if include_jti:
         payload["jti"] = str(uuid.uuid4())
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    return jwt.encode(
+        payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+    )
 
 
 def _decode_jwt(token: str) -> dict | None:
     try:
-        return jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        return jwt.decode(
+            token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
+        )
     except JWTError:
         return None
 
@@ -133,7 +137,9 @@ async def register(
 ) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
 
     user = User(
         email=payload.email,
@@ -160,7 +166,9 @@ async def login(
     is_valid = _verify_password(payload.password, candidate_hash)
 
     if not is_valid or user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
 
     return _build_response(user)
 
@@ -169,11 +177,15 @@ async def login(
 async def refresh(body: RefreshIn) -> dict:
     data = _decode_jwt(body.refresh_token)
     if data is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
 
     jti = data.get("jti")
     if jti and jti in _REVOKED_JTIS:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token revoked"
+        )
 
     access = _make_jwt(
         data["sub"],

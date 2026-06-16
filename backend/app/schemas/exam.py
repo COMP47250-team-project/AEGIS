@@ -89,6 +89,7 @@ class StudentSessionRead(BaseModel):
 # Enrollment schemas
 # ---------------------------------------------------------------------------
 
+
 class EnrollmentCreate(BaseModel):
     student_id: str = Field(..., min_length=1, max_length=255)
 

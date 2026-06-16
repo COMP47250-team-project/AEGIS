@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 # Question schemas
 # ---------------------------------------------------------------------------
 
+
 class QuestionCreate(BaseModel):
     type: Literal["mcq", "short"]
     prompt: str = Field(..., min_length=1, max_length=2000)
@@ -57,6 +58,7 @@ class QuestionRead(BaseModel):
 # ---------------------------------------------------------------------------
 # Quiz schemas
 # ---------------------------------------------------------------------------
+
 
 class QuizCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)

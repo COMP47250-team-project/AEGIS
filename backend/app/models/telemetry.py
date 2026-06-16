@@ -29,7 +29,10 @@ class TelemetryEvent(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     exam_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     student_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     # e.g. "tab_hidden" | "tab_visible" | "paste" | "focus_lost" | "focus_gained"
@@ -67,11 +70,16 @@ class StudentBaseline(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     exam_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     student_id: Mapped[str] = mapped_column(String(255), nullable=False)
     # Mean time between keystrokes in milliseconds during the baseline window
-    mean_keystroke_interval_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mean_keystroke_interval_ms: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
     # Standard deviation of keystroke intervals during the baseline window
     keystroke_stddev_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Number of keystrokes used to compute this baseline
@@ -106,7 +114,10 @@ class SessionScore(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     exam_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("exam_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+        Uuid,
+        ForeignKey("exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     student_id: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -120,9 +131,13 @@ class SessionScore(Base):
     # Signal 4: window focus/blur events during the exam
     focus_loss_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     # Signal 5: suspiciously fast answers relative to question complexity
-    answer_timing_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    answer_timing_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
     # Signal 6: detected Ctrl+A → Ctrl+C → Ctrl+V copy sequences
-    copy_sequence_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    copy_sequence_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
 
     # --- Aggregate (weighted combination of the six signals above) ---
     integrity_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

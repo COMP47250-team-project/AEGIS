@@ -67,7 +67,9 @@ def upgrade() -> None:
 
     op.create_index("ix_exam_enrollments_exam_id", "exam_enrollments", ["exam_id"])
     op.create_unique_constraint(
-        "uq_exam_enrollments_exam_student", "exam_enrollments", ["exam_id", "student_id"]
+        "uq_exam_enrollments_exam_student",
+        "exam_enrollments",
+        ["exam_id", "student_id"],
     )
 
 
