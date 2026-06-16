@@ -8,6 +8,7 @@ import RegisterPage from "./pages/Register";
 import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorConsole from "./pages/ProfessorConsole";
 import ExamShell from "./pages/ExamShell";
+import StudentResults from "./pages/StudentResults";
 
 const App: React.FC = () => {
   return (
@@ -21,6 +22,7 @@ const App: React.FC = () => {
           {/* Protected — students only */}
           <Route element={<ProtectedRoute allowedRole="student" />}>
             <Route path="/student/dashboard" element={<StudentDashboard />} />
+            <Route path="/student/exams/:id/results" element={<StudentResults />} />
             {/* ExamShell: consent gate always checked server-side on mount */}
             <Route path="/exam/:id" element={<ExamShell />} />
           </Route>
