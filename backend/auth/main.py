@@ -29,7 +29,7 @@ class LogoutIn(BaseModel):
     refresh_token: str
 
 
-def raise_401() -> Never:          # <-- Never, not None
+def raise_401() -> Never:  # <-- Never, not None
     raise HTTPException(
         status_code=401,
         detail="Invalid credentials",
@@ -86,11 +86,13 @@ def refresh(body: RefreshIn):
     if not data:
         raise_401()
 
-    jti = data.get("jti")           # data is narrowed to dict here
+    jti = data.get("jti")  # data is narrowed to dict here
     if not jti or auth.is_jti_blacklisted(jti):
         raise_401()
 
-    access = auth.create_access_token(data["sub"], data.get("role", "user"), data["uid"])
+    access = auth.create_access_token(
+        data["sub"], data.get("role", "user"), data["uid"]
+    )
     return {"access_token": access}
 
 
@@ -103,7 +105,7 @@ def logout(body: LogoutIn):
     if not data:
         raise_401()
 
-    jti = data.get("jti")           # data is narrowed to dict here
+    jti = data.get("jti")  # data is narrowed to dict here
     if jti:
         auth.blacklist_jti(jti)
 

@@ -76,7 +76,9 @@ async def seed() -> None:
             session.add(question)
 
         await session.commit()
-        print(f"Seeded quiz '{quiz.title}' (id={quiz.id}) with {len(SEED_QUESTIONS)} questions.")
+        print(
+            f"Seeded quiz '{quiz.title}' (id={quiz.id}) with {len(SEED_QUESTIONS)} questions."
+        )
 
 
 if __name__ == "__main__":

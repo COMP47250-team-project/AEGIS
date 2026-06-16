@@ -20,16 +20,20 @@ VALID_USER = {
 @pytest.fixture(autouse=True)
 def clear_store():
     from auth import auth
+
     auth.USERS.clear()
     auth.BLACKLISTED_JTIS.clear()
 
 
 def register_and_login():
     client.post("/auth/register", json=VALID_USER)
-    res = client.post("/auth/login", json={
-        "email": VALID_USER["email"],
-        "password": TEST_PWD,
-    })
+    res = client.post(
+        "/auth/login",
+        json={
+            "email": VALID_USER["email"],
+            "password": TEST_PWD,
+        },
+    )
     return res.json()
 
 
@@ -51,10 +55,13 @@ def test_register_duplicate_email_returns_409():
 # Login
 def test_login_returns_200_with_tokens():
     client.post("/auth/register", json=VALID_USER)
-    res = client.post("/auth/login", json={
-        "email": VALID_USER["email"],
-        "password": TEST_PWD,
-    })
+    res = client.post(
+        "/auth/login",
+        json={
+            "email": VALID_USER["email"],
+            "password": TEST_PWD,
+        },
+    )
     assert res.status_code == 200
     body = res.json()
     assert "access_token" in body
@@ -63,32 +70,44 @@ def test_login_returns_200_with_tokens():
 
 def test_login_wrong_password_returns_401():
     client.post("/auth/register", json=VALID_USER)
-    res = client.post("/auth/login", json={
-        "email": VALID_USER["email"],
-        "password": WRONG_PWD,
-    })
+    res = client.post(
+        "/auth/login",
+        json={
+            "email": VALID_USER["email"],
+            "password": WRONG_PWD,
+        },
+    )
     assert res.status_code == 401
 
 
 def test_login_nonexistent_email_returns_401():
-    res = client.post("/auth/login", json={
-        "email": "ghost@example.com",
-        "password": ANY_PWD,
-    })
+    res = client.post(
+        "/auth/login",
+        json={
+            "email": "ghost@example.com",
+            "password": ANY_PWD,
+        },
+    )
     assert res.status_code == 401
 
 
 def test_login_wrong_password_and_nonexistent_email_same_message():
     client.post("/auth/register", json=VALID_USER)
 
-    wrong_pass = client.post("/auth/login", json={
-        "email": VALID_USER["email"],
-        "password": WRONG_PWD,
-    })
-    ghost = client.post("/auth/login", json={
-        "email": "ghost@example.com",
-        "password": ANY_PWD,
-    })
+    wrong_pass = client.post(
+        "/auth/login",
+        json={
+            "email": VALID_USER["email"],
+            "password": WRONG_PWD,
+        },
+    )
+    ghost = client.post(
+        "/auth/login",
+        json={
+            "email": "ghost@example.com",
+            "password": ANY_PWD,
+        },
+    )
 
     assert wrong_pass.json()["detail"] == ghost.json()["detail"]
 
@@ -123,7 +142,9 @@ def test_logout_returns_200():
 # Protected route
 def test_protected_route_with_valid_token_returns_200():
     tokens = register_and_login()
-    res = client.get("/protected", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    res = client.get(
+        "/protected", headers={"Authorization": f"Bearer {tokens['access_token']}"}
+    )
     assert res.status_code == 200
 
 
@@ -142,10 +163,13 @@ def test_register_login_protected_flow():
     reg = client.post("/auth/register", json=VALID_USER)
     assert reg.status_code == 201
 
-    login = client.post("/auth/login", json={
-        "email": VALID_USER["email"],
-        "password": TEST_PWD,
-    })
+    login = client.post(
+        "/auth/login",
+        json={
+            "email": VALID_USER["email"],
+            "password": TEST_PWD,
+        },
+    )
     assert login.status_code == 200
 
     token = login.json()["access_token"]

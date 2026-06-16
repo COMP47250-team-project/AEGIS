@@ -34,6 +34,7 @@ _TRANSITIONS: dict[str, str] = {
 # Exam CRUD
 # ---------------------------------------------------------------------------
 
+
 @router.post("", response_model=ExamRead, status_code=status.HTTP_201_CREATED)
 async def create_exam(
     body: ExamCreate,
@@ -76,6 +77,7 @@ async def get_exam(
 # Enrollment (needed for open-guard check)
 # ---------------------------------------------------------------------------
 
+
 @router.post(
     "/{exam_id}/enrollments",
     response_model=EnrollmentRead,
@@ -110,6 +112,7 @@ async def enroll_student(
 # ---------------------------------------------------------------------------
 # State transitions
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{exam_id}/open", response_model=ExamRead)
 async def open_exam(
@@ -173,6 +176,7 @@ async def close_exam(
 # ---------------------------------------------------------------------------
 # Answer submission (AEGIS-35)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{exam_id}/answers", response_model=AnswerSubmitResponse)
 async def submit_answers(
@@ -302,18 +306,19 @@ async def record_consent(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _get_exam_or_404(db: AsyncSession, exam_id: uuid.UUID) -> ExamSession:
     result = await db.execute(select(ExamSession).where(ExamSession.id == exam_id))
     exam = result.scalar_one_or_none()
     if exam is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exam session not found"
+        )
     return exam
 
 
 async def _enrollment_count(db: AsyncSession, exam_id: uuid.UUID) -> int:
-    result = await db.execute(
-        select(func.count()).where(Enrollment.exam_id == exam_id)
-    )
+    result = await db.execute(select(func.count()).where(Enrollment.exam_id == exam_id))
     return result.scalar_one()
 
 
