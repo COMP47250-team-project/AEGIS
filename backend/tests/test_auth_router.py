@@ -43,7 +43,7 @@ async def anon_client(db_session):
 
     app.dependency_overrides[get_db] = _override_db
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="https://test"
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
