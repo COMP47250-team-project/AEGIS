@@ -1,132 +1,146 @@
-import secrets
-import string
+"""Course management endpoints — create courses and manage enrollments."""
+
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from collections.abc import Generator
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import SessionLocal
-from ..models import Course, Enrollment, User
-from ..schemas.courses import (
-    CourseCreate,
-    CourseResponse,
-    EnrollRequest,
-    StudentResponse,
-)
+from app.database import get_db
+from app.dependencies import get_current_user_id
+from app.models.course import Course
+from app.models.user import User
 
 router = APIRouter(prefix="/courses", tags=["courses"])
 
 
-# Dependency to get DB session
-
-def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# ── Schemas ──────────────────────────────────────────────────────────────────
 
 
-def generate_access_code() -> str:
-    alphabet = string.ascii_uppercase + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(6))
+class CourseCreate(BaseModel):
+    title: str
+    code: str
+    description: str | None = None
+
+
+class CourseResponse(BaseModel):
+    id: uuid.UUID
+    title: str
+    code: str
+    description: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EnrollRequest(BaseModel):
+    code: str
+
+
+class StudentResponse(BaseModel):
+    id: uuid.UUID
+    email: str
+    full_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+# ── In-memory enrollment store (until Alembic migration adds the table) ──────
+# Maps course_id -> set of student_ids
+_enrollments: dict[uuid.UUID, set[str]] = {}
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
 # POST /courses — professor creates a course
 @router.post("/", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
-def create_course(
+async def create_course(
     payload: CourseCreate,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user_id),
 ) -> Course:
-    # Check access code uniqueness
-    existing = (
-        db.query(Course).filter(Course.access_code == payload.access_code).first()
-    )
+    # Check code uniqueness
+    existing = await db.scalar(select(Course).where(Course.code == payload.code))
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Access code already exists",
+            detail="Course code already exists",
         )
     course = Course(
-        name=payload.name,
-        access_code=payload.access_code,
+        title=payload.title,
+        code=payload.code,
+        description=payload.description,
     )
     db.add(course)
-    db.commit()
-    db.refresh(course)
+    await db.commit()
+    await db.refresh(course)
     return course
+
 
 # GET /courses/{id}/students — professor views enrolled students
 # TODO(AEGIS-27): restrict to professor role once JWT middleware is merged
 @router.get("/{course_id}/students", response_model=list[StudentResponse])
-def get_enrolled_students(
+async def get_enrolled_students(
     course_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user_id),
 ) -> list[User]:
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = await db.scalar(select(Course).where(Course.id == course_id))
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Course not found",
         )
-    return [enrollment.student for enrollment in course.enrollments]
+    student_ids = _enrollments.get(course_id, set())
+    if not student_ids:
+        return []
+    result = await db.scalars(
+        select(User).where(User.id.in_([uuid.UUID(sid) for sid in student_ids]))
+    )
+    return list(result.all())
+
 
 # POST /courses/{id}/enroll — student self-enrolls via access code
 @router.post("/{course_id}/enroll", status_code=status.HTTP_200_OK)
-def enroll_student(
+async def enroll_student(
     course_id: uuid.UUID,
     payload: EnrollRequest,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
+    current_user_id: str = Depends(get_current_user_id),
 ) -> dict[str, str]:
-    course = db.query(Course).filter(Course.id == course_id).first()
+    course = await db.scalar(select(Course).where(Course.id == course_id))
     if not course:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Course not found",
         )
-    if course.access_code != payload.access_code:
+    if course.code != payload.code:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid access code",
         )
-    # Idempotent enrollment — return 200 if already enrolled
-    existing = (
-        db.query(Enrollment)
-        .filter(
-            Enrollment.course_id == course_id,
-        )
-        .first()
-    )
-    if existing:
-        return {"detail": "Already enrolled"}
-
-    enrollment = Enrollment(course_id=course_id)
-    db.add(enrollment)
-    db.commit()
+    # Idempotent — return 200 if already enrolled
+    if course_id not in _enrollments:
+        _enrollments[course_id] = set()
+    _enrollments[course_id].add(current_user_id)
     return {"detail": "Enrolled successfully"}
 
 
 # DELETE /courses/{id}/students/{student_id} — professor removes student
 @router.delete("/{course_id}/students/{student_id}", status_code=status.HTTP_200_OK)
-def remove_student(
+async def remove_student(
     course_id: uuid.UUID,
     student_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(get_current_user_id),
 ) -> dict[str, str]:
-    enrollment = (
-        db.query(Enrollment)
-        .filter(
-            Enrollment.course_id == course_id,
-            Enrollment.student_id == student_id,
-        )
-        .first()
-    )
-    if not enrollment:
+    if course_id not in _enrollments or str(student_id) not in _enrollments[course_id]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Enrollment not found",
         )
-    db.delete(enrollment)
-    db.commit()
+    _enrollments[course_id].discard(str(student_id))
     return {"detail": "Student removed successfully"}
