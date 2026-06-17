@@ -33,6 +33,13 @@ export class TelemetryClient {
     }
   }
 
+  /** Flush any buffered events immediately if connected, then close. */
+  flush(): void {
+    if (this.isConnected()) {
+      this.flushBuffer();
+    }
+  }
+
   /** Tear down the client — closes socket and cancels retries. */
   destroy(): void {
     this.isDestroyed = true;

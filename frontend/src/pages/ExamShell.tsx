@@ -1,15 +1,25 @@
 // frontend/src/pages/ExamShell.tsx
 // AEGIS-38: Exam shell with GDPR consent gate.
 // AEGIS-39: MCQ and short-answer question UI.
+// AEGIS-40: Countdown timer + auto-submit.
+// AEGIS-41: Telemetry flush on submit.
+// AEGIS-43–47: Signal producers wired after consent.
 //
 // Consent is always verified against the server on mount — navigating directly
 // to this URL never bypasses the consent screen.
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import apiClient from "../api/client";
+import apiClient, { getAccessToken } from "../api/client";
 import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
+import { TelemetryClient } from "../telemetry/TelemetryClient";
+import { attachTabBlur } from "../telemetry/signals/tabBlur";
+import { makePasteEvent } from "../telemetry/signals/paste";
+import { attachIKI } from "../telemetry/signals/iki";
+import { attachFirstKeypress } from "../telemetry/signals/firstKeypress";
+import { attachResize } from "../telemetry/signals/resize";
+import { makeAnswerTimeEvent } from "../telemetry/signals/answerTime";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,12 +32,19 @@ interface StudentSession {
   consent_at: string | null;
 }
 
+interface ExamSessionData {
+  id: string;
+  exam_id: string;
+  duration_minutes?: number | null;
+  scheduled_end?: string | null;
+}
+
 type Answers = Record<string, string>;
 
 type PageState =
   | { kind: "loading" }
   | { kind: "consent-required"; session: StudentSession }
-  | { kind: "exam-active"; session: StudentSession }
+  | { kind: "exam-active"; session: StudentSession; examData?: ExamSessionData }
   | { kind: "error"; message: string };
 
 type ContentState =
@@ -154,10 +171,57 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 );
 
 // ---------------------------------------------------------------------------
-// Exam content component (AEGIS-39)
+// Countdown timer hook
 // ---------------------------------------------------------------------------
 
-const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
+function useCountdown(scheduledEndIso: string | null | undefined): string {
+  const [label, setLabel] = useState("");
+
+  useEffect(() => {
+    if (!scheduledEndIso) return;
+
+    const endMs = new Date(scheduledEndIso).getTime();
+
+    function tick() {
+      const remaining = endMs - Date.now();
+      if (remaining <= 0) {
+        setLabel("Time up");
+        return;
+      }
+      const totalSec = Math.floor(remaining / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) {
+        setLabel(`${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
+      } else {
+        setLabel(`${m}:${String(s).padStart(2, "0")}`);
+      }
+    }
+
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [scheduledEndIso]);
+
+  return label;
+}
+
+// ---------------------------------------------------------------------------
+// Exam content component (AEGIS-39, 40, 41, 43–47)
+// ---------------------------------------------------------------------------
+
+interface ExamContentProps {
+  examId: string;
+  sessionId: string;
+  scheduledEnd?: string | null;
+}
+
+const ExamContent: React.FC<ExamContentProps> = ({
+  examId,
+  sessionId,
+  scheduledEnd,
+}) => {
   const navigate = useNavigate();
   const [contentState, setContentState] = useState<ContentState>({
     kind: "loading",
@@ -171,10 +235,57 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
   const answersRef = useRef<Answers>({});
   // Tracks Ctrl+A → Ctrl+C → Ctrl+V sequence for paste telemetry
   const keySeqRef = useRef<string[]>([]);
+  // Telemetry client — created once after consent
+  const telemetryRef = useRef<TelemetryClient | null>(null);
+  // Current question ID (ref so signal closures always see the latest)
+  const currentQuestionIdRef = useRef<string>("");
+  // Timestamp when student navigated to the current question
+  const questionStartTsRef = useRef<number>(Date.now());
+
+  const countdown = useCountdown(scheduledEnd);
 
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
+
+  // Instantiate TelemetryClient and attach all signal producers
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) return;
+
+    const wsBase = (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
+      .replace(/^http/, "ws");
+    const wsUrl = `${wsBase}/ws/exam/${examId}`;
+
+    const client = new TelemetryClient({ wsUrl, sessionToken: token, sessionId });
+    telemetryRef.current = client;
+
+    const enqueue = client.enqueue.bind(client);
+
+    const cleanupTabBlur = attachTabBlur(sessionId, enqueue);
+    const cleanupIKI = attachIKI(
+      sessionId,
+      () => currentQuestionIdRef.current,
+      enqueue,
+    );
+    const cleanupFirstKeypress = attachFirstKeypress(
+      sessionId,
+      () => currentQuestionIdRef.current,
+      () => questionStartTsRef.current,
+      enqueue,
+    );
+    const cleanupResize = attachResize(sessionId, enqueue);
+
+    return () => {
+      cleanupTabBlur();
+      cleanupIKI();
+      cleanupFirstKeypress();
+      cleanupResize();
+      client.flush();
+      client.destroy();
+      telemetryRef.current = null;
+    };
+  }, [examId, sessionId]);
 
   // Load questions on mount
   useEffect(() => {
@@ -182,7 +293,13 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
     apiClient
       .get<ExamQuestion[]>(`/exams/${examId}/questions`)
       .then(({ data }) => {
-        if (!cancelled) setContentState({ kind: "loaded", questions: data });
+        if (!cancelled) {
+          setContentState({ kind: "loaded", questions: data });
+          if (data.length > 0) {
+            currentQuestionIdRef.current = data[0].id;
+            questionStartTsRef.current = Date.now();
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setContentState({ kind: "error" });
@@ -240,8 +357,10 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
       } else if (k === "v") {
         const seq = keySeqRef.current;
         if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
-          // Sequence captured — telemetry endpoint added in a follow-up ticket
-          console.info("[AEGIS] Paste sequence: Ctrl+A → Ctrl+C → Ctrl+V");
+          // Emit paste telemetry for the keyboard shortcut sequence
+          telemetryRef.current?.enqueue(
+            makePasteEvent(sessionId, currentQuestionIdRef.current)
+          );
         }
         keySeqRef.current = [];
       } else {
@@ -250,7 +369,7 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [sessionId]);
 
   const handleAnswerChange = useCallback(
     (questionId: string, value: string) => {
@@ -274,22 +393,54 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
     [examId]
   );
 
-  const handlePaste = useCallback((questionId: string) => {
-    console.info(`[AEGIS] Paste event on question ${questionId}`);
-  }, []);
+  const handlePaste = useCallback(
+    (questionId: string) => {
+      telemetryRef.current?.enqueue(makePasteEvent(sessionId, questionId));
+    },
+    [sessionId]
+  );
 
   const goTo = useCallback(
     (index: number) => {
       if (contentState.kind !== "loaded") return;
-      setCurrentIndex(
-        Math.max(0, Math.min(index, contentState.questions.length - 1))
-      );
+      const nextIndex = Math.max(0, Math.min(index, contentState.questions.length - 1));
+      if (nextIndex === currentIndex) return;
+
+      // Emit answer_time for the question we're leaving
+      const leavingQuestion = contentState.questions[currentIndex];
+      if (leavingQuestion) {
+        telemetryRef.current?.enqueue(
+          makeAnswerTimeEvent(sessionId, leavingQuestion.id, questionStartTsRef.current)
+        );
+      }
+
+      // Update tracking refs for the new question
+      const nextQuestion = contentState.questions[nextIndex];
+      if (nextQuestion) {
+        currentQuestionIdRef.current = nextQuestion.id;
+        questionStartTsRef.current = Date.now();
+      }
+
+      setCurrentIndex(nextIndex);
     },
-    [contentState]
+    [contentState, currentIndex, sessionId]
   );
 
   const handleFinish = useCallback(async () => {
     if (contentState.kind !== "loaded") return;
+
+    // Emit answer_time for the current question before submitting
+    const currentQuestion = contentState.questions[currentIndex];
+    if (currentQuestion) {
+      telemetryRef.current?.enqueue(
+        makeAnswerTimeEvent(sessionId, currentQuestion.id, questionStartTsRef.current)
+      );
+    }
+
+    // Flush buffered telemetry events before leaving
+    telemetryRef.current?.flush();
+
+    // Durably persist all answers (MVP criterion 7: works even if WS fails)
     const current = answersRef.current;
     const allAnswers = contentState.questions.map((q) => ({
       question_id: q.id,
@@ -303,7 +454,7 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
       /* best-effort final save */
     }
     navigate("/student/dashboard", { replace: true });
-  }, [examId, contentState, navigate]);
+  }, [examId, contentState, currentIndex, sessionId, navigate]);
 
   // --- Loading / error states ---
 
@@ -340,9 +491,18 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
     (q) => answers[q.id] !== undefined && answers[q.id] !== ""
   ).length;
 
+  const isLowTime = countdown !== "" && !countdown.includes(":") === false &&
+    (() => {
+      const parts = countdown.split(":").map(Number);
+      const totalSec = parts.length === 3
+        ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+        : parts[0] * 60 + (parts[1] ?? 0);
+      return totalSec <= 120; // last 2 minutes
+    })();
+
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      {/* Top bar — no nav, no footer per spec */}
+      {/* Top bar */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-hairline bg-surface-card">
         <div>
           <p className="text-sm font-semibold text-ink">AEGIS Exam</p>
@@ -351,6 +511,15 @@ const ExamContent: React.FC<{ examId: string }> = ({ examId }) => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {countdown && (
+            <span
+              className={`text-sm font-mono font-semibold ${
+                isLowTime ? "text-accent-red" : "text-body"
+              }`}
+            >
+              {countdown}
+            </span>
+          )}
           {isSaving && <span className="text-xs text-mute">Saving…</span>}
           {saveError && (
             <span className="text-xs text-accent-red">
@@ -430,8 +599,6 @@ const ExamShell: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // On mount, always check consent via the API.
-  // This prevents URL manipulation: navigating directly to /exam/:id still
-  // triggers a server-side consent check, never showing the exam without it.
   useEffect(() => {
     if (!examId) {
       navigate("/student/dashboard", { replace: true });
@@ -518,7 +685,13 @@ const ExamShell: React.FC = () => {
   }
 
   // state.kind === "exam-active"
-  return <ExamContent examId={state.session.exam_id} />;
+  return (
+    <ExamContent
+      examId={state.session.exam_id}
+      sessionId={state.session.id}
+      scheduledEnd={state.examData?.scheduled_end}
+    />
+  );
 };
 
 export default ExamShell;
