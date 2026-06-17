@@ -156,7 +156,7 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
             (DESIGN.md). Only one yellow button per fold. */}
         {isOpen && (
           <Link
-            to={`/exam/${session.session_id}`}
+            to={`/exam/${session.exam_id}`}
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md transition-colors"
           >
             Enter Exam
@@ -175,15 +175,18 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
           </span>
         )}
 
-        {/* COMPLETED: subtle view-results link (tertiary button style) */}
+        {/* COMPLETED: view results link */}
         {isCompleted && (
-          <span className="inline-flex items-center text-sm text-mute font-medium">
-            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <Link
+            to={`/student/exams/${session.exam_id}/results`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-soft text-body text-sm font-bold rounded-md hover:bg-surface-card border border-hairline transition-colors"
+          >
+            <svg className="w-4 h-4 text-accent-green" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Submission recorded
-          </span>
+            View Results
+          </Link>
         )}
       </div>
     </div>

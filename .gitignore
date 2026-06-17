@@ -447,3 +447,7 @@ docker-compose.override.yml
 
 # ── Auth Service keys───────────────────────────────────────────────────
 backend/auth/keys/*.pem
+
+.agents
+.claude
+skills-lock.json

@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, courses, exams, quizzes
+from app.routers import auth, courses, exams, quizzes, student, telemetry
+from app.routers import users
 
 app = FastAPI(
     title="AEGIS",
@@ -22,6 +23,9 @@ app.include_router(auth.router)
 app.include_router(quizzes.router)
 app.include_router(exams.router)
 app.include_router(courses.router)
+app.include_router(student.router)
+app.include_router(users.router)
+app.include_router(telemetry.router)
 
 
 @app.get("/healthz", tags=["health"])
