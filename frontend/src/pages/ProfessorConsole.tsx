@@ -40,7 +40,7 @@ interface ProfessorPayload {
 function riskColor(score: number | null): string {
   if (score === null) return "bg-surface-soft";
   if (score >= 0.7) return "bg-accent-red";
-  if (score >= 0.4) return "bg-accent-yellow";
+  if (score >= 0.4) return "bg-primary";
   return "bg-accent-green";
 }
 
@@ -212,7 +212,7 @@ const IntegrityView: React.FC = () => {
                       : s.integrity_score >= 0.7
                       ? "bg-accent-red-soft text-accent-red border border-accent-red/20"
                       : s.integrity_score >= 0.4
-                      ? "bg-accent-yellow-soft text-amber-700 border border-amber-200"
+                      ? "bg-primary/10 text-primary-active border border-primary/30"
                       : "bg-accent-green-soft text-accent-green border border-accent-green/20"
                   }`}
                 >
