@@ -5,27 +5,20 @@
 //   ✅ Open exams show a live countdown timer (ticks every second)
 //   ✅ Past exams show a Completed badge
 //   ✅ Dashboard auto-refreshes exam list every 60 seconds
-//   ✅ Exam card links directly to /exam/{session_id}
-//
-// Mock data strategy:
-//   The function `fetchStudentSessions()` below currently returns hardcoded
-//   mock data so the UI works end-to-end without a backend.
-//   When the backend implements GET /student/sessions, replace the mock
-//   with the real API call — see the TODO comment inside fetchStudentSessions.
-//   Nothing else in this file needs to change.
+//   ✅ Exam card links directly to /exam/{exam_id}
+//   ✅ Real API: GET /student/sessions returns enrolled exam sessions
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import ExamCard from "../components/ExamCard";
-// apiClient is imported but commented out — uncomment when swapping to real API
-// import apiClient from "../api/client";
+import apiClient from "../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // This type is exported so ExamCard.tsx can import it — both files share
 // the same shape definition to keep things in sync.
 
 export interface ExamSession {
-  session_id: string;    // unique ID for this student's session — used in the URL /exam/{session_id}
+  exam_id: string;       // exam UUID — used in the URL /exam/{exam_id}
   exam_title: string;    // display name shown on the card e.g. "Midterm Exam"
   course_name: string;   // course label shown above the title e.g. "CS101"
   status: "open" | "upcoming" | "completed";
@@ -33,97 +26,12 @@ export interface ExamSession {
   ends_at: string;       // ISO 8601 datetime string — countdown target for open exams
 }
 
-// ─── Mock API function ────────────────────────────────────────────────────────
-// Returns a promise that resolves to an array of ExamSession objects.
-// The slight artificial delay (300ms) simulates a real network call so the
-// loading spinner is visible and the UI doesn't feel like it snaps instantly.
-//
-// HOW TO SWAP TO THE REAL API:
-//   1. Delete the mock array and the setTimeout wrapper below
-//   2. Uncomment the apiClient import at the top of this file
-//   3. Replace the body of this function with:
-//        const { data } = await apiClient.get<ExamSession[]>("/student/sessions");
-//        return data;
-//   4. That's it — nothing else changes.
+// ─── API function ─────────────────────────────────────────────────────────────
+// Fetches the authenticated student's enrolled exam sessions from the backend.
 
 async function fetchStudentSessions(): Promise<ExamSession[]> {
-  // ── TODO: replace this entire block with: ──────────────────────────────
-  // const { data } = await apiClient.get<ExamSession[]>("/student/sessions");
-  // return data;
-  // ───────────────────────────────────────────────────────────────────────
-
-  // Compute realistic timestamps relative to "now" so the mock data
-  // always makes sense regardless of when you run it:
-  const now = new Date();
-
-  // Open exam: started 30 minutes ago, ends 30 minutes from now
-  const openStart = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
-  const openEnd   = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-
-  // Upcoming exam: starts 2 hours from now, ends 3 hours from now
-  const upcomingStart = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString();
-  const upcomingEnd   = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
-
-  // Another upcoming: starts tomorrow
-  const tomorrowStart = new Date(now.getTime() + 22 * 60 * 60 * 1000).toISOString();
-  const tomorrowEnd   = new Date(now.getTime() + 23 * 60 * 60 * 1000).toISOString();
-
-  // Completed exam: ended yesterday
-  const completedStart = new Date(now.getTime() - 25 * 60 * 60 * 1000).toISOString();
-  const completedEnd   = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-
-  // Completed exam: ended last week
-  const oldStart = new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000).toISOString();
-  const oldEnd   = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  return new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve([
-          {
-            session_id: "sess-001",
-            exam_title: "Midterm Exam",
-            course_name: "COMP47250 — Team Software Project",
-            status: "open",
-            starts_at: openStart,
-            ends_at: openEnd,
-          },
-          {
-            session_id: "sess-002",
-            exam_title: "Module Quiz — Week 6",
-            course_name: "COMP47470 — Big Data Programming",
-            status: "upcoming",
-            starts_at: upcomingStart,
-            ends_at: upcomingEnd,
-          },
-          {
-            session_id: "sess-003",
-            exam_title: "Final Assessment",
-            course_name: "COMP47980 — Generative AI and Language Models",
-            status: "upcoming",
-            starts_at: tomorrowStart,
-            ends_at: tomorrowEnd,
-          },
-          {
-            session_id: "sess-004",
-            exam_title: "Week 5 Quiz",
-            course_name: "COMP47250 — Team Software Project",
-            status: "completed",
-            starts_at: completedStart,
-            ends_at: completedEnd,
-          },
-          {
-            session_id: "sess-005",
-            exam_title: "Module Quiz — Week 2",
-            course_name: "COMP47470 — Big Data Programming",
-            status: "completed",
-            starts_at: oldStart,
-            ends_at: oldEnd,
-          },
-        ]),
-      300 // simulated network delay in milliseconds
-    )
-  );
+  const { data } = await apiClient.get<ExamSession[]>("/student/sessions");
+  return data;
 }
 
 // ─── Helper: compute countdown string from an ISO end-time ───────────────────
@@ -221,7 +129,7 @@ const StudentDashboard: React.FC = () => {
   // sessions: the list fetched from the API (or mock)
   // isLoading: true during the initial fetch only (not during background refresh)
   // error: non-null if the fetch failed — shows a retry UI
-  // timers: object mapping session_id → countdown string for open exams
+  // timers: object mapping exam_id → countdown string for open exams
   //         computed client-side every second via a setInterval
 
   const [sessions, setSessions]   = useState<ExamSession[]>([]);
@@ -294,7 +202,7 @@ const StudentDashboard: React.FC = () => {
         if (t === null) {
           needsRefetch = true; // exam just closed — need fresh data
         } else {
-          next[s.session_id] = t;
+          next[s.exam_id] = t;
         }
       });
 
@@ -405,9 +313,9 @@ const StudentDashboard: React.FC = () => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {openSessions.map((session) => (
                     <ExamCard
-                      key={session.session_id}
+                      key={session.exam_id}
                       session={session}
-                      timeLeft={timers[session.session_id]}
+                      timeLeft={timers[session.exam_id]}
                     />
                   ))}
                 </div>
@@ -421,7 +329,7 @@ const StudentDashboard: React.FC = () => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {upcomingSessions.map((session) => (
                     <ExamCard
-                      key={session.session_id}
+                      key={session.exam_id}
                       session={session}
                     />
                   ))}
@@ -436,7 +344,7 @@ const StudentDashboard: React.FC = () => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {completedSessions.map((session) => (
                     <ExamCard
-                      key={session.session_id}
+                      key={session.exam_id}
                       session={session}
                     />
                   ))}

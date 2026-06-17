@@ -29,14 +29,25 @@ def _bus_configured() -> bool:
 
 
 async def dispatch_score_job(exam_id: uuid.UUID) -> None:
-    """Publish a score-computation job for the given exam to the Service Bus queue.
+    """Compute integrity scores locally and optionally publish to Service Bus.
 
-    Safe to call even when Azure Service Bus is not configured; logs a warning
-    and returns instead of raising.
+    Scores are always computed synchronously against the local DB so the
+    professor can see results immediately. Service Bus dispatch is optional
+    and skipped when not configured.
     """
+    # Always compute scores locally
+    try:
+        from app.database import AsyncSessionLocal
+        from app.services.scorer import compute_and_save_scores
+
+        async with AsyncSessionLocal() as db:
+            await compute_and_save_scores(db, exam_id)
+    except Exception:
+        logger.exception("Local score computation failed for exam %s", exam_id)
+
     if not _bus_configured():
-        logger.warning(
-            "Service Bus not configured — skipping score job dispatch for exam %s",
+        logger.info(
+            "Service Bus not configured — skipping remote dispatch for exam %s",
             exam_id,
         )
         return

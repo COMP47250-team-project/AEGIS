@@ -108,9 +108,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # Built-in npm cache, keyed on the lockfile.
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         if: steps.detect.outputs.present == 'true'
