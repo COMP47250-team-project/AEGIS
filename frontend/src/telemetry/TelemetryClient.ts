@@ -64,8 +64,11 @@ export class TelemetryClient {
       this.flushBuffer();
     };
 
-    this.ws.onclose = () => {
+    this.ws.onclose = (event: CloseEvent) => {
       this.ws = null;
+      // 4401 (unauthorized) and 4403 (forbidden) are permanent auth errors.
+      // Retrying with the same token would always fail, so stop here.
+      if (event.code === 4401 || event.code === 4403) return;
       this.scheduleReconnect();
     };
 
