@@ -233,8 +233,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
 
   // Ref keeps the auto-save interval closure from capturing stale answers
   const answersRef = useRef<Answers>({});
-  // Tracks Ctrl+A → Ctrl+C → Ctrl+V sequence for paste telemetry
-  const keySeqRef = useRef<string[]>([]);
   // Telemetry client — created once after consent
   const telemetryRef = useRef<TelemetryClient | null>(null);
   // Current question ID (ref so signal closures always see the latest)
@@ -341,36 +339,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
     return () => clearInterval(id);
   }, [examId, contentState]);
 
-  // Ctrl+A → Ctrl+C → Ctrl+V sequence detection
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (!ctrl) {
-        keySeqRef.current = [];
-        return;
-      }
-      const k = e.key.toLowerCase();
-      if (k === "a") {
-        keySeqRef.current = ["ctrl+a"];
-      } else if (k === "c" && keySeqRef.current[keySeqRef.current.length - 1] === "ctrl+a") {
-        keySeqRef.current.push("ctrl+c");
-      } else if (k === "v") {
-        const seq = keySeqRef.current;
-        if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
-          // Emit paste telemetry for the keyboard shortcut sequence
-          telemetryRef.current?.enqueue(
-            makePasteEvent(sessionId, currentQuestionIdRef.current)
-          );
-        }
-        keySeqRef.current = [];
-      } else {
-        keySeqRef.current = [];
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [sessionId]);
-
   const handleAnswerChange = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -394,8 +362,10 @@ const ExamContent: React.FC<ExamContentProps> = ({
   );
 
   const handlePaste = useCallback(
-    (questionId: string) => {
-      telemetryRef.current?.enqueue(makePasteEvent(sessionId, questionId));
+    (questionId: string, charCount: number) => {
+      telemetryRef.current?.enqueue(
+        makePasteEvent(sessionId, questionId, charCount)
+      );
     },
     [sessionId]
   );
