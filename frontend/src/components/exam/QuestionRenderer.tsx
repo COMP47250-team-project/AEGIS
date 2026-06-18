@@ -1,4 +1,5 @@
 import React from "react";
+import { pasteCharCount } from "../../telemetry/signals/paste";
 
 export interface ExamQuestion {
   id: string;
@@ -12,7 +13,7 @@ interface QuestionRendererProps {
   question: ExamQuestion;
   answer: string;
   onAnswerChange: (questionId: string, value: string) => void;
-  onPaste: (questionId: string) => void;
+  onPaste: (questionId: string, charCount: number) => void;
 }
 
 const QuestionRenderer: React.FC<QuestionRendererProps> = ({
@@ -63,7 +64,8 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
       <textarea
         value={answer}
         onChange={(e) => onAnswerChange(question.id, e.target.value)}
-        onPaste={() => onPaste(question.id)}
+        // Observe only — never preventDefault, so the paste still completes.
+        onPaste={(e) => onPaste(question.id, pasteCharCount(e.clipboardData))}
         placeholder="Type your answer here…"
         rows={6}
         className="w-full px-4 py-3 bg-surface-card border border-hairline rounded-md text-sm text-ink placeholder-ash resize-y focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 leading-relaxed"

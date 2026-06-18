@@ -227,6 +227,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
   const answersRef = useRef<Answers>({});
   const keySeqRef = useRef<string[]>([]);
+  // Telemetry client — created once after consent
   const telemetryRef = useRef<TelemetryClient | null>(null);
   const currentQuestionIdRef = useRef<string>("");
   const questionStartTsRef = useRef<number>(Date.now());
@@ -389,7 +390,9 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
   const handlePaste = useCallback(
     (questionId: string, charCount: number) => {
-      telemetryRef.current?.enqueue(makePasteEvent(sessionId, questionId, charCount));
+      telemetryRef.current?.enqueue(
+        makePasteEvent(sessionId, questionId, charCount)
+      );
     },
     [sessionId]
   );
