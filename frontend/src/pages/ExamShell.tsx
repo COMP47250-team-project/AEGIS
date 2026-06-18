@@ -354,7 +354,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
         const seq = keySeqRef.current;
         if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
           telemetryRef.current?.enqueue(
-            makePasteEvent(sessionId, currentQuestionIdRef.current)
+            makePasteEvent(sessionId, currentQuestionIdRef.current, 0)
           );
         }
         keySeqRef.current = [];
@@ -388,8 +388,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   );
 
   const handlePaste = useCallback(
-    (questionId: string) => {
-      telemetryRef.current?.enqueue(makePasteEvent(sessionId, questionId));
+    (questionId: string, charCount: number) => {
+      telemetryRef.current?.enqueue(makePasteEvent(sessionId, questionId, charCount));
     },
     [sessionId]
   );
