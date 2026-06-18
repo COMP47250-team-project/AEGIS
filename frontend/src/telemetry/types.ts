@@ -8,7 +8,7 @@ export type EventType =
   | "key_burst"
   | "resize"
   | "answer_start"
-  | "answer_submit";
+  | "question_time";
 
 export interface TelemetryEvent {
   type: EventType;
