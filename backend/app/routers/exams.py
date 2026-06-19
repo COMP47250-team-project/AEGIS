@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user_id
+from app.dependencies import require_role
 from typing import Literal, cast
 
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
@@ -48,7 +48,7 @@ _TRANSITIONS: dict[str, str] = {
 async def create_exam(
     body: ExamCreate,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> ExamRead:
     exam = ExamSession(**body.model_dump(), created_by=user_id)
     db.add(exam)
@@ -60,7 +60,7 @@ async def create_exam(
 @router.get("", response_model=list[ExamRead])
 async def list_exams(
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> list[ExamRead]:
     result = await db.execute(
         select(ExamSession, Quiz)
@@ -80,7 +80,7 @@ async def list_exams(
 async def get_exam(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user_id),
+    _: str = Depends(require_role("professor")),
 ) -> ExamRead:
     exam = await _get_exam_or_404(db, exam_id)
     count = await _enrollment_count(db, exam_id)
@@ -96,7 +96,7 @@ async def get_exam(
 async def list_enrollments(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> list[Enrollment]:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
@@ -114,7 +114,7 @@ async def enroll_student(
     exam_id: uuid.UUID,
     body: EnrollmentCreate,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user_id),
+    _: str = Depends(require_role("professor")),
 ) -> Enrollment:
     exam = await _get_exam_or_404(db, exam_id)
     if exam.state != "draft":
@@ -145,7 +145,7 @@ async def enroll_student_by_email(
     exam_id: uuid.UUID,
     body: EnrollmentByEmail,
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(get_current_user_id),
+    _: str = Depends(require_role("professor")),
 ) -> Enrollment:
     """Enroll a student by email address (convenience for UI)."""
     exam = await _get_exam_or_404(db, exam_id)
@@ -182,7 +182,7 @@ async def unenroll_student(
     exam_id: uuid.UUID,
     student_id: str,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> None:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
@@ -213,7 +213,7 @@ async def unenroll_student(
 async def open_exam(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> ExamRead:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
@@ -244,7 +244,7 @@ async def close_exam(
     exam_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> ExamRead:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
@@ -278,7 +278,7 @@ async def submit_answers(
     exam_id: uuid.UUID,
     body: AnswerSubmit,
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> AnswerSubmitResponse:
     """Durably persist student answers.
 
@@ -339,7 +339,7 @@ async def submit_answers(
 async def get_student_session(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> StudentSessionRead:
     """Return (or lazily create) the student session for an exam.
 
@@ -369,7 +369,7 @@ async def get_student_session(
 async def record_consent(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> StudentSessionRead:
     """Record the student's GDPR consent for monitoring.
 
@@ -406,7 +406,7 @@ async def record_consent(
 async def get_exam_questions(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> list[Question]:
     """Return the exam's questions — correct_answer is never included.
 
@@ -449,7 +449,7 @@ async def get_exam_questions(
 async def get_exam_grade(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str = Depends(require_role("professor")),
 ) -> ExamGradeReport:
     """Return per-student answers with MCQ auto-scoring for a closed exam.
 

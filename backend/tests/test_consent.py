@@ -40,7 +40,9 @@ STUDENT_ID = "student-consent-1"
 
 def _student_client(student_id: str = STUDENT_ID) -> AsyncClient:
     token = jwt.encode(
-        {"sub": student_id}, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+        {"sub": student_id, "role": "student"},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
     )
     return AsyncClient(
         transport=ASGITransport(app=app),

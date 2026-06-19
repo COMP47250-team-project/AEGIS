@@ -50,7 +50,7 @@ def _other_client() -> AsyncClient:
     Creates only a new HTTP client with a different JWT — does not touch overrides.
     """
     token = jwt.encode(
-        {"sub": "other-prof-999"},
+        {"sub": "other-prof-999", "role": "professor"},
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
