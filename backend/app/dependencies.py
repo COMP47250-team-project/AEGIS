@@ -13,6 +13,8 @@ _bearer = HTTPBearer()
 # auto_error=False so a missing header yields 401, not HTTPBearer's default 403.
 _bearer_optional = HTTPBearer(auto_error=False)
 
+_INVALID_TOKEN = "Invalid token"
+
 
 def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
@@ -27,12 +29,12 @@ def get_current_user_id(
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_TOKEN
             )
         return user_id
     except JWTError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_TOKEN
         )
 
 
@@ -57,13 +59,13 @@ def require_role(role: Literal["student", "professor"]):
             )
         except JWTError:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_TOKEN
             )
 
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail=_INVALID_TOKEN
             )
 
         if payload.get("role") != role:
