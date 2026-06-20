@@ -69,16 +69,24 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
     else:
         first_keypress_score = 0.0
 
-    # answer_time: very short time on questions → suspicious (pre-typed answers)
-    answer_time_events = [e for e in events if e.event_type == "answer_submit"]
-    if answer_time_events:
-        fast = sum(
-            1
-            for e in answer_time_events
-            if isinstance(e.payload.get("time_spent_ms"), (int, float))
-            and float(e.payload["time_spent_ms"]) < 10_000  # less than 10s
-        )
-        answer_time_score = _clamp(fast / max(len(answer_time_events), 1))
+    # answer_time: very short cumulative time on a question → suspicious
+    # (pre-typed answers, copy-paste, or skipped). question_time events carry
+    # a running cumulative duration, and one event is emitted per question at
+    # submit, so we take the final (max) duration per question_id before scoring.
+    question_time_events = [e for e in events if e.event_type == "question_time"]
+    if question_time_events:
+        durations: dict[str, float] = {}
+        for e in question_time_events:
+            qid = e.payload.get("question_id")
+            v = e.payload.get("duration_ms")
+            if isinstance(qid, str) and isinstance(v, (int, float)):
+                durations[qid] = max(durations.get(qid, 0.0), float(v))
+        if durations:
+            # Questions answered in under 10s (including 0ms / skipped) are fast.
+            fast = sum(1 for d in durations.values() if d < 10_000)
+            answer_time_score = _clamp(fast / len(durations))
+        else:
+            answer_time_score = 0.0
     else:
         answer_time_score = 0.0
 
