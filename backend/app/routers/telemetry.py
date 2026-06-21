@@ -85,7 +85,9 @@ async def exam_telemetry_ws(
                     continue
 
                 try:
-                    await telemetry_service.store_event(db, exam_id, student_id, event_data)
+                    await telemetry_service.store_event(
+                        db, exam_id, student_id, event_data
+                    )
                 except Exception:
                     logger.exception("Failed to store telemetry event")
 
@@ -193,10 +195,16 @@ async def _build_professor_payload(exam_id: uuid.UUID) -> dict:
                     "student_id": sid,
                     "name": user.full_name if user else None,
                     "email": user.email if user else None,
-                    "integrity_score": round(score.integrity_score, 3) if score else None,
-                    "tab_switch_score": round(score.tab_switch_score, 3) if score else None,
+                    "integrity_score": (
+                        round(score.integrity_score, 3) if score else None
+                    ),
+                    "tab_switch_score": (
+                        round(score.tab_switch_score, 3) if score else None
+                    ),
                     "paste_score": round(score.paste_score, 3) if score else None,
-                    "keystroke_score": round(score.keystroke_score, 3) if score else None,
+                    "keystroke_score": (
+                        round(score.keystroke_score, 3) if score else None
+                    ),
                 }
             )
 

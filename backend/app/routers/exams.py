@@ -92,6 +92,7 @@ async def get_exam(
 # Enrollment
 # ---------------------------------------------------------------------------
 
+
 @router.get("/{exam_id}/enrollments", response_model=list[EnrollmentRead])
 async def list_enrollments(
     exam_id: uuid.UUID,
@@ -100,10 +101,9 @@ async def list_enrollments(
 ) -> list[Enrollment]:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
-    result = await db.execute(
-        select(Enrollment).where(Enrollment.exam_id == exam_id)
-    )
+    result = await db.execute(select(Enrollment).where(Enrollment.exam_id == exam_id))
     return list(result.scalars().all())
+
 
 @router.post(
     "/{exam_id}/enrollments",
@@ -177,7 +177,9 @@ async def enroll_student_by_email(
     return enrollment
 
 
-@router.delete("/{exam_id}/enrollments/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{exam_id}/enrollments/{student_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def unenroll_student(
     exam_id: uuid.UUID,
     student_id: str,
@@ -199,7 +201,9 @@ async def unenroll_student(
     )
     enrollment = result.scalar_one_or_none()
     if enrollment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Enrollment not found"
+        )
     await db.delete(enrollment)
     await db.commit()
 
@@ -471,7 +475,6 @@ async def get_exam_grade(
     questions = list(q_result.scalars().all())
     # question_map reserved for future use
 
-
     mcq_total = sum(1 for q in questions if q.type == "mcq")
     short_total = sum(1 for q in questions if q.type == "short")
 
@@ -517,7 +520,9 @@ async def get_exam_grade(
             student_answer = answer_row.answer if answer_row else ""
 
             if q.type == "mcq":
-                is_correct = student_answer == q.correct_answer if student_answer else False
+                is_correct = (
+                    student_answer == q.correct_answer if student_answer else False
+                )
                 if is_correct:
                     mcq_correct += 1
             else:

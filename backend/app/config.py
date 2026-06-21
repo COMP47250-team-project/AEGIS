@@ -3,7 +3,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env.example", extra="ignore")
-
     database_url: str = "postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis"
     database_url_sync: str = "postgresql://aegis:aegis_dev_pw@localhost:5432/aegis"
     jwt_secret_key: str = "change_me_to_a_random_64_char_string"
@@ -15,6 +14,9 @@ class Settings(BaseSettings):
     azure_service_bus_connection_string: str | None = None
     azure_service_bus_queue_name: str = "telemetry-events"
     score_queue_name: str = "score-jobs"
+    aegis_events_queue_name: str = "aegis-events"
+    scorer_batch_interval_seconds: int = 30
+    scorer_max_delivery_attempts: int = 3
 
 
 settings = Settings()

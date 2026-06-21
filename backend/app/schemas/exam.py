@@ -135,7 +135,7 @@ class StudentAnswerResult(BaseModel):
     options: list[str] | None
     student_answer: str
     correct_answer: str | None  # revealed for MCQ after closing
-    is_correct: bool | None     # None for short-answer (manual grading)
+    is_correct: bool | None  # None for short-answer (manual grading)
 
 
 class StudentExamResults(BaseModel):
@@ -160,7 +160,7 @@ class GradeAnswerItem(BaseModel):
     prompt: str
     student_answer: str
     correct_answer: str | None
-    is_correct: bool | None     # None for short-answer
+    is_correct: bool | None  # None for short-answer
 
 
 class StudentGradeEntry(BaseModel):

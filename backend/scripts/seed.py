@@ -38,6 +38,7 @@ DEMO_PASSWORD = pwd_context.hash("demo1234")
 # Idempotent get-or-create helpers
 # =============================================================================
 
+
 async def get_or_create_user(
     db: AsyncSession, email: str, full_name: str, role: str
 ) -> User:
@@ -70,9 +71,7 @@ async def get_or_create_course(
     return course
 
 
-async def get_or_create_quiz(
-    db: AsyncSession, title: str, created_by: str
-) -> Quiz:
+async def get_or_create_quiz(db: AsyncSession, title: str, created_by: str) -> Quiz:
     result = await db.execute(select(Quiz).where(Quiz.title == title))
     quiz = result.scalar_one_or_none()
     if quiz:
@@ -93,7 +92,7 @@ async def get_or_create_question(
     db: AsyncSession,
     quiz: Quiz,
     position: int,
-    **kwargs, # type: ignore
+    **kwargs,  # type: ignore
 ) -> Question:
     result = await db.execute(
         select(Question).where(
@@ -185,9 +184,8 @@ async def get_or_create_student_session(
 # Telemetry seeding
 # =============================================================================
 
-async def seed_telemetry(
-    db: AsyncSession, exam: ExamSession, student: User
-) -> None:
+
+async def seed_telemetry(db: AsyncSession, exam: ExamSession, student: User) -> None:
     """
     Insert a realistic sequence of telemetry events for one student.
     The sequence tells a deliberate story: normal typing → tab switch →
@@ -339,6 +337,7 @@ async def seed_telemetry(
 # Main
 # =============================================================================
 
+
 async def seed() -> None:
     async with AsyncSessionLocal() as db:
         try:
@@ -356,16 +355,16 @@ async def seed() -> None:
             # ── Students ──────────────────────────────────────────────────────
             print("  [2/7] Students...")
             student_data = [
-                ("emma.johnson@demo.ac.uk",     "Emma Johnson"),
-                ("liam.williams@demo.ac.uk",    "Liam Williams"),
-                ("olivia.brown@demo.ac.uk",     "Olivia Brown"),
-                ("noah.davis@demo.ac.uk",       "Noah Davis"),
-                ("ava.miller@demo.ac.uk",       "Ava Miller"),
-                ("elijah.wilson@demo.ac.uk",    "Elijah Wilson"),
-                ("sophia.moore@demo.ac.uk",     "Sophia Moore"),
-                ("james.taylor@demo.ac.uk",     "James Taylor"),
-                ("isabella.anderson@demo.ac.uk","Isabella Anderson"),
-                ("oliver.thomas@demo.ac.uk",    "Oliver Thomas"),
+                ("emma.johnson@demo.ac.uk", "Emma Johnson"),
+                ("liam.williams@demo.ac.uk", "Liam Williams"),
+                ("olivia.brown@demo.ac.uk", "Olivia Brown"),
+                ("noah.davis@demo.ac.uk", "Noah Davis"),
+                ("ava.miller@demo.ac.uk", "Ava Miller"),
+                ("elijah.wilson@demo.ac.uk", "Elijah Wilson"),
+                ("sophia.moore@demo.ac.uk", "Sophia Moore"),
+                ("james.taylor@demo.ac.uk", "James Taylor"),
+                ("isabella.anderson@demo.ac.uk", "Isabella Anderson"),
+                ("oliver.thomas@demo.ac.uk", "Oliver Thomas"),
             ]
             students = [
                 await get_or_create_user(db, email, name, "student")
@@ -388,31 +387,51 @@ async def seed() -> None:
                 title="Midterm Exam — Data Structures",
                 created_by=str(prof1.id),
             )
-            await get_or_create_question(db, quiz, position=0,
+            await get_or_create_question(
+                db,
+                quiz,
+                position=0,
                 type="mcq",
                 prompt="Which data structure uses LIFO ordering?",
                 options=["Queue", "Stack", "Linked List", "Tree"],
                 correct_answer="Stack",
             )
-            await get_or_create_question(db, quiz, position=1,
+            await get_or_create_question(
+                db,
+                quiz,
+                position=1,
                 type="mcq",
                 prompt="What is the time complexity of binary search on a sorted array?",
                 options=["O(n)", "O(n²)", "O(log n)", "O(1)"],
                 correct_answer="O(log n)",
             )
-            await get_or_create_question(db, quiz, position=2,
+            await get_or_create_question(
+                db,
+                quiz,
+                position=2,
                 type="mcq",
                 prompt="Which sorting algorithm has the best average-case time complexity?",
-                options=["Bubble Sort", "Insertion Sort", "Merge Sort", "Selection Sort"],
+                options=[
+                    "Bubble Sort",
+                    "Insertion Sort",
+                    "Merge Sort",
+                    "Selection Sort",
+                ],
                 correct_answer="Merge Sort",
             )
-            await get_or_create_question(db, quiz, position=3,
+            await get_or_create_question(
+                db,
+                quiz,
+                position=3,
                 type="short",
                 prompt="Explain the difference between a stack and a queue in your own words.",
                 options=None,
                 correct_answer=None,
             )
-            await get_or_create_question(db, quiz, position=4,
+            await get_or_create_question(
+                db,
+                quiz,
+                position=4,
                 type="short",
                 prompt="What is a hash collision and how can it be resolved?",
                 options=None,
@@ -461,5 +480,3 @@ async def seed() -> None:
 
 if __name__ == "__main__":
     asyncio.run(seed())
-
-

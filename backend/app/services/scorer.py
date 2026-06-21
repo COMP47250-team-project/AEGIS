@@ -102,9 +102,7 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
 
 def compute_risk_score(component_scores: dict[str, float]) -> float:
     """Weighted sum of component scores → aggregate 0–1 risk score."""
-    return _clamp(
-        sum(_WEIGHTS[k] * component_scores.get(k, 0.0) for k in _WEIGHTS)
-    )
+    return _clamp(sum(_WEIGHTS[k] * component_scores.get(k, 0.0) for k in _WEIGHTS))
 
 
 async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
