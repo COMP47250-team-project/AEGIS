@@ -30,7 +30,7 @@ class TestBatching:
         worker.enqueue_event(session_id, {"type": "tab_blur"})
 
         async def fake_score(self_, sid, events):  # noqa: ANN001
-            return None
+            await asyncio.sleep(0)
 
         monkeypatch.setattr(ScorerWorker, "_score_session", fake_score)
 
@@ -45,6 +45,7 @@ class TestBatching:
         scored: list[str] = []
 
         async def fake_score(self_, sid, events):  # noqa: ANN001
+            await asyncio.sleep(0)
             scored.append(sid)
 
         monkeypatch.setattr(ScorerWorker, "_score_session", fake_score)
@@ -66,6 +67,7 @@ class TestBatching:
         worker.enqueue_event(session_id, {"type": "tab_blur"})
 
         async def fake_score(self_, sid, events):  # noqa: ANN001
+            await asyncio.sleep(0)
             raise RuntimeError("db unavailable")
 
         monkeypatch.setattr(ScorerWorker, "_score_session", fake_score)
@@ -84,6 +86,7 @@ class TestGracefulShutdown:
         scored: list[str] = []
 
         async def fake_score(self_, sid, events):  # noqa: ANN001
+            await asyncio.sleep(0)
             scored.append(sid)
 
         monkeypatch.setattr(ScorerWorker, "_score_session", fake_score)
@@ -149,6 +152,7 @@ class TestThroughput:
         processed_count = 0
 
         async def fake_score(self_, sid, events):  # noqa: ANN001
+            await asyncio.sleep(0)
             nonlocal processed_count
             processed_count += len(events)
 
