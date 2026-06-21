@@ -30,7 +30,7 @@ STUDENT_ID = "student-sessions-001"
 def _student_client() -> AsyncClient:
     """AsyncClient authenticated as a student (different identity from the professor fixture)."""
     token = jwt.encode(
-        {"sub": STUDENT_ID},
+        {"sub": STUDENT_ID, "role": "student"},
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )

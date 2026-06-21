@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user_id
+from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamAnswer, ExamSession
 from app.models.quiz import Question, Quiz
 from app.schemas.exam import (
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/student", tags=["student"])
 @router.get("/sessions", response_model=list[StudentExamListItem])
 async def list_student_sessions(
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> list[StudentExamListItem]:
     """Return all exam sessions the authenticated student is enrolled in."""
     result = await db.execute(
@@ -66,7 +66,7 @@ async def list_student_sessions(
 async def get_student_exam_results(
     exam_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    student_id: str = Depends(get_current_user_id),
+    student_id: str = Depends(require_role("student")),
 ) -> StudentExamResults:
     """Return a student's own results for a completed exam.
 

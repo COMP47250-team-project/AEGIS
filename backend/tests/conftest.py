@@ -35,9 +35,11 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-def _make_token(user_id: str = "prof-001") -> str:
+def _make_token(user_id: str = "prof-001", role: str = "professor") -> str:
     return jwt.encode(
-        {"sub": user_id}, settings.jwt_secret_key, algorithm=settings.jwt_algorithm
+        {"sub": user_id, "role": role},
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
     )
 
 
