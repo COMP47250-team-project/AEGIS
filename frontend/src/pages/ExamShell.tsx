@@ -12,6 +12,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import apiClient, { getAccessToken } from "../api/client";
 import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
+import CountdownTimer from "../components/exam/CountdownTimer";
+import ExamErrorBoundary from "../components/exam/ExamErrorBoundary";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
 import { TelemetryClient } from "../telemetry/TelemetryClient";
 import { attachTabBlur } from "../telemetry/signals/tabBlur";
@@ -35,11 +37,14 @@ interface StudentSession {
   consent_at: string | null;
 }
 
-interface ExamSessionData {
+// AEGIS-40: shape returned by GET /exams/{exam_id} — used to derive the
+// authoritative end time. We only need these three fields here; the full
+// ExamRead schema on the backend has more (enrollment_count, quiz_title etc.)
+// but we deliberately type only what this component consumes.
+interface ExamSessionMeta {
   id: string;
-  exam_id: string;
-  duration_minutes?: number | null;
-  scheduled_end?: string | null;
+  scheduled_start: string; // ISO 8601
+  duration_minutes: number;
 }
 
 type Answers = Record<string, string>;
@@ -47,7 +52,7 @@ type Answers = Record<string, string>;
 type PageState =
   | { kind: "loading" }
   | { kind: "consent-required"; session: StudentSession }
-  | { kind: "exam-active"; session: StudentSession; examData?: ExamSessionData }
+  | { kind: "exam-active"; session: StudentSession }
   | { kind: "error"; message: string };
 
 type ContentState =
@@ -72,7 +77,6 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 }) => (
   <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
     <div className="max-w-lg w-full bg-surface-card rounded-md border border-hairline p-8">
-      {/* Header */}
       <div className="flex items-start gap-4 mb-6">
         <div className="flex-shrink-0 w-10 h-10 rounded-md bg-accent-blue-soft border border-accent-blue/20 flex items-center justify-center">
           <svg
@@ -99,8 +103,6 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
           </p>
         </div>
       </div>
-
-      {/* What is collected */}
       <div className="mb-6">
         <p className="text-sm font-medium text-body mb-3">
           AEGIS collects the following browser signals while the exam is open:
@@ -144,15 +146,11 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
           </li>
         </ul>
       </div>
-
-      {/* Privacy note */}
       <div className="mb-6 px-4 py-3 bg-accent-green-soft rounded-md border-l-2 border-accent-green text-sm text-ink">
         No webcam, microphone, screen recording, or clipboard contents are ever
         collected. Signals are combined into a confidence score for human
         review only — no automatic academic-misconduct verdicts are issued.
       </div>
-
-      {/* Actions */}
       <div className="flex flex-col gap-3">
         <button
           onClick={onConsent}
@@ -174,40 +172,40 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
 );
 
 // ---------------------------------------------------------------------------
-// Countdown timer hook
+// AEGIS-40: useServerEndTime hook
 // ---------------------------------------------------------------------------
+// Fetches GET /exams/{exam_id}, derives the authoritative end time as an
+// ISO string, and re-fetches periodically so CountdownTimer can re-sync
+// and correct for any local clock drift.
 
-function useCountdown(scheduledEndIso: string | null | undefined): string {
-  const [label, setLabel] = useState("");
+const END_TIME_RESYNC_MS = 30_000; // re-fetch from server every 30s
+
+function useServerEndTime(examId: string): {
+  endTimeIso: string | null;
+} {
+  const [endTimeIso, setEndTimeIso] = useState<string | null>(null);
+
+  const fetchEndTime = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get<ExamSessionMeta>(`/exams/${examId}`);
+      const startMs = new Date(data.scheduled_start).getTime();
+      const endMs = startMs + data.duration_minutes * 60_000;
+      setEndTimeIso(new Date(endMs).toISOString());
+    } catch {
+      // If this particular re-sync fails (e.g. brief network blip), keep
+      // the previous endTimeIso rather than clearing it — CountdownTimer
+      // will keep counting down from the last known-good value rather than
+      // freezing or resetting. The next scheduled re-sync will try again.
+    }
+  }, [examId]);
 
   useEffect(() => {
-    if (!scheduledEndIso) return;
-
-    const endMs = new Date(scheduledEndIso).getTime();
-
-    function tick() {
-      const remaining = endMs - Date.now();
-      if (remaining <= 0) {
-        setLabel("Time up");
-        return;
-      }
-      const totalSec = Math.floor(remaining / 1000);
-      const h = Math.floor(totalSec / 3600);
-      const m = Math.floor((totalSec % 3600) / 60);
-      const s = totalSec % 60;
-      if (h > 0) {
-        setLabel(`${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`);
-      } else {
-        setLabel(`${m}:${String(s).padStart(2, "0")}`);
-      }
-    }
-
-    tick();
-    const id = setInterval(tick, 1000);
+    fetchEndTime(); // initial fetch
+    const id = setInterval(fetchEndTime, END_TIME_RESYNC_MS);
     return () => clearInterval(id);
-  }, [scheduledEndIso]);
+  }, [fetchEndTime]);
 
-  return label;
+  return { endTimeIso };
 }
 
 // ---------------------------------------------------------------------------
@@ -217,14 +215,9 @@ function useCountdown(scheduledEndIso: string | null | undefined): string {
 interface ExamContentProps {
   examId: string;
   sessionId: string;
-  scheduledEnd?: string | null;
 }
 
-const ExamContent: React.FC<ExamContentProps> = ({
-  examId,
-  sessionId,
-  scheduledEnd,
-}) => {
+const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const navigate = useNavigate();
   const [contentState, setContentState] = useState<ContentState>({
     kind: "loading",
@@ -233,25 +226,34 @@ const ExamContent: React.FC<ExamContentProps> = ({
   const [answers, setAnswers] = useState<Answers>({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
 
-  // Ref keeps the auto-save interval closure from capturing stale answers
   const answersRef = useRef<Answers>({});
+  const keySeqRef = useRef<string[]>([]);
   // Telemetry client — created once after consent
   const telemetryRef = useRef<TelemetryClient | null>(null);
-  // Current question ID (ref so signal closures always see the latest)
   const currentQuestionIdRef = useRef<string>("");
-  // Timestamp when student navigated to the current question
   const questionStartTsRef = useRef<number>(Date.now());
+  const contentStateRef = useRef<ContentState>(contentState);
+  const currentIndexRef = useRef(currentIndex);
   // Cumulative time spent per question id (adds up across re-visits)
   const questionDurationsRef = useRef<Map<string, number>>(new Map());
 
-  const countdown = useCountdown(scheduledEnd);
+  // AEGIS-40: authoritative end time, re-synced from the server every 30s
+  const { endTimeIso } = useServerEndTime(examId);
 
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
 
-  // Instantiate TelemetryClient and attach all signal producers
+  useEffect(() => {
+    contentStateRef.current = contentState;
+  }, [contentState]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
   useEffect(() => {
     const token = getAccessToken();
     if (!token) return;
@@ -290,7 +292,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
     };
   }, [examId, sessionId]);
 
-  // Load questions on mount
   useEffect(() => {
     let cancelled = false;
     apiClient
@@ -312,7 +313,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
     };
   }, [examId]);
 
-  // Auto-save short-answer responses to the backend every 5 seconds
   useEffect(() => {
     if (contentState.kind !== "loaded") return;
     const shortQuestions = contentState.questions.filter(
@@ -344,6 +344,34 @@ const ExamContent: React.FC<ExamContentProps> = ({
     return () => clearInterval(id);
   }, [examId, contentState]);
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl) {
+        keySeqRef.current = [];
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "a") {
+        keySeqRef.current = ["ctrl+a"];
+      } else if (k === "c" && keySeqRef.current[keySeqRef.current.length - 1] === "ctrl+a") {
+        keySeqRef.current.push("ctrl+c");
+      } else if (k === "v") {
+        const seq = keySeqRef.current;
+        if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
+          telemetryRef.current?.enqueue(
+            makePasteEvent(sessionId, currentQuestionIdRef.current, 0)
+          );
+        }
+        keySeqRef.current = [];
+      } else {
+        keySeqRef.current = [];
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sessionId]);
+
   const handleAnswerChange = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -351,7 +379,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
     []
   );
 
-  // MCQ answers are persisted immediately on selection
   const handleMcqChange = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -398,7 +425,6 @@ const ExamContent: React.FC<ExamContentProps> = ({
         );
       }
 
-      // Update tracking refs for the new question
       const nextQuestion = contentState.questions[nextIndex];
       if (nextQuestion) {
         currentQuestionIdRef.current = nextQuestion.id;
@@ -410,11 +436,16 @@ const ExamContent: React.FC<ExamContentProps> = ({
     [contentState, currentIndex, sessionId]
   );
 
-  const handleFinish = useCallback(async () => {
-    if (contentState.kind !== "loaded") return;
+  // ── Shared submit-and-leave logic ─────────────────────────────────────────
+  // Used by BOTH the manual "Finish Exam" button AND the automatic T-0
+  // trigger from CountdownTimer.
+  const submitAndLeave = useCallback(async () => {
+    const state = contentStateRef.current;
+    if (state.kind !== "loaded") return;
 
     // Accumulate time on the question currently open before submitting.
-    const currentQuestion = contentState.questions[currentIndex];
+    const idx = currentIndexRef.current;
+    const currentQuestion = state.questions[idx];
     if (currentQuestion) {
       const elapsed = Date.now() - questionStartTsRef.current;
       accumulateDuration(questionDurationsRef.current, currentQuestion.id, elapsed);
@@ -422,8 +453,8 @@ const ExamContent: React.FC<ExamContentProps> = ({
 
     // Emit a question_time event for EVERY question, including ones never
     // visited (duration 0) — so the scorer can flag 0ms / skipped questions.
-    const totalQuestions = contentState.questions.length;
-    for (const q of contentState.questions) {
+    const totalQuestions = state.questions.length;
+    for (const q of state.questions) {
       telemetryRef.current?.enqueue(
         makeQuestionTimeEvent(
           sessionId,
@@ -435,26 +466,46 @@ const ExamContent: React.FC<ExamContentProps> = ({
       );
     }
 
-    // Flush buffered telemetry events before leaving
+    // Flush buffered telemetry events before leaving (AEGIS-40 acceptance
+    // criterion 3: "auto-POST all current answers and flush telemetry").
     telemetryRef.current?.flush();
 
-    // Durably persist all answers (MVP criterion 7: works even if WS fails)
     const current = answersRef.current;
-    const allAnswers = contentState.questions.map((q) => ({
+    const allAnswers = state.questions.map((q) => ({
       question_id: q.id,
       answer: current[q.id] ?? "",
     }));
+
     try {
       await apiClient.post(`/exams/${examId}/answers`, {
         answers: allAnswers,
       });
     } catch {
-      /* best-effort final save */
+      /* best-effort final save — we still navigate away below regardless */
     }
-    navigate("/student/dashboard", { replace: true });
-  }, [examId, contentState, currentIndex, sessionId, navigate]);
 
-  // --- Loading / error states ---
+    navigate("/student/dashboard", { replace: true });
+  }, [examId, sessionId, navigate]);
+
+  const handleFinish = useCallback(async () => {
+    await submitAndLeave();
+  }, [submitAndLeave]);
+
+  // ── AEGIS-40: isolated auto-submit handler ────────────────────────────────
+  // Passed to CountdownTimer's onAutoSubmit prop. CountdownTimer already
+  // wraps the call to this function in try/catch, so a synchronous throw
+  // here cannot escape and stop the timer's own interval. We also wrap the
+  // body here so this function fails safely even if called directly.
+  const handleAutoSubmit = useCallback(async () => {
+    setIsAutoSubmitting(true);
+    try {
+      await submitAndLeave();
+    } catch (err) {
+      // does not re-throw, per acceptance criterion 5/6
+      console.error("[ExamShell] auto-submit failed:", err);
+      navigate("/student/dashboard", { replace: true });
+    }
+  }, [submitAndLeave, navigate]);
 
   if (contentState.kind === "loading") {
     return (
@@ -489,18 +540,8 @@ const ExamContent: React.FC<ExamContentProps> = ({
     (q) => answers[q.id] !== undefined && answers[q.id] !== ""
   ).length;
 
-  const isLowTime = countdown !== "" && !countdown.includes(":") === false &&
-    (() => {
-      const parts = countdown.split(":").map(Number);
-      const totalSec = parts.length === 3
-        ? parts[0] * 3600 + parts[1] * 60 + parts[2]
-        : parts[0] * 60 + (parts[1] ?? 0);
-      return totalSec <= 120; // last 2 minutes
-    })();
-
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      {/* Top bar */}
       <header className="flex items-center justify-between px-6 py-3 border-b border-hairline bg-surface-card">
         <div>
           <p className="text-sm font-semibold text-ink">AEGIS Exam</p>
@@ -508,16 +549,16 @@ const ExamContent: React.FC<ExamContentProps> = ({
             Question {currentIndex + 1} of {questions.length}
           </p>
         </div>
+
+        {/* AEGIS-40: CountdownTimer — top-right, always visible.
+            Positioned as a sibling of the question content, OUTSIDE the
+            ExamErrorBoundary below — a crash in question rendering cannot
+            reach this and stop the timer or auto-submit. */}
         <div className="flex items-center gap-3">
-          {countdown && (
-            <span
-              className={`text-sm font-mono font-semibold ${
-                isLowTime ? "text-accent-red" : "text-body"
-              }`}
-            >
-              {countdown}
-            </span>
-          )}
+          <CountdownTimer
+            serverEndTime={endTimeIso}
+            onAutoSubmit={handleAutoSubmit}
+          />
           {isSaving && <span className="text-xs text-mute">Saving…</span>}
           {saveError && (
             <span className="text-xs text-accent-red">
@@ -526,62 +567,61 @@ const ExamContent: React.FC<ExamContentProps> = ({
           )}
           <button
             onClick={handleFinish}
-            className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md"
+            disabled={isAutoSubmitting}
+            className="px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
           >
-            Finish Exam
+            {isAutoSubmitting ? "Submitting…" : "Finish Exam"}
           </button>
         </div>
       </header>
 
-      {/* Main body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Progress sidebar */}
-        <aside className="w-56 flex-shrink-0 border-r border-hairline bg-surface-card overflow-y-auto px-3 py-4">
-          <ProgressSidebar
-            questions={questions}
-            answers={answers}
-            currentIndex={currentIndex}
-            onSelect={goTo}
-          />
-        </aside>
+      <ExamErrorBoundary>
+        <div className="flex flex-1 overflow-hidden">
+          <aside className="w-56 flex-shrink-0 border-r border-hairline bg-surface-card overflow-y-auto px-3 py-4">
+            <ProgressSidebar
+              questions={questions}
+              answers={answers}
+              currentIndex={currentIndex}
+              onSelect={goTo}
+            />
+          </aside>
 
-        {/* Question area */}
-        <main className="flex-1 overflow-y-auto px-8 py-8">
-          <div className="max-w-2xl mx-auto">
-            <div className="bg-surface-card border border-hairline rounded-md p-6">
-              <QuestionRenderer
-                question={current}
-                answer={answers[current.id] ?? ""}
-                onAnswerChange={
-                  current.type === "mcq" ? handleMcqChange : handleAnswerChange
-                }
-                onPaste={handlePaste}
-              />
-            </div>
+          <main className="flex-1 overflow-y-auto px-8 py-8">
+            <div className="max-w-2xl mx-auto">
+              <div className="bg-surface-card border border-hairline rounded-md p-6">
+                <QuestionRenderer
+                  question={current}
+                  answer={answers[current.id] ?? ""}
+                  onAnswerChange={
+                    current.type === "mcq" ? handleMcqChange : handleAnswerChange
+                  }
+                  onPaste={handlePaste}
+                />
+              </div>
 
-            {/* Prev / Next navigation */}
-            <div className="flex items-center justify-between mt-6">
-              <button
-                onClick={() => goTo(currentIndex - 1)}
-                disabled={currentIndex === 0}
-                className="px-4 py-2 bg-surface-soft text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-              >
-                ← Previous
-              </button>
-              <span className="text-xs text-mute">
-                {answeredCount} of {questions.length} answered
-              </span>
-              <button
-                onClick={() => goTo(currentIndex + 1)}
-                disabled={currentIndex === questions.length - 1}
-                className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-              >
-                Next →
-              </button>
+              <div className="flex items-center justify-between mt-6">
+                <button
+                  onClick={() => goTo(currentIndex - 1)}
+                  disabled={currentIndex === 0}
+                  className="px-4 py-2 bg-surface-soft text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                >
+                  ← Previous
+                </button>
+                <span className="text-xs text-mute">
+                  {answeredCount} of {questions.length} answered
+                </span>
+                <button
+                  onClick={() => goTo(currentIndex + 1)}
+                  disabled={currentIndex === questions.length - 1}
+                  className="px-4 py-2 bg-primary text-ink text-sm font-bold rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                >
+                  Next →
+                </button>
+              </div>
             </div>
-          </div>
-        </main>
-      </div>
+          </main>
+        </div>
+      </ExamErrorBoundary>
     </div>
   );
 };
@@ -596,15 +636,12 @@ const ExamShell: React.FC = () => {
   const [state, setState] = useState<PageState>({ kind: "loading" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // On mount, always check consent via the API.
   useEffect(() => {
     if (!examId) {
       navigate("/student/dashboard", { replace: true });
       return;
     }
-
     let cancelled = false;
-
     apiClient
       .get<StudentSession>(`/exams/${examId}/session`)
       .then(({ data }) => {
@@ -620,7 +657,6 @@ const ExamShell: React.FC = () => {
           navigate("/student/dashboard", { replace: true });
         }
       });
-
     return () => {
       cancelled = true;
     };
@@ -682,14 +718,7 @@ const ExamShell: React.FC = () => {
     );
   }
 
-  // state.kind === "exam-active"
-  return (
-    <ExamContent
-      examId={state.session.exam_id}
-      sessionId={state.session.id}
-      scheduledEnd={state.examData?.scheduled_end}
-    />
-  );
+  return <ExamContent examId={state.session.exam_id} sessionId={state.session.id} />;
 };
 
 export default ExamShell;
