@@ -2,13 +2,13 @@
 
 export type EventType =
   | "tab_blur"
-  | "tab_focus"
+  | "tab_return"
   | "paste"
   | "key_interval"
   | "key_burst"
   | "resize"
   | "answer_start"
-  | "answer_submit";
+  | "question_time";
 
 export interface TelemetryEvent {
   type: EventType;

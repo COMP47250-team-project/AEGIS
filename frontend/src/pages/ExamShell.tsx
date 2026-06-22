@@ -21,7 +21,10 @@ import { makePasteEvent } from "../telemetry/signals/paste";
 import { attachIKI } from "../telemetry/signals/iki";
 import { attachFirstKeypress } from "../telemetry/signals/firstKeypress";
 import { attachResize } from "../telemetry/signals/resize";
-import { makeAnswerTimeEvent } from "../telemetry/signals/answerTime";
+import {
+  makeQuestionTimeEvent,
+  accumulateDuration,
+} from "../telemetry/signals/questionTime";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -233,6 +236,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const questionStartTsRef = useRef<number>(Date.now());
   const contentStateRef = useRef<ContentState>(contentState);
   const currentIndexRef = useRef(currentIndex);
+  // Cumulative time spent per question id (adds up across re-visits)
+  const questionDurationsRef = useRef<Map<string, number>>(new Map());
 
   // AEGIS-40: authoritative end time, re-synced from the server every 30s
   const { endTimeIso } = useServerEndTime(examId);
@@ -403,10 +408,20 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       const nextIndex = Math.max(0, Math.min(index, contentState.questions.length - 1));
       if (nextIndex === currentIndex) return;
 
+      // Accumulate time on the question we're leaving (cumulative across
+      // re-visits) and emit its running total.
       const leavingQuestion = contentState.questions[currentIndex];
       if (leavingQuestion) {
+        const elapsed = Date.now() - questionStartTsRef.current;
+        accumulateDuration(questionDurationsRef.current, leavingQuestion.id, elapsed);
         telemetryRef.current?.enqueue(
-          makeAnswerTimeEvent(sessionId, leavingQuestion.id, questionStartTsRef.current)
+          makeQuestionTimeEvent(
+            sessionId,
+            leavingQuestion.id,
+            questionDurationsRef.current.get(leavingQuestion.id) ?? 0,
+            leavingQuestion.position,
+            contentState.questions.length
+          )
         );
       }
 
@@ -428,11 +443,26 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     const state = contentStateRef.current;
     if (state.kind !== "loaded") return;
 
+    // Accumulate time on the question currently open before submitting.
     const idx = currentIndexRef.current;
     const currentQuestion = state.questions[idx];
     if (currentQuestion) {
+      const elapsed = Date.now() - questionStartTsRef.current;
+      accumulateDuration(questionDurationsRef.current, currentQuestion.id, elapsed);
+    }
+
+    // Emit a question_time event for EVERY question, including ones never
+    // visited (duration 0) — so the scorer can flag 0ms / skipped questions.
+    const totalQuestions = contentState.questions.length;
+    for (const q of contentState.questions) {
       telemetryRef.current?.enqueue(
-        makeAnswerTimeEvent(sessionId, currentQuestion.id, questionStartTsRef.current)
+        makeQuestionTimeEvent(
+          sessionId,
+          q.id,
+          questionDurationsRef.current.get(q.id) ?? 0,
+          q.position,
+          totalQuestions
+        )
       );
     }
 
