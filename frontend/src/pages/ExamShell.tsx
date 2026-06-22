@@ -453,8 +453,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
     // Emit a question_time event for EVERY question, including ones never
     // visited (duration 0) — so the scorer can flag 0ms / skipped questions.
-    const totalQuestions = contentState.questions.length;
-    for (const q of contentState.questions) {
+    const totalQuestions = state.questions.length;
+    for (const q of state.questions) {
       telemetryRef.current?.enqueue(
         makeQuestionTimeEvent(
           sessionId,
