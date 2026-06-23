@@ -19,7 +19,9 @@ from app.services.telemetry_service import store_event
 
 
 @pytest.mark.asyncio
-async def test_store_event_persists_inner_payload_flat(db_session: AsyncSession) -> None:
+async def test_store_event_persists_inner_payload_flat(
+    db_session: AsyncSession,
+) -> None:
     exam_id = uuid.uuid4()
     frame = {
         "type": "key_interval",
@@ -49,8 +51,7 @@ async def test_stored_event_is_readable_by_scorer(db_session: AsyncSession) -> N
             db_session,
             exam_id,
             "student-1",
-            {"type": "key_interval", "sessionId": "s",
-             "payload": {"interval_ms": 20}},
+            {"type": "key_interval", "sessionId": "s", "payload": {"interval_ms": 20}},
         )
 
     result = await db_session.execute(

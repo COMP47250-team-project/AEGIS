@@ -235,7 +235,9 @@ async def test_questions_rejected_with_no_session(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_questions_unauthenticated_returns_401_or_403(client: AsyncClient) -> None:
+async def test_questions_unauthenticated_returns_401_or_403(
+    client: AsyncClient,
+) -> None:
     exam_id, _, _ = await _setup_open_exam_with_questions(client)
     await _consent(exam_id)
 

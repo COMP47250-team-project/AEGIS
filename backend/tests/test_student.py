@@ -60,7 +60,9 @@ async def _create_exam(client: AsyncClient, quiz_id: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_student_sessions_empty_for_unenrolled_student(client: AsyncClient) -> None:
+async def test_student_sessions_empty_for_unenrolled_student(
+    client: AsyncClient,
+) -> None:
     async with _student_client() as sc:
         response = await sc.get("/student/sessions")
 
@@ -131,7 +133,9 @@ async def test_student_sessions_status_completed(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_student_sessions_not_in_list_without_enrollment(client: AsyncClient) -> None:
+async def test_student_sessions_not_in_list_without_enrollment(
+    client: AsyncClient,
+) -> None:
     quiz_id = await _create_quiz(client)
     exam_id = await _create_exam(client, quiz_id)
     # Deliberately do NOT enroll the student

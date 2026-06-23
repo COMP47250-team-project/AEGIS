@@ -73,12 +73,12 @@ async def get_student_exam_results(
     Reveals correct answers for MCQ questions. Only available once the exam
     is closed so students cannot use this to cheat during the exam.
     """
-    exam_result = await db.execute(
-        select(ExamSession).where(ExamSession.id == exam_id)
-    )
+    exam_result = await db.execute(select(ExamSession).where(ExamSession.id == exam_id))
     exam = exam_result.scalar_one_or_none()
     if exam is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exam not found"
+        )
 
     if exam.state != "closed":
         raise HTTPException(
