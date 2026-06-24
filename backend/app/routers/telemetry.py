@@ -119,6 +119,8 @@ async def _receive_loop(
                 continue
 
             if isinstance(event_type, str):
+                if student_name is None and student_email is None:
+                    student_name, student_email = await _lookup_identity(db, student_id)
                 payload = event_data.get("payload")
                 live_monitor.record_event(
                     str(exam_id),
@@ -178,8 +180,8 @@ async def exam_telemetry_ws(
 
     logger.info("Telemetry WS opened: exam=%s student=%s", exam_id, student_id)
 
-    async with AsyncSessionLocal() as db:
-        student_name, student_email = await _lookup_identity(db, student_id)
+    student_name: str | None = None
+    student_email: str | None = None
 
     receive_task = asyncio.create_task(
         _receive_loop(
@@ -293,7 +295,11 @@ async def _lookup_identity(
         sid = uuid.UUID(student_id)
     except ValueError:
         return None, None
-    result = await db.execute(select(User).where(User.id == sid))
+    try:
+        result = await db.execute(select(User).where(User.id == sid))
+    except Exception:
+        logger.exception("Failed to resolve student identity for live telemetry")
+        return None, None
     user = result.scalar_one_or_none()
     if user is None:
         return None, None
