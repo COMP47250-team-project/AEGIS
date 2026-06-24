@@ -16,14 +16,14 @@ import uuid
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.models.exam import Enrollment, ExamSession
-from app.models.telemetry import SessionScore
 from app.models.user import User
 from app.services import telemetry_service
-from app.services.scorer import compute_and_save_scores
+from app.services.live_monitor import live_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,9 @@ async def exam_telemetry_ws(
 
     try:
         async with AsyncSessionLocal() as db:
+            # Resolve the display name + email once for the live monitor.
+            student_name, student_email = await _lookup_identity(db, student_id)
+
             while True:
                 try:
                     raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
@@ -80,9 +83,22 @@ async def exam_telemetry_ws(
                 except json.JSONDecodeError:
                     continue
 
+                event_type = event_data.get("type")
                 # Skip pong/ping frames
-                if event_data.get("type") in ("ping", "pong"):
+                if event_type in ("ping", "pong"):
                     continue
+
+                # Feed the live view (in-memory, never blocks the student).
+                if isinstance(event_type, str):
+                    payload = event_data.get("payload")
+                    live_monitor.record_event(
+                        str(exam_id),
+                        student_id,
+                        event_type,
+                        payload if isinstance(payload, dict) else {},
+                        name=student_name,
+                        email=student_email,
+                    )
 
                 try:
                     await telemetry_service.store_event(
@@ -129,26 +145,25 @@ async def professor_monitor_ws(
     await websocket.accept()
     logger.info("Professor WS opened: exam=%s professor=%s", exam_id, professor_id)
 
+    # One-time DB read so enrolled students show up (inactive) before they send
+    # anything; every tick after this is a pure in-memory snapshot.
+    try:
+        async with AsyncSessionLocal() as db:
+            await _seed_roster(db, exam_id)
+    except Exception:
+        logger.exception("Failed to seed roster for exam %s", exam_id)
+
     try:
         while True:
-            # Recompute scores from live telemetry before every broadcast
-            try:
-                async with AsyncSessionLocal() as db:
-                    await compute_and_save_scores(db, exam_id)
-            except Exception:
-                logger.exception("Live score computation failed for exam %s", exam_id)
-
-            payload = await _build_professor_payload(exam_id)
+            payload = live_monitor.snapshot(str(exam_id))
             try:
                 await websocket.send_text(json.dumps(payload))
             except WebSocketDisconnect:
                 break
 
-            # Wait 5 seconds, exit early if client disconnects
+            # Wait 5 seconds, exit early if the professor disconnects.
             try:
-                msg = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
-                if msg:
-                    pass  # Ignore any client message (keepalive)
+                await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
             except asyncio.TimeoutError:
                 pass
             except WebSocketDisconnect:
@@ -158,54 +173,37 @@ async def professor_monitor_ws(
         logger.info("Professor WS closed: exam=%s professor=%s", exam_id, professor_id)
 
 
-async def _build_professor_payload(exam_id: uuid.UUID) -> dict:
-    """Query current session_scores and enrolled students, return summary."""
-    async with AsyncSessionLocal() as db:
-        # Load enrolled students
-        enrollment_result = await db.execute(
-            select(Enrollment).where(Enrollment.exam_id == exam_id)
-        )
-        enrollments = list(enrollment_result.scalars().all())
-        student_ids = [e.student_id for e in enrollments]
+async def _lookup_identity(
+    db: AsyncSession, student_id: str
+) -> tuple[str | None, str | None]:
+    """Return a student's (display name, email), or (None, None) if not found / bad id."""
+    try:
+        sid = uuid.UUID(student_id)
+    except ValueError:
+        return None, None
+    result = await db.execute(select(User).where(User.id == sid))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return None, None
+    return user.full_name, user.email
 
-        # Load user metadata
-        user_map: dict[str, User] = {}
-        if student_ids:
-            user_result = await db.execute(
-                select(User).where(User.id.in_([uuid.UUID(sid) for sid in student_ids]))
-            )
-            for u in user_result.scalars().all():
-                user_map[str(u.id)] = u
 
-        # Load scores (may not exist yet while exam is running)
-        score_map: dict[str, SessionScore] = {}
-        if student_ids:
-            score_result = await db.execute(
-                select(SessionScore).where(SessionScore.exam_id == exam_id)
-            )
-            for s in score_result.scalars().all():
-                score_map[s.student_id] = s
+async def _seed_roster(db: AsyncSession, exam_id: uuid.UUID) -> None:
+    """Register all enrolled students (with names) so they appear in the view."""
+    enrollment_result = await db.execute(
+        select(Enrollment).where(Enrollment.exam_id == exam_id)
+    )
+    student_ids = [e.student_id for e in enrollment_result.scalars().all()]
+    if not student_ids:
+        return
 
-        students = []
-        for sid in student_ids:
-            user = user_map.get(sid)
-            score = score_map.get(sid)
-            students.append(
-                {
-                    "student_id": sid,
-                    "name": user.full_name if user else None,
-                    "email": user.email if user else None,
-                    "integrity_score": (
-                        round(score.integrity_score, 3) if score else None
-                    ),
-                    "tab_switch_score": (
-                        round(score.tab_switch_score, 3) if score else None
-                    ),
-                    "paste_score": round(score.paste_score, 3) if score else None,
-                    "keystroke_score": (
-                        round(score.keystroke_score, 3) if score else None
-                    ),
-                }
-            )
+    identity_by_id: dict[str, tuple[str | None, str | None]] = {}
+    user_result = await db.execute(
+        select(User).where(User.id.in_([uuid.UUID(sid) for sid in student_ids]))
+    )
+    for u in user_result.scalars().all():
+        identity_by_id[str(u.id)] = (u.full_name, u.email)
 
-        return {"exam_id": str(exam_id), "students": students}
+    for sid in student_ids:
+        name, email = identity_by_id.get(sid, (None, None))
+        live_monitor.seed_student(str(exam_id), sid, name, email)
