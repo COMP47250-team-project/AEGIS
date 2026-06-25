@@ -16,6 +16,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.telemetry import SessionScore, TelemetryEvent
+from app.services.scoring import Event
+from app.services.scoring.components.paste import paste_score
+from app.services.scoring.components.tab_blur import tab_blur_score
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +38,9 @@ def _clamp(v: float) -> float:
 
 def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
     """Compute 0–1 sub-score for each of the six signals."""
-    tab_blur_count = sum(1 for e in events if e.event_type == "tab_blur")
-    paste_count = sum(1 for e in events if e.event_type == "paste")
+    # Adapt ORM rows to the lightweight ScoringEvent shape the component scorers
+    # expect (decouples them from SQLAlchemy's Mapped[...] attribute types).
+    scoring_events = [Event(e.event_type, e.payload) for e in events]
     resize_count = sum(1 for e in events if e.event_type == "resize")
 
     # IKI: very short intervals (< 50ms) indicate pasted/AI-generated text
@@ -91,8 +95,8 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
         answer_time_score = 0.0
 
     return {
-        "tab_switch": _clamp(tab_blur_count / 10.0),
-        "paste": _clamp(paste_count / 3.0),
+        "tab_switch": tab_blur_score(scoring_events),
+        "paste": paste_score(scoring_events),
         "iki": iki_score,
         "first_keypress": first_keypress_score,
         "answer_time": answer_time_score,

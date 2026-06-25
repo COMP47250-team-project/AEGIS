@@ -7,6 +7,9 @@ DB scorer (so the live number and the final report agree).
 
 from app.services.live_monitor import ACTIVE_WINDOW_S, LiveMonitor
 from app.services.scorer import compute_risk_score
+from app.services.scoring import Event
+from app.services.scoring.components.paste import paste_score
+from app.services.scoring.components.tab_blur import tab_blur_score
 
 EXAM = "exam-1"
 
@@ -39,15 +42,18 @@ def test_counts_name_and_last_event_tracked():
 def test_live_risk_matches_db_scorer():
     monitor = LiveMonitor()
     for _ in range(3):
-        monitor.record_event(EXAM, "s1", "tab_blur", {}, now=1.0)  # tab_switch -> 0.3
+        monitor.record_event(EXAM, "s1", "tab_blur", {}, now=1.0)
     for _ in range(3):
-        monitor.record_event(EXAM, "s1", "paste", {}, now=1.0)  # paste -> 1.0
+        monitor.record_event(EXAM, "s1", "paste", {"question_id": "q1"}, now=1.0)
 
+    # The live tab/paste scores must come from the same component functions the
+    # DB scorer uses, so the live number and the final report agree.
+    events = [Event("tab_blur", {})] * 3 + [Event("paste", {"question_id": "q1"})] * 3
     expected = round(
         compute_risk_score(
             {
-                "tab_switch": 0.3,
-                "paste": 1.0,
+                "tab_switch": tab_blur_score(events),
+                "paste": paste_score(events),
                 "iki": 0.0,
                 "first_keypress": 0.0,
                 "answer_time": 0.0,
