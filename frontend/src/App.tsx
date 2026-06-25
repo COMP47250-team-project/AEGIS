@@ -7,6 +7,7 @@ import LoginPage from "./pages/Login";
 import RegisterPage from "./pages/Register";
 import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorConsole from "./pages/ProfessorConsole";
+import ProfessorSession from "./pages/ProfessorSession";
 import ExamShell from "./pages/ExamShell";
 import StudentResults from "./pages/StudentResults";
 
@@ -30,6 +31,7 @@ const App: React.FC = () => {
           {/* Protected — professors only */}
           <Route element={<ProtectedRoute allowedRole="professor" />}>
             <Route path="/professor/dashboard" element={<ProfessorConsole />} />
+            <Route path="/professor/session/:sessionId" element={<ProfessorSession />} />
           </Route>
 
           <Route path="/" element={<Navigate to="/login" replace />} />
