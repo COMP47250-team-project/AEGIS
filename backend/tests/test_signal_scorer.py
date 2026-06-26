@@ -18,12 +18,12 @@ class TestWeights:
         assert sum(WEIGHTS.values()) == pytest.approx(1.0)
 
     def test_weights_match_formula_specification(self) -> None:
-        assert WEIGHTS["tab_blur_score"] == 0.30
-        assert WEIGHTS["paste_score"] == 0.25
-        assert WEIGHTS["iki_outlier_score"] == 0.20
-        assert WEIGHTS["first_keypress_score"] == 0.10
-        assert WEIGHTS["answer_time_score"] == 0.10
-        assert WEIGHTS["resize_score"] == 0.05
+        assert WEIGHTS["tab_blur_score"] == pytest.approx(0.30)
+        assert WEIGHTS["paste_score"] == pytest.approx(0.25)
+        assert WEIGHTS["iki_outlier_score"] == pytest.approx(0.20)
+        assert WEIGHTS["first_keypress_score"] == pytest.approx(0.10)
+        assert WEIGHTS["answer_time_score"] == pytest.approx(0.10)
+        assert WEIGHTS["resize_score"] == pytest.approx(0.05)
 
 
 class TestZeroEvents:
@@ -31,13 +31,13 @@ class TestZeroEvents:
         """No signals at all → result is fully zeroed, not suspicious."""
         result = compute_signal_scores()
 
-        assert result.risk_score == 0.0
-        assert result.tab_blur_score == 0.0
-        assert result.paste_score == 0.0
-        assert result.iki_outlier_score == 0.0
-        assert result.first_keypress_score == 0.0
-        assert result.answer_time_score == 0.0
-        assert result.resize_score == 0.0
+        assert result.risk_score == pytest.approx(0.0)
+        assert result.tab_blur_score == pytest.approx(0.0)
+        assert result.paste_score == pytest.approx(0.0)
+        assert result.iki_outlier_score == pytest.approx(0.0)
+        assert result.first_keypress_score == pytest.approx(0.0)
+        assert result.answer_time_score == pytest.approx(0.0)
+        assert result.resize_score == pytest.approx(0.0)
 
     def test_zero_events_returns_signal_score_result_model(self) -> None:
         result = compute_signal_scores()
@@ -82,12 +82,12 @@ class TestAllEventsPresent:
             answer_time_score=0.7,
             resize_score=0.8,
         )
-        assert result.tab_blur_score == 0.3
-        assert result.paste_score == 0.4
-        assert result.iki_outlier_score == 0.5
-        assert result.first_keypress_score == 0.6
-        assert result.answer_time_score == 0.7
-        assert result.resize_score == 0.8
+        assert result.tab_blur_score == pytest.approx(0.3)
+        assert result.paste_score == pytest.approx(0.4)
+        assert result.iki_outlier_score == pytest.approx(0.5)
+        assert result.first_keypress_score == pytest.approx(0.6)
+        assert result.answer_time_score == pytest.approx(0.7)
+        assert result.resize_score == pytest.approx(0.8)
 
 
 class TestSomeEventsMissing:
@@ -96,9 +96,9 @@ class TestSomeEventsMissing:
         should default to 0.0 (no suspicion) rather than raising."""
         result = compute_signal_scores(tab_blur_score=0.9)
 
-        assert result.tab_blur_score == 0.9
-        assert result.paste_score == 0.0
-        assert result.iki_outlier_score == 0.0
+        assert result.tab_blur_score == pytest.approx(0.9)
+        assert result.paste_score == pytest.approx(0.0)
+        assert result.iki_outlier_score == pytest.approx(0.0)
         assert result.risk_score == pytest.approx(0.30 * 0.9)
 
     def test_only_paste_and_iki_present(self) -> None:
@@ -106,18 +106,18 @@ class TestSomeEventsMissing:
 
         expected = 0.25 * 0.5 + 0.20 * 0.5
         assert result.risk_score == pytest.approx(expected)
-        assert result.tab_blur_score == 0.0
-        assert result.first_keypress_score == 0.0
+        assert result.tab_blur_score == pytest.approx(0.0)
+        assert result.first_keypress_score == pytest.approx(0.0)
 
 
 class TestClamping:
     def test_values_above_one_are_clamped(self) -> None:
         result = compute_signal_scores(tab_blur_score=5.0)
-        assert result.tab_blur_score == 1.0
+        assert result.tab_blur_score == pytest.approx(1.0)
 
     def test_negative_values_are_clamped_to_zero(self) -> None:
         result = compute_signal_scores(paste_score=-2.0)
-        assert result.paste_score == 0.0
+        assert result.paste_score == pytest.approx(0.0)
 
     def test_risk_score_never_exceeds_one_even_with_extreme_inputs(self) -> None:
         result = compute_signal_scores(
@@ -128,7 +128,7 @@ class TestClamping:
             answer_time_score=10.0,
             resize_score=10.0,
         )
-        assert result.risk_score == 1.0
+        assert result.risk_score == pytest.approx(1.0)
 
 
 class TestPurity:
