@@ -40,6 +40,28 @@ export class TelemetryClient {
     }
   }
 
+  /**
+   * AEGIS-41: Cleanly close the WebSocket as part of a deliberate student
+   * submission, distinct from destroy(). Cancels any pending reconnect
+   * attempt (so a slow reconnect timer doesn't fire after the student has
+   * already left the page) and closes the socket immediately. Unlike
+   * destroy(), this does not flip isDestroyed — callers that still hold a
+   * reference to this client (e.g. for logging) won't see future enqueue()
+   * calls silently buffer forever, but no new connection attempt will be
+   * made either, since the caller is expected to discard the client right
+   * after calling close().
+   */
+  close(): void {
+    if (this.retryTimeout !== null) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
+    if (this.ws !== null) {
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
   /** Tear down the client — closes socket and cancels retries. */
   destroy(): void {
     this.isDestroyed = true;
