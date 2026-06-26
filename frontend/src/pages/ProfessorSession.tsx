@@ -64,14 +64,24 @@ const TimelineModal: React.FC<{
       .catch(() => setError(true));
   }, [sessionId, student.student_id]);
 
+  // Close on Escape (keyboard-accessible — no click-outside handler needed).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-ink/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      onClick={onClose}
+      role="presentation"
     >
       <div
         className="bg-surface-card w-full sm:max-w-lg sm:rounded-md border border-hairline max-h-[85vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
       >
         <header className="flex items-center justify-between px-4 py-3 border-b border-hairline">
           <div className="min-w-0">
@@ -278,8 +288,16 @@ const ProfessorSession: React.FC = () => {
               return (
                 <div
                   key={s.student_id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelected(s)}
-                  className={`bg-surface-card rounded-md p-4 cursor-pointer transition-colors hover:border-surface-dark ${
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelected(s);
+                    }
+                  }}
+                  className={`bg-surface-card rounded-md p-4 cursor-pointer transition-colors hover:border-surface-dark focus:outline-none focus:ring-2 focus:ring-accent-blue/30 ${
                     showBorder
                       ? "border-2 border-accent-red"
                       : "border border-hairline"
