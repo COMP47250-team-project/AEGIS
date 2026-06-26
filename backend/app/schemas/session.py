@@ -25,3 +25,23 @@ class SessionListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TimelineEvent(BaseModel):
+    """One telemetry event in a student's read-only event timeline."""
+
+    model_config = {"from_attributes": True}
+
+    event_type: str
+    payload: dict
+    occurred_at: datetime
+
+
+class TimelineResponse(BaseModel):
+    """Paginated, most-recent-first telemetry timeline for one student."""
+
+    student_id: str
+    items: list[TimelineEvent]
+    total: int
+    page: int
+    page_size: int
