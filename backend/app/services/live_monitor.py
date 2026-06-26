@@ -13,13 +13,16 @@ import time
 from dataclasses import dataclass, field
 
 from app.services.scorer import compute_risk_score
+from app.services.scoring import Event
+from app.services.scoring.components.paste import paste_score
+from app.services.scoring.components.tab_blur import tab_blur_score
 
 # No frame for this long => the student is treated as gone.
 ACTIVE_WINDOW_S = 60.0
 
 # Same normalisation the DB scorer uses, so the live score matches the final one.
-_TAB_DIVISOR = 10.0
-_PASTE_DIVISOR = 3.0
+# tab_blur + paste delegate to the shared component scorers (AEGIS-54); the other
+# four stay inline until their own tickets unify them.
 _RESIZE_DIVISOR = 5.0
 _IKI_BASELINE_MS = 400.0
 _QUICK_KEYPRESS_MS = 1000.0
@@ -44,14 +47,21 @@ class StudentAggregate:
     keypresses: int = 0  # answer_start events
     quick_keypresses: int = 0  # ...answered in under a second
     question_durations: dict[str, float] = field(default_factory=dict)
+    # Buffered tab_blur/tab_return/paste frames fed to the shared component
+    # scorers (low-frequency, so memory stays bounded).
+    signal_events: list[Event] = field(default_factory=list)
     last_event: str | None = None
     last_seen: float | None = None  # monotonic seconds; None until first frame
 
     def record(self, event_type: str, payload: dict, now: float) -> None:
         if event_type == "tab_blur":
             self.tab_blurs += 1
+            self.signal_events.append(Event(event_type, payload))
+        elif event_type == "tab_return":
+            self.signal_events.append(Event(event_type, payload))
         elif event_type == "paste":
             self.pastes += 1
+            self.signal_events.append(Event(event_type, payload))
         elif event_type == "resize":
             self.resizes += 1
         elif event_type == "key_interval":
@@ -94,8 +104,8 @@ class StudentAggregate:
             answer_time = 0.0
 
         return {
-            "tab_switch": _clamp(self.tab_blurs / _TAB_DIVISOR),
-            "paste": _clamp(self.pastes / _PASTE_DIVISOR),
+            "tab_switch": tab_blur_score(self.signal_events),
+            "paste": paste_score(self.signal_events),
             "iki": iki,
             "first_keypress": first_keypress,
             "answer_time": answer_time,
