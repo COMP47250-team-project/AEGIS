@@ -58,7 +58,9 @@ const TimelineModal: React.FC<{
   useEffect(() => {
     apiClient
       .get<{ items: TimelineItem[] }>(
-        `/sessions/${sessionId}/students/${student.student_id}/events`
+        `/sessions/${encodeURIComponent(sessionId)}/students/${encodeURIComponent(
+          student.student_id
+        )}/events`
       )
       .then(({ data }) => setEvents(data.items))
       .catch(() => setError(true));
@@ -157,7 +159,11 @@ const ProfessorSession: React.FC = () => {
       /^http/,
       "ws"
     );
-    const ws = new WebSocket(`${wsBase}/ws/professor/${sessionId}?token=${token}`);
+    // encodeURIComponent: sessionId/token come from the route/session — never
+    // interpolate user-controlled values into a request URL unencoded (SSRF).
+    const ws = new WebSocket(
+      `${wsBase}/ws/professor/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`
+    );
     wsRef.current = ws;
 
     ws.onopen = () => setWsStatus("connected");
@@ -180,7 +186,7 @@ const ProfessorSession: React.FC = () => {
     if (!sessionId) return;
     setEnding(true);
     try {
-      await apiClient.post(`/exams/${sessionId}/close`);
+      await apiClient.post(`/exams/${encodeURIComponent(sessionId)}/close`);
       navigate("/professor/dashboard");
     } catch {
       setEnding(false);
