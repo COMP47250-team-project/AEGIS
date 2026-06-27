@@ -14,19 +14,19 @@ from dataclasses import dataclass, field
 
 from app.services.scorer import compute_risk_score
 from app.services.scoring import Event
+from app.services.scoring.components.answer_time import answer_time_distribution_score
+from app.services.scoring.components.first_keypress import first_keypress_score
 from app.services.scoring.components.paste import paste_score
+from app.services.scoring.components.resize import resize_score
 from app.services.scoring.components.tab_blur import tab_blur_score
 
 # No frame for this long => the student is treated as gone.
 ACTIVE_WINDOW_S = 60.0
 
 # Same normalisation the DB scorer uses, so the live score matches the final one.
-# tab_blur + paste delegate to the shared component scorers (AEGIS-54); the other
-# four stay inline until their own tickets unify them.
-_RESIZE_DIVISOR = 5.0
+# All signals except iki delegate to the shared component scorers (AEGIS-54/56);
+# iki stays an inline running mean until its own ticket (AEGIS-55).
 _IKI_BASELINE_MS = 400.0
-_QUICK_KEYPRESS_MS = 1000.0
-_FAST_ANSWER_MS = 10_000.0
 
 
 def _clamp(v: float) -> float:
@@ -41,46 +41,35 @@ class StudentAggregate:
     email: str | None = None
     tab_blurs: int = 0
     pastes: int = 0
-    resizes: int = 0
     iki_sum_ms: float = 0.0
     iki_count: int = 0
-    keypresses: int = 0  # answer_start events
-    quick_keypresses: int = 0  # ...answered in under a second
-    question_durations: dict[str, float] = field(default_factory=dict)
-    # Buffered tab_blur/tab_return/paste frames fed to the shared component
-    # scorers (low-frequency, so memory stays bounded).
+    # Buffered low-frequency frames fed to the shared component scorers
+    # (tab/paste/first_keypress/answer_time/resize); memory stays bounded.
     signal_events: list[Event] = field(default_factory=list)
     last_event: str | None = None
     last_seen: float | None = None  # monotonic seconds; None until first frame
 
     def record(self, event_type: str, payload: dict, now: float) -> None:
-        if event_type == "tab_blur":
-            self.tab_blurs += 1
+        # Low-frequency frames are buffered for the shared component scorers;
+        # key_interval is high-frequency so it stays an inline running mean.
+        if event_type in (
+            "tab_blur",
+            "tab_return",
+            "paste",
+            "resize",
+            "answer_start",
+            "question_time",
+        ):
             self.signal_events.append(Event(event_type, payload))
-        elif event_type == "tab_return":
-            self.signal_events.append(Event(event_type, payload))
-        elif event_type == "paste":
-            self.pastes += 1
-            self.signal_events.append(Event(event_type, payload))
-        elif event_type == "resize":
-            self.resizes += 1
+            if event_type == "tab_blur":
+                self.tab_blurs += 1
+            elif event_type == "paste":
+                self.pastes += 1
         elif event_type == "key_interval":
             interval = payload.get("interval_ms")
             if isinstance(interval, (int, float)):
                 self.iki_sum_ms += float(interval)
                 self.iki_count += 1
-        elif event_type == "answer_start":
-            self.keypresses += 1
-            elapsed = payload.get("elapsed_ms")
-            if isinstance(elapsed, (int, float)) and float(elapsed) < _QUICK_KEYPRESS_MS:
-                self.quick_keypresses += 1
-        elif event_type == "question_time":
-            qid = payload.get("question_id")
-            duration = payload.get("duration_ms")
-            # Cumulative per question, so keep the largest value seen.
-            if isinstance(qid, str) and isinstance(duration, (int, float)):
-                prev = self.question_durations.get(qid, 0.0)
-                self.question_durations[qid] = max(prev, float(duration))
 
         self.last_event = event_type
         self.last_seen = now
@@ -92,24 +81,13 @@ class StudentAggregate:
         else:
             iki = 0.0
 
-        first_keypress = (
-            _clamp(self.quick_keypresses / self.keypresses) if self.keypresses else 0.0
-        )
-
-        durations = self.question_durations
-        if durations:
-            fast = sum(1 for d in durations.values() if d < _FAST_ANSWER_MS)
-            answer_time = _clamp(fast / len(durations))
-        else:
-            answer_time = 0.0
-
         return {
             "tab_switch": tab_blur_score(self.signal_events),
             "paste": paste_score(self.signal_events),
             "iki": iki,
-            "first_keypress": first_keypress,
-            "answer_time": answer_time,
-            "resize": _clamp(self.resizes / _RESIZE_DIVISOR),
+            "first_keypress": first_keypress_score(self.signal_events),
+            "answer_time": answer_time_distribution_score(self.signal_events),
+            "resize": resize_score(self.signal_events),
         }
 
     def summarize(self, student_id: str, now: float) -> dict:
