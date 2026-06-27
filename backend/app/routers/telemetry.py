@@ -102,7 +102,8 @@ async def _receive_loop(
     student_email: str | None,
 ) -> None:
     """Forward telemetry frames from the client to storage."""
-    async with AsyncSessionLocal() as db:
+    db: AsyncSession | None = None
+    try:
         while True:
             try:
                 raw = await ws.receive_text()
@@ -117,6 +118,9 @@ async def _receive_loop(
             event_type = event_data.get("type")
             if event_type in ("ping", "pong"):
                 continue
+
+            if db is None:
+                db = AsyncSessionLocal()
 
             if isinstance(event_type, str):
                 if student_name is None and student_email is None:
@@ -135,6 +139,9 @@ async def _receive_loop(
                 await telemetry_service.store_event(db, exam_id, student_id, event_data)
             except Exception:
                 logger.exception("Failed to store telemetry event")
+    finally:
+        if db is not None:
+            await db.close()
 
 
 # ---------------------------------------------------------------------------

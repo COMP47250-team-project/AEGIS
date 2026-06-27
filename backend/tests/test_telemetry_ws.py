@@ -109,9 +109,7 @@ def test_not_enrolled_closes_with_4403():
             mock.patch("app.routers.telemetry._is_enrolled", return_value=False),
             pytest.raises(WebSocketDisconnect) as exc_info,
         ):
-            with client.websocket_connect(
-                f"/ws/exam/{EXAM_ID}?token={token}"
-            ) as ws:
+            with client.websocket_connect(f"/ws/exam/{EXAM_ID}?token={token}") as ws:
                 ws.receive_text()
     assert exc_info.value.code == 4403
 
@@ -124,7 +122,9 @@ def test_not_enrolled_closes_with_4403():
 def test_enrolled_student_is_registered():
     with _enrolled_ws():
         bucket = telemetry._connections.get(EXAM_ID, {})
-        assert STUDENT_ID in bucket, "Connection should be registered while socket is open"
+        assert (
+            STUDENT_ID in bucket
+        ), "Connection should be registered while socket is open"
 
 
 # ---------------------------------------------------------------------------
@@ -146,9 +146,7 @@ def test_mark_disconnected_called_on_close():
             mock.patch("app.routers.telemetry._is_enrolled", return_value=True),
             mock.patch("app.routers.telemetry._mark_disconnected") as mock_stamp,
         ):
-            with client.websocket_connect(
-                f"/ws/exam/{EXAM_ID}?token={token}"
-            ):
+            with client.websocket_connect(f"/ws/exam/{EXAM_ID}?token={token}"):
                 pass  # immediate close
     mock_stamp.assert_called_once()
     call_kwargs = mock_stamp.call_args
@@ -181,9 +179,9 @@ def test_reconnect_replaces_stale_registry_entry():
         current = telemetry._connections.get(EXAM_ID, {}).get(STUDENT_ID)
         # The first socket is closed; registry holds the current (second) socket
         assert current is not None
-        assert current is not first_socket_ref[0], (
-            "Registry should hold the new socket, not the stale first one"
-        )
+        assert (
+            current is not first_socket_ref[0]
+        ), "Registry should hold the new socket, not the stale first one"
 
 
 # ---------------------------------------------------------------------------
@@ -196,14 +194,8 @@ def _connect_and_hold(student_id: str, results: dict, idx: int) -> None:
     token = _make_token(student_id)
     client = TestClient(app, raise_server_exceptions=False)
     try:
-        with (
-            mock.patch("app.routers.telemetry._is_enrolled", return_value=True),
-            mock.patch("app.routers.telemetry._mark_disconnected"),
-        ):
-            with client.websocket_connect(
-                f"/ws/exam/{EXAM_ID}?token={token}"
-            ):
-                time.sleep(0.02)  # hold open briefly
+        with client.websocket_connect(f"/ws/exam/{EXAM_ID}?token={token}"):
+            time.sleep(0.02)  # hold open briefly
         results[idx] = True
     except Exception as exc:
         results[idx] = str(exc)
@@ -223,10 +215,14 @@ def test_200_concurrent_connections():
         for i, sid in enumerate(student_ids)
     ]
 
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=60)
+    with (
+        mock.patch("app.routers.telemetry._is_enrolled", return_value=True),
+        mock.patch("app.routers.telemetry._mark_disconnected"),
+    ):
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=60)
 
     successes = sum(1 for v in results.values() if v is True)
     failed_indices = [i for i, v in results.items() if v is not True]
