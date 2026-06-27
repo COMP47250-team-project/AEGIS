@@ -122,6 +122,8 @@ async def _receive_loop(
             if db is None:
                 db = AsyncSessionLocal()
 
+            assert db is not None
+
             if isinstance(event_type, str):
                 if student_name is None and student_email is None:
                     student_name, student_email = await _lookup_identity(db, student_id)
