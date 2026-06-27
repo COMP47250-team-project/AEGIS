@@ -69,7 +69,7 @@ def append_session_tape(raw_message: str, session_id: str | None) -> None:
     try:
         conn_str = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
         if conn_str:  # pragma: no cover - requires env in CI to test
-            from azure.storage.blob.aio import BlobServiceClient
+            from azure.storage.blob.aio import BlobServiceClient  # type: ignore
 
             container = "session-tapes"
             blob_name = f"sessions/{session_id}/{date_str}.jsonl"
@@ -114,4 +114,3 @@ def append_session_tape(raw_message: str, session_id: str | None) -> None:
         logger.exception(
             "Failed to append session tape locally for session %s", session_id
         )
-

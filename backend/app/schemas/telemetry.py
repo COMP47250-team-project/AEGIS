@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import date
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, TypeAdapter
@@ -15,7 +14,7 @@ class BaseTelemetryEvent(BaseModel):
 
 class KeyIntervalEvent(BaseTelemetryEvent):
     type: Literal["key_interval"]
-    payload: dict
+    payload: dict | None = None
 
 
 class ResizeEvent(BaseTelemetryEvent):
@@ -27,8 +26,7 @@ class ResizeEvent(BaseTelemetryEvent):
 # the `type` field so Pydantic will pick the right model.
 TelemetryEventSchema = TypeAdapter(
     Annotated[
-        Union[KeyIntervalEvent, ResizeEvent, BaseTelemetryEvent],
+        Union[KeyIntervalEvent, ResizeEvent],
         Field(discriminator="type"),
     ]
 )
-

@@ -191,7 +191,10 @@ async def _receive_loop(
             # Append raw message to session tape (local fallback if blob not configured).
             try:
                 session_id = event_data.get("sessionId")
-                append_session_tape(raw, session_id)
+                session_id_str = (
+                    session_id if isinstance(session_id, (str, type(None))) else None
+                )
+                append_session_tape(raw, session_id_str)
             except Exception:
                 logger.exception("Failed to append session tape")
     finally:
@@ -396,4 +399,3 @@ async def _seed_roster(db: AsyncSession, exam_id: uuid.UUID) -> None:
     for sid in student_ids:
         name, email = identity_by_id.get(sid, (None, None))
         live_monitor.seed_student(str(exam_id), sid, name, email)
-
