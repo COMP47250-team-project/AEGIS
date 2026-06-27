@@ -17,7 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.services.scoring import Event
+from app.services.scoring.components.answer_time import answer_time_distribution_score
+from app.services.scoring.components.first_keypress import first_keypress_score
 from app.services.scoring.components.paste import paste_score
+from app.services.scoring.components.resize import resize_score
 from app.services.scoring.components.tab_blur import tab_blur_score
 
 logger = logging.getLogger(__name__)
@@ -41,9 +44,9 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
     # Adapt ORM rows to the lightweight ScoringEvent shape the component scorers
     # expect (decouples them from SQLAlchemy's Mapped[...] attribute types).
     scoring_events = [Event(e.event_type, e.payload) for e in events]
-    resize_count = sum(1 for e in events if e.event_type == "resize")
 
-    # IKI: very short intervals (< 50ms) indicate pasted/AI-generated text
+    # IKI stays inline pending its own ticket (AEGIS-55): a very short mean
+    # interval indicates pasted / AI-generated text.
     iki_events = [e for e in events if e.event_type == "key_interval"]
     if iki_events:
         intervals = []
@@ -60,47 +63,13 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
     else:
         iki_score = 0.0
 
-    # first_keypress: very quick responses (< 1s) on most questions → suspicious
-    first_keypress_events = [e for e in events if e.event_type == "answer_start"]
-    if first_keypress_events:
-        quick = sum(
-            1
-            for e in first_keypress_events
-            if isinstance(e.payload.get("elapsed_ms"), (int, float))
-            and float(e.payload["elapsed_ms"]) < 1000  # type: ignore[arg-type]
-        )
-        first_keypress_score = _clamp(quick / max(len(first_keypress_events), 1))
-    else:
-        first_keypress_score = 0.0
-
-    # answer_time: very short cumulative time on a question → suspicious
-    # (pre-typed answers, copy-paste, or skipped). question_time events carry
-    # a running cumulative duration, and one event is emitted per question at
-    # submit, so we take the final (max) duration per question_id before scoring.
-    question_time_events = [e for e in events if e.event_type == "question_time"]
-    if question_time_events:
-        durations: dict[str, float] = {}
-        for e in question_time_events:
-            qid = e.payload.get("question_id")
-            v = e.payload.get("duration_ms")
-            if isinstance(qid, str) and isinstance(v, (int, float)):
-                durations[qid] = max(durations.get(qid, 0.0), float(v))
-        if durations:
-            # Questions answered in under 10s (including 0ms / skipped) are fast.
-            fast = sum(1 for d in durations.values() if d < 10_000)
-            answer_time_score = _clamp(fast / len(durations))
-        else:
-            answer_time_score = 0.0
-    else:
-        answer_time_score = 0.0
-
     return {
         "tab_switch": tab_blur_score(scoring_events),
         "paste": paste_score(scoring_events),
         "iki": iki_score,
-        "first_keypress": first_keypress_score,
-        "answer_time": answer_time_score,
-        "resize": _clamp(resize_count / 5.0),
+        "first_keypress": first_keypress_score(scoring_events),
+        "answer_time": answer_time_distribution_score(scoring_events),
+        "resize": resize_score(scoring_events),
     }
 
 
@@ -114,7 +83,9 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     risk scores, and upsert into session_scores."""
 
     result = await db.execute(
-        select(TelemetryEvent).where(TelemetryEvent.exam_id == exam_id)
+        select(TelemetryEvent)
+        .where(TelemetryEvent.exam_id == exam_id)
+        .order_by(TelemetryEvent.occurred_at)
     )
     all_events = list(result.scalars().all())
 
