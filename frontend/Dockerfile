@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install deps before copying source so this layer is cached
 COPY package*.json .
-RUN npm ci
+RUN npm install
 
 # Source is mounted at run time in development (see docker-compose volumes).
 COPY . .

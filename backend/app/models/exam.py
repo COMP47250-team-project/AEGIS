@@ -93,6 +93,9 @@ class StudentSession(Base):
     consent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    ws_disconnected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ExamAnswer(Base):

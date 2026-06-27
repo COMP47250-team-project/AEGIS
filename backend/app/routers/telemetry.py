@@ -6,21 +6,26 @@ Two endpoints:
 
 Both validate the JWT from the ?token= query parameter.
 Telemetry is independent of answer submission: a WS failure never affects exam completion.
+
+Close codes used by the student endpoint:
+  4401 — JWT missing, expired, or invalid.
+  4403 — Student is not enrolled in the requested exam.
 """
 
 import asyncio
 import json
 import logging
 import uuid
+from collections import defaultdict
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from jose import JWTError, jwt
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.models.exam import Enrollment, ExamSession, StudentSession
 from app.config import settings
 from app.database import AsyncSessionLocal
-from app.models.exam import Enrollment, ExamSession
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.services import telemetry_service
 from app.services.live_monitor import live_monitor
@@ -28,6 +33,18 @@ from app.services.live_monitor import live_monitor
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["telemetry"])
+
+# In-memory registry: {exam_id_str: {student_id: WebSocket}}
+# Shared across all coroutines in the process; guarded by _registry_lock.
+_connections: dict[str, dict[str, WebSocket]] = defaultdict(dict)
+_registry_lock = asyncio.Lock()
+
+# WebSocket close codes (application-level, 4000-4999)
+_WS_UNAUTHORIZED = 4401
+_WS_FORBIDDEN = 4403
+
+# Heartbeat interval expected by the AEGIS-48 acceptance criteria
+_HEARTBEAT_INTERVAL_S = 30
 
 
 def _decode_token(token: str) -> str | None:
@@ -39,6 +56,94 @@ def _decode_token(token: str) -> str | None:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+async def _is_enrolled(exam_id: uuid.UUID, student_id: str) -> bool:
+    """Return True if the student has an enrollment row for this exam."""
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(Enrollment).where(
+                Enrollment.exam_id == exam_id,
+                Enrollment.student_id == student_id,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+
+async def _mark_disconnected(exam_id: uuid.UUID, student_id: str) -> None:
+    """Stamp ws_disconnected_at on the StudentSession row."""
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            update(StudentSession)
+            .where(
+                StudentSession.exam_id == exam_id,
+                StudentSession.student_id == student_id,
+            )
+            .values(ws_disconnected_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+
+
+async def _heartbeat(ws: WebSocket) -> None:
+    """Send a ping frame every 30 seconds to detect stale connections."""
+    while True:
+        await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+        try:
+            await ws.send_text('{"type":"ping"}')
+        except Exception:
+            return
+
+
+async def _receive_loop(
+    ws: WebSocket,
+    exam_id: uuid.UUID,
+    student_id: str,
+    student_name: str | None,
+    student_email: str | None,
+) -> None:
+    """Forward telemetry frames from the client to storage."""
+    db: AsyncSession | None = None
+    try:
+        while True:
+            try:
+                raw = await ws.receive_text()
+            except WebSocketDisconnect:
+                return
+
+            try:
+                event_data: dict[str, object] = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            event_type = event_data.get("type")
+            if event_type in ("ping", "pong"):
+                continue
+
+            if db is None:
+                db = AsyncSessionLocal()
+
+            assert db is not None
+
+            if isinstance(event_type, str):
+                if student_name is None and student_email is None:
+                    student_name, student_email = await _lookup_identity(db, student_id)
+                payload = event_data.get("payload")
+                live_monitor.record_event(
+                    str(exam_id),
+                    student_id,
+                    event_type,
+                    payload if isinstance(payload, dict) else {},
+                    name=student_name,
+                    email=student_email,
+                )
+
+            try:
+                await telemetry_service.store_event(db, exam_id, student_id, event_data)
+            except Exception:
+                logger.exception("Failed to store telemetry event")
+    finally:
+        if db is not None:
+            await db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -54,60 +159,78 @@ async def exam_telemetry_ws(
 ) -> None:
     """Accept a student's telemetry stream for the duration of their exam.
 
-    The client sends JSON frames matching the TelemetryEvent schema.
-    Each frame is validated and stored. Invalid frames are silently dropped.
+    Auth flow:
+      1. Decode JWT from ?token= → 4401 on failure.
+      2. Check enrollment → 4403 if absent.
+      3. Register (exam_id, student_id) → WebSocket in the in-memory dict.
+      4. Run a receive loop + 30-second heartbeat concurrently.
+      5. On disconnect: unregister and stamp ws_disconnected_at.
+
+    Reconnecting with the same valid JWT is accepted and resumes the session;
+    the registry entry is simply replaced with the new socket.
     """
     student_id = _decode_token(token)
     if student_id is None:
-        await websocket.close(code=1008)
+        await websocket.accept()
+        await websocket.close(code=_WS_UNAUTHORIZED)
+        return
+
+    enrolled = await _is_enrolled(exam_id, student_id)
+    if not enrolled:
+        await websocket.accept()
+        await websocket.close(code=_WS_FORBIDDEN)
         return
 
     await websocket.accept()
+
+    exam_key = str(exam_id)
+    async with _registry_lock:
+        _connections[exam_key][student_id] = websocket
+
     logger.info("Telemetry WS opened: exam=%s student=%s", exam_id, student_id)
 
+    student_name: str | None = None
+    student_email: str | None = None
+
+    receive_task = asyncio.create_task(
+        _receive_loop(
+            websocket,
+            exam_id,
+            student_id,
+            student_name,
+            student_email,
+        )
+    )
+    heartbeat_task = asyncio.create_task(_heartbeat(websocket))
+
     try:
-        async with AsyncSessionLocal() as db:
-            # Resolve the display name + email once for the live monitor.
-            student_name, student_email = await _lookup_identity(db, student_id)
+        _done, pending = await asyncio.wait(
+            {receive_task, heartbeat_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+    finally:
+        async with _registry_lock:
+            exam_bucket = _connections.get(exam_key, {})
+            if exam_bucket.get(student_id) is websocket:
+                exam_bucket.pop(student_id, None)
+            if not exam_bucket:
+                _connections.pop(exam_key, None)
 
-            while True:
-                try:
-                    raw = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
-                except asyncio.TimeoutError:
-                    # Send ping to keep connection alive
-                    await websocket.send_text('{"type":"ping"}')
-                    continue
+        try:
+            await _mark_disconnected(exam_id, student_id)
+        except Exception:
+            logger.exception(
+                "Failed to stamp ws_disconnected_at: exam=%s student=%s",
+                exam_id,
+                student_id,
+            )
 
-                try:
-                    event_data: dict[str, object] = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-
-                event_type = event_data.get("type")
-                # Skip pong/ping frames
-                if event_type in ("ping", "pong"):
-                    continue
-
-                # Feed the live view (in-memory, never blocks the student).
-                if isinstance(event_type, str):
-                    payload = event_data.get("payload")
-                    live_monitor.record_event(
-                        str(exam_id),
-                        student_id,
-                        event_type,
-                        payload if isinstance(payload, dict) else {},
-                        name=student_name,
-                        email=student_email,
-                    )
-
-                try:
-                    await telemetry_service.store_event(
-                        db, exam_id, student_id, event_data
-                    )
-                except Exception:
-                    logger.exception("Failed to store telemetry event")
-
-    except WebSocketDisconnect:
         logger.info("Telemetry WS closed: exam=%s student=%s", exam_id, student_id)
 
 
@@ -181,7 +304,11 @@ async def _lookup_identity(
         sid = uuid.UUID(student_id)
     except ValueError:
         return None, None
-    result = await db.execute(select(User).where(User.id == sid))
+    try:
+        result = await db.execute(select(User).where(User.id == sid))
+    except Exception:
+        logger.exception("Failed to resolve student identity for live telemetry")
+        return None, None
     user = result.scalar_one_or_none()
     if user is None:
         return None, None
