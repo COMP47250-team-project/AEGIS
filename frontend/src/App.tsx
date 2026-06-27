@@ -9,6 +9,7 @@ import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorConsole from "./pages/ProfessorConsole";
 import ProfessorSession from "./pages/ProfessorSession";
 import ExamShell from "./pages/ExamShell";
+import ExamSubmitted from "./pages/ExamSubmitted";
 import StudentResults from "./pages/StudentResults";
 
 const App: React.FC = () => {
@@ -26,6 +27,10 @@ const App: React.FC = () => {
             <Route path="/student/exams/:id/results" element={<StudentResults />} />
             {/* ExamShell: consent gate always checked server-side on mount */}
             <Route path="/exam/:id" element={<ExamShell />} />
+            {/* AEGIS-41: submission confirmation page, reached only after
+                a successful submit (manual or auto). Also protected so an
+                unauthenticated user can't view it directly. */}
+            <Route path="/exam/:id/submitted" element={<ExamSubmitted />} />
           </Route>
 
           {/* Protected — professors only */}

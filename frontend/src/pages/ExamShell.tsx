@@ -2,7 +2,8 @@
 // AEGIS-38: Exam shell with GDPR consent gate.
 // AEGIS-39: MCQ and short-answer question UI.
 // AEGIS-40: Countdown timer + auto-submit.
-// AEGIS-41: Telemetry flush on submit.
+// AEGIS-41: Submit confirmation modal + submitted confirmation page +
+//           idempotent submit + clean telemetry/WS shutdown on submit.
 // AEGIS-43–47: Signal producers wired after consent.
 //
 // Consent is always verified against the server on mount — navigating directly
@@ -14,6 +15,7 @@ import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
 import CountdownTimer from "../components/exam/CountdownTimer";
 import ExamErrorBoundary from "../components/exam/ExamErrorBoundary";
+import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
 import { TelemetryClient } from "../telemetry/TelemetryClient";
 import { attachTabBlur } from "../telemetry/signals/tabBlur";
@@ -227,6 +229,10 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
+  // AEGIS-41: controls visibility of the "Are you sure?" modal triggered
+  // by the manual Finish Exam button. Auto-submit (from CountdownTimer)
+  // never opens this — the clock already decided, no confirmation needed.
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const answersRef = useRef<Answers>({});
   const keySeqRef = useRef<string[]>([]);
@@ -238,6 +244,13 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const currentIndexRef = useRef(currentIndex);
   // Cumulative time spent per question id (adds up across re-visits)
   const questionDurationsRef = useRef<Map<string, number>>(new Map());
+  // AEGIS-41: idempotency guard. submitAndLeave can be triggered from three
+  // places — the manual confirm button, a double-click on that same button
+  // before the first click finishes, and CountdownTimer's auto-submit. A
+  // ref (not state) is used so the check-and-set happens synchronously,
+  // with no risk of two near-simultaneous calls both reading "not yet
+  // submitted" before either has set the flag.
+  const hasSubmittedRef = useRef(false);
 
   // AEGIS-40: authoritative end time, re-synced from the server every 30s
   const { endTimeIso } = useServerEndTime(examId);
@@ -437,9 +450,25 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   );
 
   // ── Shared submit-and-leave logic ─────────────────────────────────────────
-  // Used by BOTH the manual "Finish Exam" button AND the automatic T-0
-  // trigger from CountdownTimer.
+  // Used by the manual "confirm submit" path (after the AEGIS-41 modal),
+  // AND the automatic T-0 trigger from CountdownTimer.
+  //
+  // AEGIS-41 additions on top of the AEGIS-40 version of this function:
+  //   - Idempotent: a second call (double-click, or auto-submit racing a
+  //     manual submit that's already in flight) is a no-op.
+  //   - Cleanly closes the WebSocket via telemetryRef.current?.close()
+  //     after flushing, rather than leaving it for unmount to handle.
+  //   - Captures the submission timestamp and passes it to the new
+  //     /exam/:id/submitted confirmation page via router state, instead
+  //     of navigating straight back to the dashboard.
   const submitAndLeave = useCallback(async () => {
+    // AEGIS-41 acceptance criterion: "double-click or double-submit is
+    // idempotent." This check-and-set happens synchronously on a ref, so
+    // there's no window where two near-simultaneous calls both see "not
+    // yet submitted" and both proceed.
+    if (hasSubmittedRef.current) return;
+    hasSubmittedRef.current = true;
+
     const state = contentStateRef.current;
     if (state.kind !== "loaded") return;
 
@@ -466,8 +495,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       );
     }
 
-    // Flush buffered telemetry events before leaving (AEGIS-40 acceptance
-    // criterion 3: "auto-POST all current answers and flush telemetry").
+    // AEGIS-40/41: flush buffered telemetry events before leaving.
     telemetryRef.current?.flush();
 
     const current = answersRef.current;
@@ -476,20 +504,56 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       answer: current[q.id] ?? "",
     }));
 
+    let submittedAtIso = new Date().toISOString();
     try {
-      await apiClient.post(`/exams/${examId}/answers`, {
-        answers: allAnswers,
-      });
+      const { data } = await apiClient.post<{ submitted_at?: string }>(
+        `/exams/${examId}/answers`,
+        { answers: allAnswers, final: true }
+      );
+      // Prefer the server's own submitted_at if it returns one — it's the
+      // authoritative timestamp the professor's grade report will use.
+      // Falling back to the client-side timestamp above means the
+      // confirmation page still shows *something* reasonable even if the
+      // backend response shape changes or the field is omitted.
+      if (data?.submitted_at) {
+        submittedAtIso = data.submitted_at;
+      }
     } catch {
-      /* best-effort final save — we still navigate away below regardless */
+      /* best-effort final save — we still navigate away below regardless,
+         since the exam window has closed either way and staying on this
+         page serves no purpose for the student */
     }
 
-    navigate("/student/dashboard", { replace: true });
+    // AEGIS-41: close the WebSocket cleanly now that we're done with it,
+    // rather than waiting for the component to unmount. close() cancels
+    // any pending reconnect attempt and closes the socket immediately.
+    telemetryRef.current?.close();
+
+    navigate(`/exam/${examId}/submitted`, {
+      replace: true,
+      state: { submittedAt: submittedAtIso },
+    });
   }, [examId, sessionId, navigate]);
 
-  const handleFinish = useCallback(async () => {
+  // Manual submit: open the confirmation modal rather than submitting
+  // immediately (AEGIS-41 acceptance criterion 1).
+  const handleFinishClick = useCallback(() => {
+    setShowConfirmModal(true);
+  }, []);
+
+  const handleConfirmSubmit = useCallback(async () => {
     await submitAndLeave();
+    // No need to setShowConfirmModal(false) on success — submitAndLeave
+    // navigates away, unmounting this component. If it fails partway and
+    // we're still here, hasSubmittedRef guards against a retry storm, but
+    // we still want the modal to close so the student isn't stuck looking
+    // at a frozen "Submitting…" button forever.
+    setShowConfirmModal(false);
   }, [submitAndLeave]);
+
+  const handleCancelSubmit = useCallback(() => {
+    setShowConfirmModal(false);
+  }, []);
 
   // ── AEGIS-40: isolated auto-submit handler ────────────────────────────────
   // Passed to CountdownTimer's onAutoSubmit prop. CountdownTimer already
@@ -566,7 +630,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
             </span>
           )}
           <button
-            onClick={handleFinish}
+            onClick={handleFinishClick}
             disabled={isAutoSubmitting}
             className="px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
           >
@@ -574,6 +638,14 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           </button>
         </div>
       </header>
+
+      {/* AEGIS-41: confirmation modal — only shown for manual submission */}
+      <SubmitConfirmModal
+        isOpen={showConfirmModal}
+        isSubmitting={isAutoSubmitting}
+        onConfirm={handleConfirmSubmit}
+        onCancel={handleCancelSubmit}
+      />
 
       <ExamErrorBoundary>
         <div className="flex flex-1 overflow-hidden">
@@ -636,6 +708,7 @@ const ExamShell: React.FC = () => {
   const [state, setState] = useState<PageState>({ kind: "loading" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // On mount, always check consent via the API.
   useEffect(() => {
     if (!examId) {
       navigate("/student/dashboard", { replace: true });
@@ -718,6 +791,7 @@ const ExamShell: React.FC = () => {
     );
   }
 
+  // state.kind === "exam-active"
   return <ExamContent examId={state.session.exam_id} sessionId={state.session.id} />;
 };
 
