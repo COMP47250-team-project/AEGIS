@@ -4,9 +4,10 @@ GET /sessions?status=active — paginated list of the professor's exam sessions
 with per-session student and flagged-student counts, for the dashboard cards.
 """
 
+import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,8 +15,13 @@ from app.database import get_db
 from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamSession
 from app.models.quiz import Quiz
-from app.models.telemetry import SessionScore
-from app.schemas.session import SessionListResponse, SessionSummary
+from app.models.telemetry import SessionScore, TelemetryEvent
+from app.schemas.session import (
+    SessionListResponse,
+    SessionSummary,
+    TimelineEvent,
+    TimelineResponse,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -84,4 +90,51 @@ async def list_sessions(
 
     return SessionListResponse(
         items=items, total=total, page=page, page_size=page_size
+    )
+
+
+@router.get(
+    "/{session_id}/students/{student_id}/events",
+    response_model=TimelineResponse,
+)
+async def student_event_timeline(
+    session_id: uuid.UUID,
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+) -> TimelineResponse:
+    """Read-only, most-recent-first telemetry timeline for one student in a
+    session. Only the exam owner may view it."""
+    owner = await db.scalar(
+        select(ExamSession.created_by).where(ExamSession.id == session_id)
+    )
+    if owner is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Session not found")
+    if owner != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your exam session")
+
+    base = select(TelemetryEvent).where(
+        TelemetryEvent.exam_id == session_id,
+        TelemetryEvent.student_id == student_id,
+    )
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    result = await db.execute(
+        base.order_by(TelemetryEvent.occurred_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = [
+        TimelineEvent(
+            event_type=e.event_type, payload=e.payload, occurred_at=e.occurred_at
+        )
+        for e in result.scalars().all()
+    ]
+    return TimelineResponse(
+        student_id=student_id,
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
