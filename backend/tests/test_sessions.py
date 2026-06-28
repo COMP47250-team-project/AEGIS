@@ -1,12 +1,13 @@
-"""Tests for the professor session dashboard endpoint (AEGIS-58)."""
+"""Tests for the professor session dashboard endpoint (AEGIS-58, AEGIS-59)."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.telemetry import SessionScore
+from app.models.telemetry import SessionScore, TelemetryEvent
 
 QUIZ = {"title": "Dashboard Quiz", "description": "x", "duration_minutes": 30}
 # Far-future start so this exam sorts to the top of the (scheduled_start desc)
@@ -100,3 +101,46 @@ async def test_pagination_metadata(client: AsyncClient) -> None:
     assert data["page_size"] == 5
     assert "total" in data
     assert isinstance(data["items"], list)
+
+
+# ---------------------------------------------------------------------------
+# AEGIS-59 — student event timeline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_student_timeline_returns_events_newest_first(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    quiz_id = (await client.post("/quizzes", json=QUIZ)).json()["id"]
+    exam_id = (
+        await client.post("/exams", json={**EXAM, "quiz_id": quiz_id})
+    ).json()["id"]
+
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i, etype in enumerate(["paste", "tab_blur", "resize"]):
+        db_session.add(
+            TelemetryEvent(
+                exam_id=uuid.UUID(exam_id),
+                student_id="stud-1",
+                event_type=etype,
+                payload={"i": i},
+                occurred_at=base + timedelta(minutes=i),
+            )
+        )
+    await db_session.commit()
+
+    resp = await client.get(f"/sessions/{exam_id}/students/stud-1/events")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["student_id"] == "stud-1"
+    assert data["total"] == 3
+    # Most recent first.
+    assert [e["event_type"] for e in data["items"]] == ["resize", "tab_blur", "paste"]
+
+
+@pytest.mark.asyncio
+async def test_timeline_unknown_session_returns_404(client: AsyncClient) -> None:
+    resp = await client.get(f"/sessions/{uuid.uuid4()}/students/anyone/events")
+    assert resp.status_code == 404
