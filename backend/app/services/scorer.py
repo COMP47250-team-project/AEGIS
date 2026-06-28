@@ -170,6 +170,7 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     for event in all_events:
         by_student.setdefault(event.student_id, []).append(event)
 
+    students_to_alert: list[tuple[str, float]] = []
     for student_id, student_events in by_student.items():
         components = compute_component_scores(student_events)
         aggregate = compute_risk_score(components)
@@ -208,8 +209,11 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
                 students_to_alert.append((student_id, aggregate))
 
     await db.commit()
+
     logger.info(
         "Scores computed for exam %s — %d students processed",
         exam_id,
         len(by_student),
     )
+
+
