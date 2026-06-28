@@ -1,7 +1,10 @@
+import csv
+import io
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +15,7 @@ from typing import Literal, cast
 
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
 from app.models.quiz import Question, Quiz
+from app.models.telemetry import SessionScore
 from app.models.user import User
 from app.schemas.exam import (
     AnswerItemRead,
@@ -558,6 +562,89 @@ async def get_exam_grade(
         mcq_total=mcq_total,
         short_total=short_total,
         students=student_entries,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CSV Export (AEGIS-61)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/{exam_id}/export")
+async def export_session_csv(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+) -> StreamingResponse:
+    """Stream a UTF-8 CSV with per-student risk scores for a closed exam."""
+    exam = await _get_exam_or_404(db, exam_id)
+    _assert_owner(exam, user_id)
+
+    if exam.state != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Exam must be closed before exporting",
+        )
+
+    scores_result = await db.execute(
+        select(SessionScore).where(SessionScore.exam_id == exam_id)
+    )
+    scores = scores_result.scalars().all()
+
+    student_ids = [s.student_id for s in scores]
+    name_map: dict[str, str] = {}
+    if student_ids:
+        valid_uuids = []
+        for sid in student_ids:
+            try:
+                valid_uuids.append(uuid.UUID(sid))
+            except ValueError:
+                pass
+        if valid_uuids:
+            users_result = await db.execute(
+                select(User).where(User.id.in_(valid_uuids))
+            )
+            for u in users_result.scalars().all():
+                name_map[str(u.id)] = u.full_name or u.email
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "student_id",
+            "student_name",
+            "integrity_score",
+            "tab_switch_score",
+            "paste_score",
+            "keystroke_score",
+            "focus_loss_score",
+            "answer_timing_score",
+            "copy_sequence_score",
+            "flagged",
+        ]
+    )
+    for s in sorted(scores, key=lambda x: x.integrity_score, reverse=True):
+        writer.writerow(
+            [
+                s.student_id,
+                name_map.get(s.student_id, "Unknown"),
+                round(s.integrity_score, 4),
+                round(s.tab_switch_score, 4),
+                round(s.paste_score, 4),
+                round(s.keystroke_score, 4),
+                round(s.focus_loss_score, 4),
+                round(s.answer_timing_score, 4),
+                round(s.copy_sequence_score, 4),
+                "YES" if s.integrity_score >= 0.70 else "no",
+            ]
+        )
+
+    output.seek(0)
+    filename = f"aegis_session_{exam_id}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

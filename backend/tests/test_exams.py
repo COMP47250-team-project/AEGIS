@@ -313,3 +313,34 @@ async def test_unauthenticated_request_returns_401_or_403() -> None:
     ) as unauthed:
         response = await unauthed.post("/exams", json={})
     assert response.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# CSV Export (AEGIS-61)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_export_csv_requires_closed_exam(client: AsyncClient) -> None:
+    quiz_id = await _create_quiz(client)
+    exam_id = await _create_exam(client, quiz_id)
+    await client.post(f"/exams/{exam_id}/enrollments", json=STUDENT_A)
+    await client.post(f"/exams/{exam_id}/open")
+
+    resp = await client.get(f"/exams/{exam_id}/export")
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_export_csv_closed_exam_returns_csv(client: AsyncClient) -> None:
+    quiz_id = await _create_quiz(client)
+    exam_id = await _create_exam(client, quiz_id)
+    await client.post(f"/exams/{exam_id}/enrollments", json=STUDENT_A)
+    await client.post(f"/exams/{exam_id}/open")
+    await client.post(f"/exams/{exam_id}/close")
+
+    resp = await client.get(f"/exams/{exam_id}/export")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    assert "student_id" in resp.text
+    assert "integrity_score" in resp.text

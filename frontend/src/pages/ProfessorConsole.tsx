@@ -4,14 +4,18 @@ import ExamList from "../components/professor/ExamList";
 import QuizBuilder from "../components/professor/QuizBuilder";
 import ExamScheduler from "../components/professor/ExamScheduler";
 import SessionDashboard from "../components/professor/SessionDashboard";
+import SessionHistoryView from "../components/professor/SessionHistoryView";
+import TimelineModal from "../components/professor/TimelineModal";
+import type { LiveStudent } from "../components/professor/liveStudents";
 
-type Tab = "dashboard" | "exams" | "build" | "schedule";
+type Tab = "dashboard" | "exams" | "build" | "schedule" | "history";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "exams", label: "My Exams" },
   { id: "build", label: "Build Quiz" },
   { id: "schedule", label: "Schedule Exam" },
+  { id: "history", label: "History" },
 ];
 
 const ProfessorConsole: React.FC = () => {
@@ -19,6 +23,11 @@ const ProfessorConsole: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [pendingQuizId, setPendingQuizId] = useState<string | undefined>();
   const [examListKey, setExamListKey] = useState(0);
+  const [historyTimeline, setHistoryTimeline] = useState<{
+    sessionId: string;
+    studentId: string;
+    studentName: string;
+  } | null>(null);
 
   function handleQuizCreated(quizId: string) {
     setPendingQuizId(quizId);
@@ -127,6 +136,35 @@ const ProfessorConsole: React.FC = () => {
               preselectedQuizId={pendingQuizId}
               onScheduled={handleExamScheduled}
             />
+          </section>
+        )}
+
+        {activeTab === "history" && (
+          <section aria-label="Completed Exams">
+            <h2 className="text-base font-semibold text-ink mb-4">Completed Exams</h2>
+            <SessionHistoryView
+              onViewTimeline={(sessionId, studentId, studentName) =>
+                setHistoryTimeline({ sessionId, studentId, studentName })
+              }
+            />
+            {historyTimeline && (
+              <TimelineModal
+                sessionId={historyTimeline.sessionId}
+                student={
+                  {
+                    student_id: historyTimeline.studentId,
+                    name: historyTimeline.studentName,
+                    email: null,
+                    risk_score: null,
+                    tab_blurs: 0,
+                    pastes: 0,
+                    last_event: null,
+                    active: false,
+                  } satisfies LiveStudent
+                }
+                onClose={() => setHistoryTimeline(null)}
+              />
+            )}
           </section>
         )}
       </div>

@@ -13,16 +13,11 @@ import {
   type LiveStudent,
   type SortMode,
 } from "../components/professor/liveStudents";
+import TimelineModal from "../components/professor/TimelineModal";
 
 interface ProfessorPayload {
   exam_id: string;
   students: LiveStudent[];
-}
-
-interface TimelineItem {
-  event_type: string;
-  payload: Record<string, unknown>;
-  occurred_at: string;
 }
 
 type WsStatus = "idle" | "connecting" | "connected" | "error";
@@ -42,95 +37,6 @@ function riskLabel(score: number): string {
 function fmtTime(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour12: false });
 }
-
-// ---------------------------------------------------------------------------
-// Read-only event timeline (opens when a card is clicked)
-// ---------------------------------------------------------------------------
-
-const TimelineModal: React.FC<{
-  sessionId: string;
-  student: LiveStudent;
-  onClose: () => void;
-}> = ({ sessionId, student, onClose }) => {
-  const [events, setEvents] = useState<TimelineItem[] | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    apiClient
-      .get<{ items: TimelineItem[] }>(
-        `/sessions/${encodeURIComponent(sessionId)}/students/${encodeURIComponent(
-          student.student_id
-        )}/events`
-      )
-      .then(({ data }) => setEvents(data.items))
-      .catch(() => setError(true));
-  }, [sessionId, student.student_id]);
-
-  // Close on Escape (keyboard-accessible — no click-outside handler needed).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-ink/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      role="presentation"
-    >
-      <div
-        className="bg-surface-card w-full sm:max-w-lg sm:rounded-md border border-hairline max-h-[85vh] flex flex-col"
-        role="dialog"
-        aria-modal="true"
-      >
-        <header className="flex items-center justify-between px-4 py-3 border-b border-hairline">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink truncate">
-              {student.name ?? student.student_id}
-            </p>
-            <p className="text-xs text-mute">Event timeline (read-only)</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-mute hover:text-ink text-lg leading-none px-1"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </header>
-
-        <div className="overflow-y-auto p-4">
-          {error ? (
-            <p className="text-accent-red text-sm">Could not load events.</p>
-          ) : events === null ? (
-            <p className="text-mute text-sm">Loading…</p>
-          ) : events.length === 0 ? (
-            <p className="text-mute text-sm">No telemetry events yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {events.map((e, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-3 text-xs border-l-2 border-hairline pl-3"
-                >
-                  <span className="text-mute whitespace-nowrap">
-                    {fmtTime(new Date(e.occurred_at))}
-                  </span>
-                  <span className="font-semibold text-ink">{e.event_type}</span>
-                  <span className="text-mute truncate">
-                    {JSON.stringify(e.payload)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // ---------------------------------------------------------------------------
 // Page
