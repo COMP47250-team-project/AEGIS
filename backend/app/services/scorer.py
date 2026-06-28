@@ -11,10 +11,10 @@ Formula:
 import logging
 import uuid
 from datetime import datetime, timezone
-
+import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.models.risk import RiskFlag
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.services.scoring import Event
 from app.services.scoring.components.answer_time import answer_time_distribution_score
@@ -34,6 +34,8 @@ _WEIGHTS = {
     "resize": 0.05,
 }
 
+# Risk threshold — RiskFlag inserted and WS alert fired on first crossing
+RISK_THRESHOLD = 0.70
 
 def _clamp(v: float) -> float:
     return max(0.0, min(1.0, v))
@@ -77,6 +79,80 @@ def compute_risk_score(component_scores: dict[str, float]) -> float:
     """Weighted sum of component scores → aggregate 0–1 risk score."""
     return _clamp(sum(_WEIGHTS[k] * component_scores.get(k, 0.0) for k in _WEIGHTS))
 
+async def _ensure_risk_flag(
+    db: AsyncSession,
+    exam_id: uuid.UUID,
+    student_id: str,
+    risk_score: float,
+    now: datetime,
+) -> bool:
+    """Insert a RiskFlag if none exists yet for this exam+student.
+
+    Returns True if a new flag was inserted — caller should push a WS alert.
+    Returns False if a flag already existed — threshold was already crossed on
+    a previous scoring run; do not re-alert (satisfies 'exactly once' rule).
+    """
+    existing = await db.execute(
+        select(RiskFlag).where(
+            RiskFlag.exam_id == exam_id,
+            RiskFlag.student_id == student_id,
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        return False
+
+    db.add(
+        RiskFlag(
+            exam_id=exam_id,
+            student_id=student_id,
+            threshold_triggered="HIGH",
+            risk_score=risk_score,
+            flagged_at=now,
+        )
+    )
+    return True
+
+
+async def _push_risk_alert(
+    exam_id: uuid.UUID,
+    student_id: str,
+    risk_score: float,
+) -> None:
+    """Push a risk_alert message to the connected professor WebSocket.
+
+    Late-imports get_professor_websocket to avoid a circular import:
+      telemetry.py → scorer.py (already) and scorer.py → telemetry.py (new)
+    would form a cycle at module level; a function-scoped import breaks it.
+
+    Failures are caught and logged — a WS push must never block or roll back
+    the DB commit that precedes it.
+    """
+    try:
+        from app.routers.telemetry import get_professor_websocket
+
+        ws = await get_professor_websocket(str(exam_id))
+        if ws is None:
+            logger.debug(
+                "No professor connected for exam %s — skipping WS push", exam_id
+            )
+            return
+
+        alert = {
+            "type": "risk_alert",
+            "student_id": student_id,
+            "risk_score": round(risk_score, 3),
+        }
+        await ws.send_text(json.dumps(alert))
+        logger.info(
+            "Risk alert pushed: exam=%s student=%s score=%.3f",
+            exam_id,
+            student_id,
+            risk_score,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to push risk alert for exam=%s student=%s", exam_id, student_id
+        )
 
 async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     """Query all telemetry events for a closed exam, compute per-student
@@ -94,6 +170,7 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     for event in all_events:
         by_student.setdefault(event.student_id, []).append(event)
 
+    students_to_alert: list[tuple[str, float]] = []
     for student_id, student_events in by_student.items():
         components = compute_component_scores(student_events)
         aggregate = compute_risk_score(components)
@@ -124,9 +201,19 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
         score_row.integrity_score = aggregate
         score_row.computed_at = now
 
+        if aggregate >= RISK_THRESHOLD:
+            flag_inserted = await _ensure_risk_flag(
+                db, exam_id, student_id, aggregate, now
+            )
+            if flag_inserted:
+                students_to_alert.append((student_id, aggregate))
+
     await db.commit()
+
     logger.info(
         "Scores computed for exam %s — %d students processed",
         exam_id,
         len(by_student),
     )
+
+
