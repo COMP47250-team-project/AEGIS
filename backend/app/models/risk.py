@@ -21,4 +21,3 @@ class RiskFlag(Base):
         nullable=False,
     )
 
-    
