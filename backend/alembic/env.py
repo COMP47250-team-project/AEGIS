@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 # Import all models so Alembic autogenerate can detect every table
 from app.database import Base  # noqa: F401
-from app.models import exam, quiz, user, course, telemetry  # noqa: F401
+from app.models import exam, quiz, user, course, telemetry, risk  # noqa: F401
 
 config = context.config
 

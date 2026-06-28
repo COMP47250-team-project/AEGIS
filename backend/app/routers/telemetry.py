@@ -39,6 +39,22 @@ router = APIRouter(prefix="/ws", tags=["telemetry"])
 _connections: dict[str, dict[str, WebSocket]] = defaultdict(dict)
 _registry_lock = asyncio.Lock()
 
+# Professor WebSocket registry: {exam_id_str: WebSocket}
+# At most one professor connected per exam at a time.
+# Guarded by _professor_registry_lock — never access without acquiring it.
+_professor_connections: dict[str, WebSocket] = {}
+_professor_registry_lock = asyncio.Lock()
+
+
+async def get_professor_websocket(exam_id_str: str) -> WebSocket | None:
+    """Return the connected professor WebSocket for an exam, or None.
+
+    Called by scorer.py after commit to push risk_alert frames.
+    Late-imported there to avoid a circular import at module level.
+    """
+    async with _professor_registry_lock:
+        return _professor_connections.get(exam_id_str)
+
 # WebSocket close codes (application-level, 4000-4999)
 _WS_UNAUTHORIZED = 4401
 _WS_FORBIDDEN = 4403
@@ -266,6 +282,9 @@ async def professor_monitor_ws(
             return
 
     await websocket.accept()
+    exam_key = str(exam_id)
+    async with _professor_registry_lock:
+        _professor_connections[exam_key] = websocket
     logger.info("Professor WS opened: exam=%s professor=%s", exam_id, professor_id)
 
     # One-time DB read so enrolled students show up (inactive) before they send
@@ -294,6 +313,12 @@ async def professor_monitor_ws(
 
     except WebSocketDisconnect:
         logger.info("Professor WS closed: exam=%s professor=%s", exam_id, professor_id)
+    finally:
+        # Always deregister — scorer checks None before pushing.
+        # Only remove if this is still the current socket (handles reconnects).
+        async with _professor_registry_lock:
+            if _professor_connections.get(exam_key) is websocket:
+                _professor_connections.pop(exam_key, None)
 
 
 async def _lookup_identity(
