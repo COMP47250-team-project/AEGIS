@@ -52,6 +52,7 @@
     </li>
     <li><a href="#environment-variables">Environment Variables</a></li>
     <li><a href="#running-tests--ci-checks">Running Tests & CI Checks</a></li>
+    <li><a href="#azure-environment-aegis-21">Azure Environment</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -266,6 +267,52 @@ npm run build
 ```
 
 CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and runs on GitHub Actions.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Azure Environment (AEGIS-21)
+
+Infrastructure-as-Code under [`infra/azure/`](infra/azure/) bootstraps the cloud environment:
+
+- Resource group **`aegis-prod-rg`** in **West Europe**
+- A **subscription-wide €30/month budget** with email alerts (80% / 100% actual, 100% forecast)
+- **Contributor** role for the DevOps leads
+
+| File | Purpose |
+|------|---------|
+| `infra/azure/main.bicep` | Resource group + cost budget (subscription scope) |
+| `infra/azure/main.bicepparam` | Parameter values — **edit the alert emails here** |
+| `infra/azure/provision.ps1` | Windows runner: deploy Bicep + assign roles |
+| `infra/azure/provision.sh` | macOS/Linux runner (same steps) |
+
+### Prerequisites
+
+1. **Azure CLI** — https://aka.ms/installazurecli, then `az bicep install`
+2. **Sign in**: `az login` (confirm the subscription with `az account show`)
+3. **Owner** or **User Access Administrator** on the subscription is required to assign roles (a student subscription normally makes you Owner).
+
+### Provision
+
+```sh
+cd infra/azure
+# 1. Edit main.bicepparam — replace the REPLACE_WITH_*_EMAIL placeholders.
+# 2. Edit the runner — set the subscription id + the Contributor emails.
+# 3. Preview (no changes):
+az deployment sub what-if --location westeurope \
+  --template-file main.bicep --parameters main.bicepparam
+# 4. Apply:  ./provision.ps1   (Windows)   |   ./provision.sh   (macOS/Linux)
+```
+
+### Verify
+
+- **Resource group**: `az group show -n aegis-prod-rg`
+- **Budget**: Azure Portal → *Cost Management → Budgets* → `aegis-monthly-budget` (€30 / Monthly)
+- **Roles**: `az role assignment list --scope /subscriptions/<id> --query "[?roleDefinitionName=='Contributor'].principalName"`
+- **Subscription ID** → record it in the team Google Doc (not in git — it's account metadata).
+
+> **Notes:** budgets use the subscription's billing currency (adjust `budgetAmount` if it bills in USD). Re-running is idempotent — the resource group and budget are upserted by name.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
