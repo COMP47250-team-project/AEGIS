@@ -39,6 +39,10 @@ exclude = [
     "backend/app/services/scoring.py",
     "backend/app/services/scorer.py",
     "backend/app/services/telemetry_service.py",
+    "backend/app/services/live_monitor.py",
+    "backend/app/services/scoring/__init__.py",
+    "backend/app/services/scoring/components/paste.py",
+    "backend/app/services/scoring/components/tab_blur.py",
     "backend/app/models/__init__.py",
     "backend/app/models/telemetry.py"
 ]
