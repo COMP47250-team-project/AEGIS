@@ -10,10 +10,10 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
     name: 'Basic'
   }
   properties: {
-    // Admin user lets the Container Apps pull images using registry
-    // credentials (AEGIS-66) without needing an RBAC role assignment —
-    // role assignments aren't available to a guest on this subscription.
-    adminUserEnabled: true
+    // Disabled here — AEGIS-63's Container Apps run public placeholder images,
+    // so no registry auth is needed yet. AEGIS-66 wires real-image pulls using
+    // the Container Apps' managed identity (+ AcrPull) when it deploys them.
+    adminUserEnabled: false
   }
 }
 
