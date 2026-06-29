@@ -13,6 +13,9 @@ targetScope = 'resourceGroup'
 @description('Azure region (defaults to the resource group location).')
 param location string = resourceGroup().location
 
+@description('Region for PostgreSQL. Defaults to `location`, but some sponsored/student subscriptions restrict Flexible Server in certain regions (e.g. westeurope → LocationIsOfferRestricted); override this to an allowed region such as northeurope.')
+param postgresLocation string = location
+
 @description('Deployment environment.')
 @allowed([
   'dev'
@@ -57,7 +60,7 @@ module postgres 'modules/postgres.bicep' = {
   name: 'postgres'
   params: {
     name: '${prefix}-pg-${suffix}'
-    location: location
+    location: postgresLocation
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
   }
