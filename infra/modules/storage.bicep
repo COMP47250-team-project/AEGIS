@@ -7,20 +7,20 @@ param containerName string = 'session-tapes'
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
   name: name
   location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
   sku: {
     name: 'Standard_LRS'
   }
   kind: 'StorageV2'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     allowBlobPublicAccess: false
     minimumTlsVersion: 'TLS1_2'
     supportsHttpsTrafficOnly: true
     encryption: {
       keySource: 'Microsoft.Storage'
-      requireInfrastructureEncryption: false
+      requireInfrastructureEncryption: true
       services: {
         blob: {
           enabled: true

@@ -11,12 +11,15 @@ param administratorPassword string
 
 param databaseName string = 'aegis'
 
-resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' = {
+resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: name
   location: location
   sku: {
     name: 'Standard_B1ms'
     tier: 'Burstable'
+  }
+  identity: {
+    type: 'SystemAssigned'
   }
   properties: {
     version: '16'
