@@ -59,7 +59,10 @@ module containerEnv 'modules/containerAppEnv.bicep' = {
 module postgres 'modules/postgres.bicep' = {
   name: 'postgres'
   params: {
-    name: '${prefix}-pg-${suffix}'
+    // 'psql' (not 'pg'): a failed westeurope attempt left an orphaned
+    // 'aegisdev-pg-<suffix>' record that blocks recreating the same name in a
+    // new region, so use a fresh name.
+    name: '${prefix}-psql-${suffix}'
     location: postgresLocation
     administratorLogin: postgresAdminLogin
     administratorPassword: postgresAdminPassword
