@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ExamList from "../components/professor/ExamList";
 import QuizBuilder from "../components/professor/QuizBuilder";
@@ -55,6 +56,12 @@ const ProfessorConsole: React.FC = () => {
           <span className="hidden sm:inline text-sm text-mute">Professor Console</span>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            to="/professor/exams/new"
+            className="px-3 py-1.5 bg-primary text-ink text-xs font-semibold rounded hover:bg-primary-pressed transition-colors"
+          >
+            + New Exam
+          </Link>
           <span className="hidden sm:inline text-sm text-body">{user?.name}</span>
           <button
             onClick={logout}

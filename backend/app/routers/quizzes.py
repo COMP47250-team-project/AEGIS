@@ -101,6 +101,7 @@ async def add_question(
         options=body.options,
         correct_answer=body.correct_answer,
         position=next_position,
+        max_score=body.max_score,
     )
     db.add(question)
     await db.commit()

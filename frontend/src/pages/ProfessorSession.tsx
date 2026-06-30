@@ -1,7 +1,7 @@
 // frontend/src/pages/ProfessorSession.tsx
 // AEGIS-58: per-session live integrity view, opened from a dashboard card.
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import apiClient, { getAccessToken } from "../api/client";
 
@@ -43,7 +43,12 @@ function pct(score: number | null): string {
 const ProfessorSession: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
+  // One-shot success toast passed from the create-exam redirect (AEGIS-62).
+  const [toast, setToast] = useState<string | null>(
+    (location.state as { toast?: string } | null)?.toast ?? null,
+  );
   const [students, setStudents] = useState<StudentRisk[]>([]);
   const [wsStatus, setWsStatus] = useState<WsStatus>("idle");
   const [ending, setEnding] = useState(false);
@@ -114,6 +119,22 @@ const ProfessorSession: React.FC = () => {
       </header>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+        {toast && (
+          <div
+            role="status"
+            className="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded bg-accent-green-soft text-accent-green text-sm"
+          >
+            <span>{toast}</span>
+            <button
+              onClick={() => setToast(null)}
+              className="text-xs text-accent-green/70 hover:text-accent-green"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Status + end-exam */}
         <div className="flex items-center justify-between gap-3 mb-6">
           <span
