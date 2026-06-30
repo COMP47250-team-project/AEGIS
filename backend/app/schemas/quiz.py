@@ -16,6 +16,7 @@ class QuestionCreate(BaseModel):
     options: list[str] | None = None
     correct_answer: str | None = None
     position: int | None = Field(default=None, ge=0)
+    max_score: int = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def validate_mcq_fields(self) -> "QuestionCreate":
@@ -53,6 +54,7 @@ class QuestionRead(BaseModel):
     options: list[str] | None
     correct_answer: str | None
     position: int
+    max_score: int
 
 
 # ---------------------------------------------------------------------------
