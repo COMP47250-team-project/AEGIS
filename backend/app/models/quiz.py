@@ -49,5 +49,8 @@ class Question(Base):
     options: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     correct_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    max_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     quiz: Mapped["Quiz"] = relationship("Quiz", back_populates="questions")
