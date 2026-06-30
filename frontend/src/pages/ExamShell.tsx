@@ -229,6 +229,16 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
+
+  // Warning banner (AEGIS-85): shown briefly after monitored events fire.
+  const [warningMsg, setWarningMsg] = useState<string | null>(null);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showWarning = useCallback((msg: string) => {
+    setWarningMsg(msg);
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    warningTimerRef.current = setTimeout(() => setWarningMsg(null), 4000);
+  }, []);
   // AEGIS-41: controls visibility of the "Are you sure?" modal triggered
   // by the manual Finish Exam button. Auto-submit (from CountdownTimer)
   // never opens this — the clock already decided, no confirmation needed.
@@ -304,6 +314,39 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       telemetryRef.current = null;
     };
   }, [examId, sessionId]);
+
+  // Warning banner cleanup on unmount.
+  useEffect(() => {
+    return () => {
+      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    };
+  }, []);
+
+  // DOM listeners that drive the warning banner — ExamContent only mounts
+  // after consent, so no consentGiven guard needed.
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        showWarning("Leaving this tab has been recorded for integrity review.");
+      }
+    };
+    const onPaste = () => {
+      showWarning("A paste event has been recorded for integrity review.");
+    };
+    const onBlur = () => {
+      showWarning("Window focus lost — this has been recorded.");
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    document.addEventListener("paste", onPaste);
+    window.addEventListener("blur", onBlur);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      document.removeEventListener("paste", onPaste);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [showWarning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -638,6 +681,18 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           </button>
         </div>
       </header>
+
+      {/* AEGIS-85: warning banner — brand amber, auto-dismisses after 4 seconds */}
+      {warningMsg && (
+        <div
+          className="mx-4 mt-2 mb-0 px-4 py-2 bg-primary/10 border border-primary/30 text-charcoal text-sm rounded-md flex items-center gap-2 animate-fade-in"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span className="shrink-0 text-base">⚠️</span>
+          <span>{warningMsg}</span>
+        </div>
+      )}
 
       {/* AEGIS-41: confirmation modal — only shown for manual submission */}
       <SubmitConfirmModal

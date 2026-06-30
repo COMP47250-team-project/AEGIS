@@ -144,3 +144,90 @@ async def test_student_timeline_returns_events_newest_first(
 async def test_timeline_unknown_session_returns_404(client: AsyncClient) -> None:
     resp = await client.get(f"/sessions/{uuid.uuid4()}/students/anyone/events")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Feature 2 — per-student score endpoint
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_student_score_not_available(client: AsyncClient) -> None:
+    exam_id = await _open_exam_with_student(client)
+    resp = await client.get(f"/sessions/{exam_id}/students/student-001/score")
+    assert resp.status_code == 200
+    assert resp.json()["available"] is False
+
+
+@pytest.mark.asyncio
+async def test_student_score_available(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    exam_id = await _open_exam_with_student(client)
+    db_session.add(
+        SessionScore(
+            exam_id=uuid.UUID(exam_id),
+            student_id="student-001",
+            integrity_score=0.75,
+            tab_switch_score=0.8,
+            paste_score=0.6,
+            keystroke_score=0.5,
+            focus_loss_score=0.7,
+            answer_timing_score=0.4,
+            copy_sequence_score=0.3,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(f"/sessions/{exam_id}/students/student-001/score")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["available"] is True
+    assert data["integrity_score"] == pytest.approx(0.75)
+    assert "Tab Switch" in data["components"]
+    assert "Paste" in data["components"]
+    assert data["components"]["Tab Switch"] == pytest.approx(0.8)
+
+
+# ---------------------------------------------------------------------------
+# Feature 4 — session scores list
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_session_scores_returns_sorted_by_risk(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    exam_id = await _open_exam_with_student(client)
+    db_session.add(
+        SessionScore(
+            exam_id=uuid.UUID(exam_id),
+            student_id="student-001",
+            integrity_score=0.85,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.get(f"/sessions/{exam_id}/scores")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["student_id"] == "student-001"
+    assert data[0]["integrity_score"] == pytest.approx(0.85)
+    assert data[0]["flagged"] is True
+
+
+@pytest.mark.asyncio
+async def test_list_session_scores_empty_when_none(client: AsyncClient) -> None:
+    exam_id = await _open_exam_with_student(client)
+    resp = await client.get(f"/sessions/{exam_id}/scores")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_list_session_scores_not_owner_returns_404(
+    client: AsyncClient,
+) -> None:
+    resp = await client.get(f"/sessions/{uuid.uuid4()}/scores")
+    assert resp.status_code == 404

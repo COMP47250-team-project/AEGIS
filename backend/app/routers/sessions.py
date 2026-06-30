@@ -16,6 +16,7 @@ from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamSession
 from app.models.quiz import Quiz
 from app.models.telemetry import SessionScore, TelemetryEvent
+from app.models.user import User
 from app.schemas.session import (
     SessionListResponse,
     SessionSummary,
@@ -91,6 +92,101 @@ async def list_sessions(
     return SessionListResponse(
         items=items, total=total, page=page, page_size=page_size
     )
+
+
+@router.get("/{session_id}/students/{student_id}/score")
+async def get_student_score(
+    session_id: uuid.UUID,
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_role("professor")),
+) -> dict:
+    """Return the integrity score breakdown for one student in a session.
+
+    Returns ``{"available": false}`` when scoring hasn't run yet (exam still open
+    or the background job hasn't completed).
+    """
+    result = await db.execute(
+        select(SessionScore).where(
+            SessionScore.exam_id == session_id,
+            SessionScore.student_id == student_id,
+        )
+    )
+    score = result.scalar_one_or_none()
+    if score is None:
+        return {"available": False}
+    return {
+        "available": True,
+        "integrity_score": score.integrity_score,
+        "components": {
+            "Tab Switch": score.tab_switch_score,
+            "Paste": score.paste_score,
+            "Keystroke": score.keystroke_score,
+            "Focus Loss": score.focus_loss_score,
+            "Answer Timing": score.answer_timing_score,
+            "Copy Sequence": score.copy_sequence_score,
+        },
+    }
+
+
+@router.get("/{session_id}/scores")
+async def list_session_scores(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+) -> list[dict]:
+    """Return integrity scores for all students in a completed session.
+
+    Only the exam owner may access this endpoint.
+    """
+    exam = await db.scalar(
+        select(ExamSession).where(ExamSession.id == session_id)
+    )
+    if exam is None or str(exam.created_by) != user_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    result = await db.execute(
+        select(SessionScore).where(SessionScore.exam_id == session_id)
+    )
+    scores = result.scalars().all()
+
+    student_ids = [s.student_id for s in scores]
+    name_map: dict[str, str] = {}
+    if student_ids:
+        try:
+            users_result = await db.execute(
+                select(User).where(
+                    User.id.in_([uuid.UUID(sid) for sid in student_ids if _is_valid_uuid(sid)])
+                )
+            )
+            for u in users_result.scalars().all():
+                name_map[str(u.id)] = u.full_name or u.email
+        except Exception:
+            pass
+
+    return [
+        {
+            "student_id": s.student_id,
+            "student_name": name_map.get(s.student_id, s.student_id),
+            "integrity_score": s.integrity_score,
+            "tab_switch_score": s.tab_switch_score,
+            "paste_score": s.paste_score,
+            "keystroke_score": s.keystroke_score,
+            "focus_loss_score": s.focus_loss_score,
+            "answer_timing_score": s.answer_timing_score,
+            "copy_sequence_score": s.copy_sequence_score,
+            "flagged": s.integrity_score >= 0.70,
+        }
+        for s in sorted(scores, key=lambda x: x.integrity_score, reverse=True)
+    ]
+
+
+def _is_valid_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+        return True
+    except ValueError:
+        return False
 
 
 @router.get(

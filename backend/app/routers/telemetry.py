@@ -29,6 +29,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User
 from app.services import telemetry_service
 from app.services.live_monitor import live_monitor
+from app.schemas.telemetry import TelemetryEventSchema
+from pydantic import ValidationError
+from app.services.messaging import publish_event_fire_and_forget, append_session_tape
 
 logger = logging.getLogger(__name__)
 
@@ -153,10 +156,47 @@ async def _receive_loop(
                     email=student_email,
                 )
 
+            # Validate incoming frame against TelemetryEventSchema. If invalid,
+            # reply to the client with an error message but do not close the WS.
+            try:
+                TelemetryEventSchema.validate_python(event_data)
+            except ValidationError as exc:
+                try:
+                    await ws.send_text(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "message": "invalid_event",
+                                "errors": exc.errors(),
+                            }
+                        )
+                    )
+                except Exception:
+                    logger.exception("Failed to send WS validation error")
+                # Continue without persisting or publishing invalid event
+                continue
+
+            # Persist to DB (best-effort) — errors are logged inside the service.
             try:
                 await telemetry_service.store_event(db, exam_id, student_id, event_data)
             except Exception:
                 logger.exception("Failed to store telemetry event")
+
+            # Fire-and-forget publish to Service Bus; don't await.
+            try:
+                publish_event_fire_and_forget(event_data)
+            except Exception:
+                logger.exception("Failed to schedule Service Bus publish")
+
+            # Append raw message to session tape (local fallback if blob not configured).
+            try:
+                session_id = event_data.get("sessionId")
+                session_id_str = (
+                    session_id if isinstance(session_id, (str, type(None))) else None
+                )
+                append_session_tape(raw, session_id_str)
+            except Exception:
+                logger.exception("Failed to append session tape")
     finally:
         if db is not None:
             await db.close()
