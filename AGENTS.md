@@ -207,3 +207,12 @@ Before you respond to any user message, confirm:
 - [ ] I will preserve the entry-point contract in §6.
 
 If any box is unchecked, fix that first.
+
+
+## Atlassian Rovo MCP
+
+When connected to atlassian-rovo-mcp:
+- **MUST** use Jira project key = AEGIS
+- **MUST** use Confluence spaceId = "CO"
+- **MUST** use cloudId = "https://comp47250-ucd.atlassian.net" (do NOT call getAccessibleAtlassianResources)
+- **MUST** use `maxResults: 10` or `limit: 10` for ALL Jira JQL and Confluence CQL search operations.

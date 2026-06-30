@@ -1,11 +1,19 @@
-"""Telemetry event persistence service."""
+"""Telemetry event persistence service.
+
+This module focuses on storing events in the database. Validation and
+messaging are handled by the WebSocket acceptor so that WS error replies
+can be sent immediately.
+"""
 
 import uuid
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.telemetry import TelemetryEvent
+
+logger = logging.getLogger(__name__)
 
 
 async def store_event(
@@ -17,13 +25,9 @@ async def store_event(
     """Persist one raw browser telemetry event to the database.
 
     Invalid or missing fields are silently defaulted — telemetry must never
-    block or raise errors visible to the student.
+    block or raise errors visible to the student. Any DB errors are logged
+    but not re-raised to avoid breaking the WebSocket connection.
     """
-    # The browser sends { type, sessionId, clientTs, payload }. Persist the
-    # inner `payload` directly so signal fields (interval_ms, duration_ms, …)
-    # sit at the top level — the shape the scorer reads. Previously the whole
-    # frame (minus type/sessionId) was stored, nesting fields under
-    # payload.payload and zeroing every payload-based score.
     raw_payload = event_data.get("payload")
     payload = raw_payload if isinstance(raw_payload, dict) else {}
 
@@ -34,5 +38,13 @@ async def store_event(
         payload=payload,
         occurred_at=datetime.now(timezone.utc),
     )
-    db.add(event)
-    await db.commit()
+    try:
+        db.add(event)
+        await db.commit()
+    except Exception:  # pragma: no cover - DB issues are environmental
+        logger.exception(
+            "Failed to write telemetry event to DB for exam=%s student=%s",
+            exam_id,
+            student_id,
+        )
+
