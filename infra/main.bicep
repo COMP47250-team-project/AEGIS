@@ -36,9 +36,45 @@ param postgresAdminLogin string = 'aegisadmin'
 @description('PostgreSQL administrator password.')
 param postgresAdminPassword string
 
+@description('AEGIS-77: object ID of the deploying user — granted Key Vault secret management. Get it with: az ad signed-in-user show --query id -o tsv')
+param deployerObjectId string = ''
+
+@description('AEGIS-77: wire the backend Container App to read secrets from Key Vault. Deploy once with this false to create the vault, set the secrets (see README), then redeploy with true.')
+param wireKeyVaultSecrets bool = false
+
 // Short, stable suffix for globally-unique names (ACR, Postgres, Storage, SB).
 var suffix = uniqueString(resourceGroup().id)
 var prefix = 'aegis${environmentName}'
+
+// Key Vault name must be <= 24 chars; build it from the name var so the backend
+// app can reference its secrets without depending on the keyVault module
+// (avoids a dependency cycle: keyVault needs the app's identity principalId).
+var keyVaultName = take('${prefix}kv${suffix}', 24)
+var keyVaultSecretBase = 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/secrets/'
+var backendKeyVaultSecrets = wireKeyVaultSecrets
+  ? [
+      {
+        envVarName: 'DATABASE_URL'
+        secretName: 'database-url'
+        keyVaultUrl: '${keyVaultSecretBase}database-url'
+      }
+      {
+        envVarName: 'JWT_SECRET'
+        secretName: 'jwt-secret'
+        keyVaultUrl: '${keyVaultSecretBase}jwt-secret'
+      }
+      {
+        envVarName: 'AZURE_SERVICE_BUS_CONNECTION_STRING'
+        secretName: 'service-bus-connection-string'
+        keyVaultUrl: '${keyVaultSecretBase}service-bus-connection-string'
+      }
+      {
+        envVarName: 'AZURE_STORAGE_CONNECTION_STRING'
+        secretName: 'storage-connection-string'
+        keyVaultUrl: '${keyVaultSecretBase}storage-connection-string'
+      }
+    ]
+  : []
 
 module acr 'modules/acr.bicep' = {
   name: 'acr'
@@ -96,6 +132,23 @@ module backendApp 'modules/containerApp.bicep' = {
     memory: '1Gi'
     minReplicas: 1
     targetPort: 8000
+    keyVaultSecrets: backendKeyVaultSecrets
+  }
+}
+
+// AEGIS-77: Key Vault holding the production secrets. Access-policy model
+// grants the deploying user secret management and the backend app's managed
+// identity secret read. Built after backendApp so its identity exists.
+module keyVault 'modules/keyVault.bicep' = {
+  name: 'keyVault'
+  params: {
+    name: keyVaultName
+    location: location
+    tenantId: subscription().tenantId
+    deployerObjectId: deployerObjectId
+    readerPrincipalIds: [
+      backendApp.outputs.principalId
+    ]
   }
 }
 
@@ -120,6 +173,8 @@ output serviceBusNamespace string = serviceBus.outputs.namespaceName
 output storageAccountName string = storage.outputs.accountName
 output backendFqdn string = backendApp.outputs.fqdn
 output frontendFqdn string = frontendApp.outputs.fqdn
+output keyVaultUri string = keyVault.outputs.vaultUri
+output keyVaultName string = keyVault.outputs.vaultName
 
 // Ticket requires connection strings as outputs; move to Key Vault in AEGIS-25.
 #disable-next-line outputs-should-not-contain-secrets
