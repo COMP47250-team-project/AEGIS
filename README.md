@@ -52,7 +52,7 @@
     </li>
     <li><a href="#environment-variables">Environment Variables</a></li>
     <li><a href="#running-tests--ci-checks">Running Tests & CI Checks</a></li>
-    <li><a href="#azure-environment-aegis-21">Azure Environment</a></li>
+    <li><a href="#azure-environment">Azure Environment</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -272,7 +272,7 @@ CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and r
 
 ---
 
-## Azure Environment (AEGIS-21)
+## Azure Environment
 
 Infrastructure-as-Code under [`infra/azure/`](infra/azure/) bootstraps the cloud environment:
 
@@ -314,7 +314,7 @@ az deployment sub what-if --location westeurope \
 
 > **Notes:** budgets use the subscription's billing currency (adjust `budgetAmount` if it bills in USD). Re-running is idempotent — the resource group and budget are upserted by name.
 
-### Cost estimate (AEGIS-63)
+### Cost estimate
 
 Rough **monthly** list-price estimate for the resources in `infra/main.bicep` (West Europe, EUR). Container Apps and Log Analytics are consumption-based, so actual cost depends on usage.
 
@@ -328,11 +328,11 @@ Rough **monthly** list-price estimate for the resources in `infra/main.bicep` (W
 | Log Analytics workspace | PerGB2018, low ingest | ~€3 |
 | **Total** | | **~€46 / month** |
 
-✅ Within the ticket's **≤ €50/month** target — but it **crosses the AEGIS-21 €30 budget alert**, so either bump the budget to ~€60 or treat the alert as an early warning (student credits cover this short-term).
+✅ Within the **≤ €50/month** target — but it **crosses the €30 budget alert**, so either bump the budget to ~€60 or treat the alert as an early warning (student credits cover this short-term).
 
 **Levers to trim toward €30:** Container Apps min-replicas 0 (scale-to-zero, cold start on first request) · Service Bus Basic instead of Standard (no topics/sessions — fine if only the `aegis-events` queue is needed) · stop/deallocate Postgres when not demoing. Prices are indicative; use `az deployment group what-if` + the Azure Pricing Calculator for an exact quote.
 
-### Secrets — Azure Key Vault (AEGIS-77)
+### Secrets — Azure Key Vault
 
 Production secrets live in an Azure Key Vault (`infra/modules/keyVault.bicep`), **never in git**. The backend Container App reads them at runtime via its **system-assigned managed identity** — no secret values are baked into images or env files.
 
@@ -366,7 +366,7 @@ az deployment group create -g aegis-prod-rg --template-file infra/main.bicep \
 
 **Verify retrieval:** `az containerapp show -g aegis-prod-rg -n backend-app --query properties.template.containers[0].env` shows the env vars wired to `secretRef`s, and the revision is healthy (an unresolved Key Vault reference would fail it). `az keyvault secret list --vault-name "$VAULT" -o table` lists the stored secrets.
 
-> **Notes:** real-image consumption of these env vars lands with AEGIS-66 (the apps run placeholder images until then). CI/CD GitHub secrets for the deploy pipeline are configured in the CI/CD ticket. gitleaks continues to guard against any secret reaching git.
+> **Notes:** the apps run placeholder images until real images are published, at which point they consume these env vars. CI/CD GitHub secrets for the deploy pipeline are configured separately. gitleaks continues to guard against any secret reaching git.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
