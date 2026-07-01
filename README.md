@@ -314,6 +314,24 @@ az deployment sub what-if --location westeurope \
 
 > **Notes:** budgets use the subscription's billing currency (adjust `budgetAmount` if it bills in USD). Re-running is idempotent — the resource group and budget are upserted by name.
 
+### Cost estimate (AEGIS-63)
+
+Rough **monthly** list-price estimate for the resources in `infra/main.bicep` (West Europe, EUR). Container Apps and Log Analytics are consumption-based, so actual cost depends on usage.
+
+| Resource | SKU / size | Est. €/month |
+|----------|-----------|-------------:|
+| Container Registry | Basic | ~€4 |
+| PostgreSQL Flexible Server | Standard_B1ms (1 vCore, Burstable) + 32 GiB | ~€14 |
+| Service Bus | Standard namespace | ~€9 |
+| Storage account | Standard_LRS (low usage) | ~€1 |
+| Container Apps | backend 0.5 vCPU/1 GiB + frontend 0.25 vCPU/0.5 GiB, min-replicas 1 (after the monthly free grant) | ~€15 |
+| Log Analytics workspace | PerGB2018, low ingest | ~€3 |
+| **Total** | | **~€46 / month** |
+
+✅ Within the ticket's **≤ €50/month** target — but it **crosses the AEGIS-21 €30 budget alert**, so either bump the budget to ~€60 or treat the alert as an early warning (student credits cover this short-term).
+
+**Levers to trim toward €30:** Container Apps min-replicas 0 (scale-to-zero, cold start on first request) · Service Bus Basic instead of Standard (no topics/sessions — fine if only the `aegis-events` queue is needed) · stop/deallocate Postgres when not demoing. Prices are indicative; use `az deployment group what-if` + the Azure Pricing Calculator for an exact quote.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
