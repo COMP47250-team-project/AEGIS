@@ -150,7 +150,7 @@ def _exam_duration(exam: ExamSession) -> int | str:
 
 
 def _build_csv_row(
-    writer: csv.writer,
+    writer: "csv.Writer[str]",
     buf: io.StringIO,
     student_id_str: str,
     user: User | None,
