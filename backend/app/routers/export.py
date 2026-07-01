@@ -11,18 +11,16 @@ import csv
 import io
 import uuid
 import logging
-from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from jose import JWTError, jwt
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
-from app.database import AsyncSessionLocal, get_db
+from app.database import AsyncSessionLocal
 from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
 from app.models.telemetry import SessionScore, TelemetryEvent
