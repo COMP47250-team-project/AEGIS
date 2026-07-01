@@ -20,7 +20,8 @@ from sqlalchemy import select
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
-from app.database import AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.database import AsyncSessionLocal, get_db
 from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
 from app.models.telemetry import SessionScore, TelemetryEvent
@@ -121,82 +122,75 @@ async def _csv_row_generator(
     PAGE = 50
     offset = 0
 
-    async with AsyncSessionLocal() as db:
-        while True:
-            # Fetch one page of enrollments joined to user identity
-            enrollment_result = await db.execute(
-                select(Enrollment, User)
-                .join(User, User.id == Enrollment.student_id.cast(uuid.UUID), isouter=True)
-                .where(Enrollment.exam_id == exam_id)
-                .order_by(Enrollment.enrolled_at)
-                .limit(PAGE)
-                .offset(offset)
+    while True:
+        enrollment_result = await db.execute(
+            select(Enrollment, User)
+            .join(User, User.id == Enrollment.student_id.cast(uuid.UUID), isouter=True)
+            .where(Enrollment.exam_id == exam_id)
+            .order_by(Enrollment.enrolled_at)
+            .limit(PAGE)
+            .offset(offset)
+        )
+        rows = enrollment_result.all()
+        if not rows:
+            break
+
+        for enrollment, user in rows:
+            student_id_str = enrollment.student_id
+
+            score_result = await db.execute(
+                select(SessionScore).where(
+                    SessionScore.exam_id == exam_id,
+                    SessionScore.student_id == student_id_str,
+                )
             )
-            rows = enrollment_result.all()
-            if not rows:
-                break  # no more students
+            score = score_result.scalar_one_or_none()
 
-            for enrollment, user in rows:
-                student_id_str = enrollment.student_id
-
-                # Score row (single indexed lookup)
-                score_result = await db.execute(
-                    select(SessionScore).where(
-                        SessionScore.exam_id == exam_id,
-                        SessionScore.student_id == student_id_str,
-                    )
+            flag_result = await db.execute(
+                select(RiskFlag).where(
+                    RiskFlag.exam_id == exam_id,
+                    RiskFlag.student_id == student_id_str,
                 )
-                score = score_result.scalar_one_or_none()
+            )
+            flag = flag_result.scalar_one_or_none()
 
-                # Flag row (single indexed lookup)
-                flag_result = await db.execute(
-                    select(RiskFlag).where(
-                        RiskFlag.exam_id == exam_id,
-                        RiskFlag.student_id == student_id_str,
-                    )
+            tab_blur_result = await db.execute(
+                select(TelemetryEvent).where(
+                    TelemetryEvent.exam_id == exam_id,
+                    TelemetryEvent.student_id == student_id_str,
+                    TelemetryEvent.event_type.in_(["tab_blur", "tab_hidden"]),
                 )
-                flag = flag_result.scalar_one_or_none()
+            )
+            tab_blur_count = len(tab_blur_result.scalars().all())
 
-                # Telemetry counts — aggregate in Python from indexed query
-                # to avoid a subquery on a potentially large table
-                tab_blur_result = await db.execute(
-                    select(TelemetryEvent).where(
-                        TelemetryEvent.exam_id == exam_id,
-                        TelemetryEvent.student_id == student_id_str,
-                        TelemetryEvent.event_type.in_(["tab_blur", "tab_hidden"]),
-                    )
+            paste_result = await db.execute(
+                select(TelemetryEvent).where(
+                    TelemetryEvent.exam_id == exam_id,
+                    TelemetryEvent.student_id == student_id_str,
+                    TelemetryEvent.event_type == "paste",
                 )
-                tab_blur_count = len(tab_blur_result.scalars().all())
+            )
+            paste_count = len(paste_result.scalars().all())
 
-                paste_result = await db.execute(
-                    select(TelemetryEvent).where(
-                        TelemetryEvent.exam_id == exam_id,
-                        TelemetryEvent.student_id == student_id_str,
-                        TelemetryEvent.event_type == "paste",
-                    )
-                )
-                paste_count = len(paste_result.scalars().all())
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow([
+                student_id_str,
+                user.full_name if user else "",
+                str(user.id) if user else student_id_str,
+                round(score.integrity_score, 4) if score else "",
+                tab_blur_count,
+                paste_count,
+                round(score.keystroke_score, 4) if score else "",
+                round(score.focus_loss_score, 4) if score else "",
+                round(score.answer_timing_score, 4) if score else "",
+                round(score.copy_sequence_score, 4) if score else "",
+                "YES" if flag else "NO",
+                exam_duration_seconds,
+            ])
+            yield buf.getvalue().encode("utf-8")
 
-                # Build the CSV row
-                buf = io.StringIO()
-                writer = csv.writer(buf)
-                writer.writerow([
-                    student_id_str,
-                    user.full_name if user else "",
-                    str(user.id) if user else student_id_str,  # student_number = user.id
-                    round(score.integrity_score, 4) if score else "",
-                    tab_blur_count,
-                    paste_count,
-                    round(score.keystroke_score, 4) if score else "",
-                    round(score.focus_loss_score, 4) if score else "",
-                    round(score.answer_timing_score, 4) if score else "",
-                    round(score.copy_sequence_score, 4) if score else "",
-                    "YES" if flag else "NO",
-                    exam_duration_seconds,
-                ])
-                yield buf.getvalue().encode("utf-8")
-
-            offset += PAGE
+        offset += PAGE
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
@@ -218,11 +212,10 @@ async def export_session_csv(
     - Memory: rows are yielded one at a time; no full result set in memory.
     - Filename: session_{exam_id}.csv
     """
-    async with AsyncSessionLocal() as db:
-        exam_result = await db.execute(
-            select(ExamSession).where(ExamSession.id == exam_id)
-        )
-        exam = exam_result.scalar_one_or_none()
+    exam_result = await db.execute(
+        select(ExamSession).where(ExamSession.id == exam_id)
+    )
+    exam = exam_result.scalar_one_or_none()
 
     if exam is None:
         raise HTTPException(
