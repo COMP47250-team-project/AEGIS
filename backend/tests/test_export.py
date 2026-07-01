@@ -11,7 +11,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
+from collections.abc import AsyncGenerator
 from app.database import Base, get_db
 from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
@@ -57,7 +57,7 @@ async def client(db_session: AsyncSession):
     """
     from app.main import app
 
-    async def _override_get_db() -> AsyncSession:
+    async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
