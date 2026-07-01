@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import auth, courses, exams, quizzes, sessions, student, telemetry
 from app.routers import users
+from app.routers.export import router as export_router
+
 
 app = FastAPI(
     title="AEGIS",
@@ -27,6 +29,7 @@ app.include_router(student.router)
 app.include_router(users.router)
 app.include_router(telemetry.router)
 app.include_router(sessions.router)
+app.include_router(export_router)
 
 
 @app.get("/healthz", tags=["health"])
