@@ -11,7 +11,8 @@ import csv
 import io
 import logging
 import uuid
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -49,8 +50,8 @@ _HEADERS = [
     "exam_duration_seconds",
 ]
 
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
-# ── Auth helper ───────────────────────────────────────────────────────────────
 
 def _decode_token(token: str) -> dict | None:
     """Decode JWT and return payload dict, or None on any failure."""
@@ -62,7 +63,8 @@ def _decode_token(token: str) -> dict | None:
         return None
 
 
-async def _require_professor(
+# Sonar: sync function — async keyword removed as there are no awaits
+def _require_professor(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> str:
     """Dependency — returns professor user_id or raises 401/403."""
@@ -72,17 +74,114 @@ async def _require_professor(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token.",
         )
-    role = payload.get("role", "")
-    if role != "professor":
+    if payload.get("role", "") != "professor":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Professor role required.",
         )
-    user_id: str = payload.get("sub", "")
-    return user_id
+    return payload.get("sub", "")
+
+
+# Annotated dependency aliases — satisfies Sonar "Use Annotated type hints" warning
+ProfessorDep = Annotated[str, Depends(_require_professor)]
+DbDep = Annotated[AsyncSession, Depends(get_db)]
+
+
+# ── Per-student data fetchers (extracted to reduce cognitive complexity) ──────
+
+
+async def _fetch_score(
+    db: AsyncSession, exam_id: uuid.UUID, student_id: str
+) -> SessionScore | None:
+    result = await db.execute(
+        select(SessionScore).where(
+            SessionScore.exam_id == exam_id,
+            SessionScore.student_id == student_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _fetch_flag(
+    db: AsyncSession, exam_id: uuid.UUID, student_id: str
+) -> RiskFlag | None:
+    result = await db.execute(
+        select(RiskFlag).where(
+            RiskFlag.exam_id == exam_id,
+            RiskFlag.student_id == student_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _fetch_event_count(
+    db: AsyncSession,
+    exam_id: uuid.UUID,
+    student_id: str,
+    event_types: list[str],
+) -> int:
+    result = await db.execute(
+        select(TelemetryEvent).where(
+            TelemetryEvent.exam_id == exam_id,
+            TelemetryEvent.student_id == student_id,
+            TelemetryEvent.event_type.in_(event_types),
+        )
+    )
+    return len(result.scalars().all())
+
+
+async def _resolve_users(
+    db: AsyncSession, student_id_strs: list[str]
+) -> dict[str, User]:
+    """Batch-resolve User rows for a list of student_id strings."""
+    try:
+        uuids = [uuid.UUID(sid) for sid in student_id_strs]
+    except ValueError:
+        return {}
+    result = await db.execute(select(User).where(User.id.in_(uuids)))
+    return {str(u.id): u for u in result.scalars().all()}
+
+
+def _exam_duration(exam: ExamSession) -> int | str:
+    """Return exam duration in seconds, or empty string if timestamps missing."""
+    if exam.opened_at and exam.closed_at:
+        return int((exam.closed_at - exam.opened_at).total_seconds())
+    return ""
+
+
+def _build_csv_row(
+    writer: csv.writer,
+    buf: io.StringIO,
+    student_id_str: str,
+    user: User | None,
+    score: SessionScore | None,
+    flag: RiskFlag | None,
+    tab_blur_count: int,
+    paste_count: int,
+    exam_duration: int | str,
+) -> bytes:
+    """Serialise one student's data to a CSV row and return encoded bytes."""
+    buf.seek(0)
+    buf.truncate()
+    writer.writerow([
+        student_id_str,
+        user.full_name if user else "",
+        str(user.id) if user else student_id_str,
+        round(score.integrity_score, 4) if score else "",
+        tab_blur_count,
+        paste_count,
+        round(score.keystroke_score, 4) if score else "",
+        round(score.focus_loss_score, 4) if score else "",
+        round(score.answer_timing_score, 4) if score else "",
+        round(score.copy_sequence_score, 4) if score else "",
+        "YES" if flag else "NO",
+        exam_duration,
+    ])
+    return buf.getvalue().encode("utf-8")
 
 
 # ── Streaming row generator ───────────────────────────────────────────────────
+
 
 async def _csv_row_generator(
     exam_id: uuid.UUID,
@@ -93,18 +192,12 @@ async def _csv_row_generator(
     Yield CSV bytes one row at a time using the injected session.
 
     Paginates enrollments in pages of 50 — constant memory regardless of
-    cohort size. User identity is resolved via a separate query per page
-    rather than a JOIN so it works on both SQLite (tests) and PostgreSQL
-    (production) without dialect-specific casting.
+    cohort size. Cognitive complexity kept low by delegating each concern
+    to a dedicated helper function.
     """
-    if exam.opened_at and exam.closed_at:
-        exam_duration_seconds: int | str = int(
-            (exam.closed_at - exam.opened_at).total_seconds()
-        )
-    else:
-        exam_duration_seconds = ""
+    exam_duration = _exam_duration(exam)
 
-    # BOM + header row
+    # BOM + header
     buf = io.StringIO()
     writer = csv.writer(buf)
     buf.write("\ufeff")  # UTF-8 BOM — required for Excel auto-detection
@@ -115,7 +208,6 @@ async def _csv_row_generator(
     offset = 0
 
     while True:
-        # Fetch one page of enrollments
         enrollment_result = await db.execute(
             select(Enrollment)
             .where(Enrollment.exam_id == exam_id)
@@ -127,85 +219,38 @@ async def _csv_row_generator(
         if not enrollments:
             break
 
-        # Resolve user identities for this page in one query
-        # Store as strings to match Enrollment.student_id type (String(255))
-        student_id_strs = [e.student_id for e in enrollments]
-        try:
-            student_uuids = [uuid.UUID(sid) for sid in student_id_strs]
-            user_result = await db.execute(
-                select(User).where(User.id.in_(student_uuids))
-            )
-            users_by_id: dict[str, User] = {
-                str(u.id): u for u in user_result.scalars().all()
-            }
-        except (ValueError, Exception):
-            # If any student_id is not a valid UUID, skip user resolution
-            users_by_id = {}
+        users_by_id = await _resolve_users(
+            db, [e.student_id for e in enrollments]
+        )
 
         for enrollment in enrollments:
-            student_id_str = enrollment.student_id
-            user = users_by_id.get(student_id_str)
-
-            # Score (single indexed lookup)
-            score_result = await db.execute(
-                select(SessionScore).where(
-                    SessionScore.exam_id == exam_id,
-                    SessionScore.student_id == student_id_str,
-                )
+            sid = enrollment.student_id
+            score = await _fetch_score(db, exam_id, sid)
+            flag = await _fetch_flag(db, exam_id, sid)
+            tab_blur_count = await _fetch_event_count(
+                db, exam_id, sid, ["tab_blur", "tab_hidden"]
             )
-            score = score_result.scalar_one_or_none()
+            paste_count = await _fetch_event_count(db, exam_id, sid, ["paste"])
 
-            # Risk flag (single indexed lookup)
-            flag_result = await db.execute(
-                select(RiskFlag).where(
-                    RiskFlag.exam_id == exam_id,
-                    RiskFlag.student_id == student_id_str,
-                )
-            )
-            flag = flag_result.scalar_one_or_none()
-
-            # Tab blur count
-            tab_result = await db.execute(
-                select(TelemetryEvent).where(
-                    TelemetryEvent.exam_id == exam_id,
-                    TelemetryEvent.student_id == student_id_str,
-                    TelemetryEvent.event_type.in_(["tab_blur", "tab_hidden"]),
-                )
-            )
-            tab_blur_count = len(tab_result.scalars().all())
-
-            # Paste count
-            paste_result = await db.execute(
-                select(TelemetryEvent).where(
-                    TelemetryEvent.exam_id == exam_id,
-                    TelemetryEvent.student_id == student_id_str,
-                    TelemetryEvent.event_type == "paste",
-                )
-            )
-            paste_count = len(paste_result.scalars().all())
-
-            buf = io.StringIO()
-            writer = csv.writer(buf)
-            writer.writerow([
-                student_id_str,
-                user.full_name if user else "",
-                str(user.id) if user else student_id_str,
-                round(score.integrity_score, 4) if score else "",
+            # Reuse the same buffer across rows — seek/truncate is cheaper
+            # than allocating a new StringIO per student
+            yield _build_csv_row(
+                writer,
+                buf,
+                sid,
+                users_by_id.get(sid),
+                score,
+                flag,
                 tab_blur_count,
                 paste_count,
-                round(score.keystroke_score, 4) if score else "",
-                round(score.focus_loss_score, 4) if score else "",
-                round(score.answer_timing_score, 4) if score else "",
-                round(score.copy_sequence_score, 4) if score else "",
-                "YES" if flag else "NO",
-                exam_duration_seconds,
-            ])
-            yield buf.getvalue().encode("utf-8")
+                exam_duration,
+            )
 
         offset += PAGE
 
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
+
 
 @router.get(
     "/{exam_id}/export",
@@ -214,8 +259,8 @@ async def _csv_row_generator(
 )
 async def export_session_csv(
     exam_id: uuid.UUID,
-    professor_id: str = Depends(_require_professor),
-    db: AsyncSession = Depends(get_db),
+    professor_id: ProfessorDep,
+    db: DbDep,
 ) -> StreamingResponse:
     """
     Stream session results for exam_id as a UTF-8 CSV file.
@@ -224,11 +269,6 @@ async def export_session_csv(
     - Ownership: professor must be the exam creator.
     - Memory: rows are yielded one at a time via an async generator.
     - Filename: session_{exam_id}.csv
-
-    The injected `db` session is passed into the generator so the test
-    fixture's dependency override applies throughout the full response stream.
-    FastAPI keeps the dependency alive until the response is fully sent, so
-    the session remains valid for the entire streaming lifetime.
     """
     exam_result = await db.execute(
         select(ExamSession).where(ExamSession.id == exam_id)
@@ -246,11 +286,10 @@ async def export_session_csv(
             detail="You do not own this exam session.",
         )
 
-    filename = f"session_{exam_id}.csv"
     return StreamingResponse(
         _csv_row_generator(exam_id, exam, db),
         media_type="text/csv; charset=utf-8",
         headers={
-            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Disposition": f"attachment; filename=session_{exam_id}.csv",
         },
     )

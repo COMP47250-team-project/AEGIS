@@ -5,13 +5,14 @@ Uses an in-memory SQLite database — no Postgres instance required in CI.
 import csv
 import io
 import uuid
-from datetime import datetime, timezone, timedelta
+from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from collections.abc import AsyncGenerator
+
 from app.database import Base, get_db
 from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
@@ -23,8 +24,12 @@ from app.models import course, quiz, risk  # noqa: F401
 
 DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
+# Sonar: test credential placeholder — not a real secret
+_TEST_HASHED_PW = "hashed_test_only"  # noqa: S105
+
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
+
 
 @pytest_asyncio.fixture
 async def db_engine():
@@ -39,15 +44,15 @@ async def db_engine():
 
 
 @pytest_asyncio.fixture
-async def db_session(db_engine):
-    """Provide a single session that the test and the app both use."""
+async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
+    """Provide a single session that the test and the app share."""
     factory = async_sessionmaker(db_engine, expire_on_commit=False)
     async with factory() as session:
         yield session
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession):
+async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
     FastAPI test client with get_db overridden to return the test session.
 
@@ -61,8 +66,10 @@ async def client(db_session: AsyncSession):
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    # Sonar: HTTPS not applicable for local ASGI test transport —
+    # httpx ASGITransport never opens a real socket regardless of scheme
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="https://test"
     ) as ac:
         yield ac
     app.dependency_overrides.clear()
@@ -70,9 +77,11 @@ async def client(db_session: AsyncSession):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+
 def _make_jwt(user_id: str, role: str) -> str:
     """Mint a test JWT matching the app's secret and algorithm."""
     from jose import jwt as jose_jwt
+
     from app.config import settings
 
     return jose_jwt.encode(
@@ -116,7 +125,7 @@ async def _seed_exam(
         db.add(User(
             id=student_uuid,
             email=f"student{i:02d}@test.com",
-            hashed_password="x",
+            hashed_password=_TEST_HASHED_PW,
             role="student",
             full_name=f"Student {i:02d}",
         ))
@@ -155,8 +164,11 @@ def _parse_csv(content: bytes) -> list[dict]:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
-async def test_export_row_count(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_export_row_count(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """CSV must contain exactly 50 data rows plus 1 header row."""
     professor_id = str(uuid.uuid4())
     exam_id, _ = await _seed_exam(db_session, professor_id)
@@ -170,7 +182,6 @@ async def test_export_row_count(client: AsyncClient, db_session: AsyncSession) -
     assert "text/csv" in response.headers["content-type"]
     assert f"session_{exam_id}.csv" in response.headers["content-disposition"]
 
-    # Verify header columns
     text = response.content.lstrip(b"\xef\xbb\xbf").decode("utf-8")
     reader = csv.reader(io.StringIO(text))
     header = next(reader)
@@ -186,7 +197,9 @@ async def test_export_row_count(client: AsyncClient, db_session: AsyncSession) -
 
 
 @pytest.mark.asyncio
-async def test_export_bom_encoding(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_export_bom_encoding(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """Response must start with UTF-8 BOM bytes for Excel compatibility."""
     professor_id = str(uuid.uuid4())
     exam_id, _ = await _seed_exam(db_session, professor_id)
@@ -201,7 +214,9 @@ async def test_export_bom_encoding(client: AsyncClient, db_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_export_flagged_column(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_export_flagged_column(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """First 5 students (by seed order) must have flagged=YES, remainder NO."""
     professor_id = str(uuid.uuid4())
     exam_id, _ = await _seed_exam(db_session, professor_id)
@@ -264,7 +279,9 @@ async def test_export_404_unknown_exam(
 
 
 @pytest.mark.asyncio
-async def test_export_score_values(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_export_score_values(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """Score columns must reflect the seeded SessionScore values."""
     professor_id = str(uuid.uuid4())
     exam_id, _ = await _seed_exam(db_session, professor_id)
@@ -277,13 +294,16 @@ async def test_export_score_values(client: AsyncClient, db_session: AsyncSession
     assert response.status_code == 200, response.text
     rows = _parse_csv(response.content)
 
-    # Every row must have a non-empty risk_score
     for row in rows:
-        assert row["risk_score"] != "", f"Empty risk_score for student {row['student_id']}"
+        assert row["risk_score"] != "", (
+            f"Empty risk_score for student {row['student_id']}"
+        )
 
 
 @pytest.mark.asyncio
-async def test_export_exam_duration(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_export_exam_duration(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     """exam_duration_seconds must equal closed_at - opened_at in seconds."""
     professor_id = str(uuid.uuid4())
     exam_id, _ = await _seed_exam(db_session, professor_id)
