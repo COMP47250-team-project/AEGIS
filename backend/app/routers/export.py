@@ -212,7 +212,7 @@ async def export_session_csv(
     - Memory: rows are yielded one at a time; no full result set in memory.
     - Filename: session_{exam_id}.csv
     """
-    exam_result = await db.execute(
+    exam_result = await get_db.execute(
         select(ExamSession).where(ExamSession.id == exam_id)
     )
     exam = exam_result.scalar_one_or_none()
