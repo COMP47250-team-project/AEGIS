@@ -12,7 +12,7 @@ import io
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -150,7 +150,7 @@ def _exam_duration(exam: ExamSession) -> int | str:
 
 
 def _build_csv_row(
-    writer: "csv.Writer[str]",
+    writer: Any,
     buf: io.StringIO,
     student_id_str: str,
     user: User | None,
