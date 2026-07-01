@@ -17,6 +17,9 @@ param minReplicas int = 1
 param maxReplicas int = 3
 param targetPort int
 
+@description('Key Vault-backed secrets injected as env vars (AEGIS-77). Each item: { secretName, keyVaultUrl, envVarName }. The app reads them via its system-assigned identity.')
+param keyVaultSecrets array = []
+
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
@@ -31,6 +34,13 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: targetPort
         transport: 'auto'
       }
+      secrets: [
+        for s in keyVaultSecrets: {
+          name: s.secretName
+          keyVaultUrl: s.keyVaultUrl
+          identity: 'system'
+        }
+      ]
     }
     template: {
       containers: [
@@ -41,6 +51,12 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(cpu)
             memory: memory
           }
+          env: [
+            for s in keyVaultSecrets: {
+              name: s.envVarName
+              secretRef: s.secretName
+            }
+          ]
         }
       ]
       scale: {
@@ -52,3 +68,4 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
 }
 
 output fqdn string = app.properties.configuration.ingress.fqdn
+output principalId string = app.identity.principalId
