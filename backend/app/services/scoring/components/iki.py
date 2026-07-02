@@ -88,7 +88,7 @@ def iki_outlier_score(
     if not baseline.is_sufficient:
         return 0.0
 
-    if baseline.std_iki_ms == 0.0:
+    if baseline.std_iki_ms < 1e-9:
         return 0.0
 
     baseline_end_ms = exam_start_ms + BASELINE_WINDOW_SECONDS * 1000
