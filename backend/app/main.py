@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import os
 from sqlalchemy import text
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,26 +44,79 @@ app.include_router(telemetry.router)
 app.include_router(sessions.router)
 
 
-@app.get("/healthz", tags=["health"])
-async def healthz() -> dict:
-    """Deep health check — verifies DB connectivity and reports service bus status."""
-    result: dict = {"status": "ok"}
-
-    # Check database
+async def _check_db() -> str:
     try:
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
-        result["db"] = "ok"
+        return "ok"
     except Exception as exc:
         logger.warning("Health check: DB unreachable: %s", exc)
-        result["db"] = "error"
-        result["status"] = "degraded"
+        return "error"
 
-    # Check service bus (non-fatal if absent — optional in dev)
-    if settings.azure_service_bus_connection_string:
-        result["service_bus"] = "configured"
-    else:
-        result["service_bus"] = "disabled"
 
-    return result
+async def _check_service_bus() -> str:
+    """Actively verify Service Bus connectivity by peeking the events queue."""
+    conn = settings.azure_service_bus_connection_string
+    if not conn:
+        return "disabled"
+    try:
+        from azure.servicebus.aio import ServiceBusClient
+
+        async def _peek() -> None:
+            async with ServiceBusClient.from_connection_string(conn) as client:
+                async with client.get_queue_receiver(
+                    settings.aegis_events_queue_name
+                ) as receiver:
+                    await receiver.peek_messages(max_message_count=1)
+
+        await asyncio.wait_for(_peek(), timeout=6)
+        return "ok"
+    except Exception as exc:
+        logger.warning("Health check: Service Bus unreachable: %s", exc)
+        return "error"
+
+
+async def _check_blob() -> str:
+    """Actively verify Blob Storage by reading the session-tapes container."""
+    conn = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+    if not conn:
+        return "disabled"
+    try:
+        from azure.storage.blob.aio import BlobServiceClient
+
+        async def _probe() -> None:
+            async with BlobServiceClient.from_connection_string(conn) as client:
+                container = client.get_container_client("session-tapes")
+                await container.get_container_properties()
+
+        await asyncio.wait_for(_probe(), timeout=6)
+        return "ok"
+    except Exception as exc:
+        logger.warning("Health check: Blob Storage unreachable: %s", exc)
+        return "error"
+
+
+@app.get("/healthz", tags=["health"])
+@app.get("/api/health", tags=["health"])
+async def health() -> dict:
+    """Deep health check — actively verifies DB, Service Bus, and Blob Storage.
+
+    Returns 200 always (so the platform probe doesn't kill the app for a
+    degraded dependency); inspect the body for per-dependency status. A value
+    of "disabled" means the connection string isn't set (expected in local dev).
+    """
+    db, service_bus, blob = await asyncio.gather(
+        _check_db(), _check_service_bus(), _check_blob()
+    )
+    healthy = (
+        db == "ok"
+        and service_bus in ("ok", "disabled")
+        and blob in ("ok", "disabled")
+    )
+    return {
+        "status": "ok" if healthy else "degraded",
+        "db": db,
+        "service_bus": service_bus,
+        "blob": blob,
+    }
 
