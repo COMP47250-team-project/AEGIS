@@ -10,10 +10,13 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
     name: 'Basic'
   }
   properties: {
-    // Disabled here — AEGIS-63's Container Apps run public placeholder images,
-    // so no registry auth is needed yet. AEGIS-66 wires real-image pulls using
-    // the Container Apps' managed identity (+ AcrPull) when it deploys them.
-    adminUserEnabled: false
+    // Admin user enabled: the Container Apps pull private images using the ACR
+    // admin credentials. The cleaner managed-identity + AcrPull approach needs a
+    // role assignment (Microsoft.Authorization/roleAssignments/write), which the
+    // sponsored-subscription guest accounts are denied — so admin auth is the
+    // only workable path here. (Accepted SonarCloud hotspot.)
+    #disable-next-line adminuser-should-be-disabled
+    adminUserEnabled: true
   }
 }
 
