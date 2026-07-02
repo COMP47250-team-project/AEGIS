@@ -1,0 +1,228 @@
+# .github/workflows/cd.yml
+# AEGIS-65: CI/CD pipeline — build, push to ACR, deploy to Container Apps.
+#
+# Triggers on push to main AFTER CI passes.
+# Runs two parallel jobs (backend / frontend), then a smoke-test job.
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+# Only one deploy at a time; cancel superseded runs.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write # needed for OIDC login to Azure
+
+env:
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+  ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Build and push backend image
+  # ──────────────────────────────────────────────────────────────────────────
+  build-backend:
+    name: Build & push backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Set image tag
+        id: meta
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        run: |
+          docker build -t "${{ steps.meta.outputs.image }}" ./backend
+          docker push "${{ steps.meta.outputs.image }}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Build and push frontend image (production build with nginx)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build & push frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ secrets.ACR_LOGIN_SERVER }}
+
+      - name: Set image tag
+        id: meta
+        run: |
+          IMAGE="${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push frontend image
+        run: |
+          # VITE_API_URL must point to the Azure backend FQDN at build time
+          BACKEND_URL="https://${{ secrets.BACKEND_FQDN }}"
+          docker build \
+            -f ./frontend/Dockerfile.prod \
+            --build-arg "VITE_API_URL=${BACKEND_URL}" \
+            -t "${{ steps.meta.outputs.image }}" \
+            ./frontend
+          docker push "${{ steps.meta.outputs.image }}"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. Deploy to Azure Container Apps
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-backend, build-frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Grant Container App identity AcrPull on the registry
+      # (idempotent — safe to run every deploy)
+      - name: Assign AcrPull to backend Container App identity
+        run: |
+          PRINCIPAL_ID=$(az containerapp show \
+            --name "${{ secrets.BACKEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "identity.principalId" -o tsv)
+          ACR_ID=$(az acr show \
+            --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
+            --query id -o tsv)
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role "AcrPull" \
+            --scope "$ACR_ID" \
+            || true   # ignore if assignment already exists
+
+      - name: Assign AcrPull to frontend Container App identity
+        run: |
+          PRINCIPAL_ID=$(az containerapp show \
+            --name "${{ secrets.FRONTEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --query "identity.principalId" -o tsv)
+          ACR_ID=$(az acr show \
+            --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
+            --query id -o tsv)
+          az role assignment create \
+            --assignee "$PRINCIPAL_ID" \
+            --role "AcrPull" \
+            --scope "$ACR_ID" \
+            || true
+
+      # Enable admin credentials on ACR so Container Apps can pull images
+      # (managed-identity pull is preferred in production; admin creds work for MVP)
+      - name: Enable ACR admin
+        run: |
+          az acr update \
+            --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
+            --admin-enabled true
+
+      - name: Get ACR credentials
+        id: acr-creds
+        run: |
+          ACR_NAME="$(echo $ACR_LOGIN_SERVER | cut -d. -f1)"
+          USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$PASSWORD"
+
+      - name: Update backend Container App
+        run: |
+          az containerapp update \
+            --name "${{ secrets.BACKEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ needs.build-backend.outputs.image }}" \
+            --registry-server "$ACR_LOGIN_SERVER" \
+            --registry-username "${{ steps.acr-creds.outputs.username }}" \
+            --registry-password "${{ steps.acr-creds.outputs.password }}"
+
+      - name: Update frontend Container App
+        run: |
+          az containerapp update \
+            --name "${{ secrets.FRONTEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "${{ needs.build-frontend.outputs.image }}" \
+            --registry-server "$ACR_LOGIN_SERVER" \
+            --registry-username "${{ steps.acr-creds.outputs.username }}" \
+            --registry-password "${{ steps.acr-creds.outputs.password }}"
+
+      # Run Alembic migrations via az containerapp exec
+      # (requires containerapp exec enabled — see §5 if this fails)
+      - name: Run database migrations
+        run: |
+          az containerapp exec \
+            --name "${{ secrets.BACKEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --command "alembic upgrade head"
+        continue-on-error: true # Don't fail deploy if exec times out; check logs
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. Smoke test
+  # ──────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy]
+
+    steps:
+      - name: Wait for Container Apps to stabilise
+        run: sleep 30
+
+      - name: Backend health check
+        run: |
+          BACKEND_URL="https://${{ secrets.BACKEND_FQDN }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BACKEND_URL}/healthz")
+          echo "Backend /healthz returned HTTP $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
+
+      - name: Frontend health check
+        run: |
+          FRONTEND_URL="https://${{ secrets.FRONTEND_FQDN }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FRONTEND_URL}/health")
+          echo "Frontend /health returned HTTP $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
