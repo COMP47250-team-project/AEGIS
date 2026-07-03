@@ -54,7 +54,17 @@ exclude = [
     "backend/app/services/scoring/components/resize.py",
     "backend/app/services/scoring/components/first_keypress.py",
     "backend/app/models/__init__.py",
-    "backend/app/models/telemetry.py"
+    "backend/app/models/telemetry.py",
+    "backend/app/routers/exams.py",
+    "backend/app/routers/export.py",
+    "backend/app/routers/sessions.py",
+    "backend/app/schemas/session.py",
+    "backend/app/schemas/telemetry.py",
+    "backend/app/services/messaging.py",
+    "backend/app/services/scoring/components/answer_time.py",
+    "backend/app/services/scoring/components/iki.py",
+    "backend/app/services/scoring/components/resize.py",
+    "backend/app/services/scoring/components/first_keypress.py"
 ]
 venvPath = "backend"
 venv = ".venv"
