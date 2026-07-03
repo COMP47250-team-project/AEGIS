@@ -1,5 +1,4 @@
 import logging
-
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -69,4 +68,3 @@ async def healthz(db_session: AsyncSession = Depends(get_db)) -> dict[str, str]:
         result["service_bus"] = "disabled"
 
     return result
-

@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -26,11 +28,11 @@ class Settings(BaseSettings):
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod
-    def parse_cors_origins(cls, v: object) -> list[str]:
+    def parse_cors_origins(cls, v: object) -> Any:
         if isinstance(v, str):
             # Handle comma-separated string from environment variable
             return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v  # already a list (from .env file or default)
+        return v
 
 
 settings = Settings()
