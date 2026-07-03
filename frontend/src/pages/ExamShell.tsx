@@ -19,7 +19,7 @@ import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
 import { TelemetryClient } from "../telemetry/TelemetryClient";
 import { attachTabBlur } from "../telemetry/signals/tabBlur";
-import { makePasteEvent } from "../telemetry/signals/paste";
+import { isInternalPaste, makePasteEvent } from "../telemetry/signals/paste";
 import { attachIKI } from "../telemetry/signals/iki";
 import { attachFirstKeypress } from "../telemetry/signals/firstKeypress";
 import { attachResize } from "../telemetry/signals/resize";
@@ -239,13 +239,28 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
     warningTimerRef.current = setTimeout(() => setWarningMsg(null), 4000);
   }, []);
+
+  // Text the student copied from within the exam. A paste of the same text is
+  // internal and allowed (not flagged). Stored and compared on the client only
+  // — clipboard content is never transmitted (AEGIS-104, data minimisation).
+  const internalCopiesRef = useRef<Set<string>>(new Set());
+  const rememberInternalCopy = useCallback((text: string) => {
+    const normalised = text.trim();
+    if (!normalised) return;
+    const set = internalCopiesRef.current;
+    set.add(normalised);
+    // Bound memory — keep only the most recent copies (Set preserves order).
+    if (set.size > 50) {
+      const oldest = set.values().next().value;
+      if (oldest !== undefined) set.delete(oldest);
+    }
+  }, []);
   // AEGIS-41: controls visibility of the "Are you sure?" modal triggered
   // by the manual Finish Exam button. Auto-submit (from CountdownTimer)
   // never opens this — the clock already decided, no confirmation needed.
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const answersRef = useRef<Answers>({});
-  const keySeqRef = useRef<string[]>([]);
   // Telemetry client — created once after consent
   const telemetryRef = useRef<TelemetryClient | null>(null);
   const currentQuestionIdRef = useRef<string>("");
@@ -330,23 +345,28 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
         showWarning("Leaving this tab has been recorded for integrity review.");
       }
     };
-    const onPaste = () => {
-      showWarning("A paste event has been recorded for integrity review.");
+    const onCopyOrCut = () => {
+      // Remember text copied on the page so a later paste of it counts as
+      // internal (allowed). Paste warnings/flags are raised in handlePaste,
+      // only for text that did NOT originate within the exam.
+      rememberInternalCopy(document.getSelection()?.toString() ?? "");
     };
     const onBlur = () => {
       showWarning("Window focus lost — this has been recorded.");
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
-    document.addEventListener("paste", onPaste);
+    document.addEventListener("copy", onCopyOrCut);
+    document.addEventListener("cut", onCopyOrCut);
     window.addEventListener("blur", onBlur);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      document.removeEventListener("paste", onPaste);
+      document.removeEventListener("copy", onCopyOrCut);
+      document.removeEventListener("cut", onCopyOrCut);
       window.removeEventListener("blur", onBlur);
     };
-  }, [showWarning]);
+  }, [showWarning, rememberInternalCopy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -400,34 +420,6 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     return () => clearInterval(id);
   }, [examId, contentState]);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (!ctrl) {
-        keySeqRef.current = [];
-        return;
-      }
-      const k = e.key.toLowerCase();
-      if (k === "a") {
-        keySeqRef.current = ["ctrl+a"];
-      } else if (k === "c" && keySeqRef.current[keySeqRef.current.length - 1] === "ctrl+a") {
-        keySeqRef.current.push("ctrl+c");
-      } else if (k === "v") {
-        const seq = keySeqRef.current;
-        if (seq.length >= 2 && seq[0] === "ctrl+a" && seq[1] === "ctrl+c") {
-          telemetryRef.current?.enqueue(
-            makePasteEvent(sessionId, currentQuestionIdRef.current, 0)
-          );
-        }
-        keySeqRef.current = [];
-      } else {
-        keySeqRef.current = [];
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [sessionId]);
-
   const handleAnswerChange = useCallback(
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -450,12 +442,17 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   );
 
   const handlePaste = useCallback(
-    (questionId: string, charCount: number) => {
+    (questionId: string, charCount: number, pastedText: string) => {
+      // Copy/paste within the exam is allowed — only flag paste from outside.
+      if (isInternalPaste(pastedText, internalCopiesRef.current)) {
+        return;
+      }
+      showWarning("A paste from outside the exam has been recorded for integrity review.");
       telemetryRef.current?.enqueue(
         makePasteEvent(sessionId, questionId, charCount)
       );
     },
-    [sessionId]
+    [sessionId, showWarning]
   );
 
   const goTo = useCallback(

@@ -13,7 +13,9 @@ interface QuestionRendererProps {
   question: ExamQuestion;
   answer: string;
   onAnswerChange: (questionId: string, value: string) => void;
-  onPaste: (questionId: string, charCount: number) => void;
+  // pastedText is used client-side only (internal vs external classification);
+  // it is never transmitted — only char_count is emitted in telemetry.
+  onPaste: (questionId: string, charCount: number, pastedText: string) => void;
 }
 
 const QuestionRenderer: React.FC<QuestionRendererProps> = ({
@@ -65,7 +67,13 @@ const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         value={answer}
         onChange={(e) => onAnswerChange(question.id, e.target.value)}
         // Observe only — never preventDefault, so the paste still completes.
-        onPaste={(e) => onPaste(question.id, pasteCharCount(e.clipboardData))}
+        onPaste={(e) =>
+          onPaste(
+            question.id,
+            pasteCharCount(e.clipboardData),
+            e.clipboardData.getData("text")
+          )
+        }
         placeholder="Type your answer here…"
         rows={6}
         className="w-full px-4 py-3 bg-surface-card border border-hairline rounded-md text-sm text-ink placeholder-ash resize-y focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/20 leading-relaxed"

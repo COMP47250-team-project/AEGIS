@@ -11,6 +11,22 @@ export function pasteCharCount(
   return clipboard.getData("text").length;
 }
 
+/**
+ * Whether a paste originated from within the exam itself (text the student
+ * previously copied on the page) and should therefore NOT be flagged.
+ *
+ * Only paste from outside the exam is a cheating signal. The comparison is done
+ * entirely on the client — clipboard content is never transmitted (AEGIS-104,
+ * data minimisation).
+ */
+export function isInternalPaste(
+  pastedText: string,
+  internalCopies: ReadonlySet<string>,
+): boolean {
+  const normalised = pastedText.trim();
+  return normalised.length > 0 && internalCopies.has(normalised);
+}
+
 /** Build a paste telemetry event for the given question. */
 export function makePasteEvent(
   sessionId: string,
