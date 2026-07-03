@@ -39,8 +39,14 @@ param postgresAdminPassword string
 @description('AEGIS-77: object ID of the deploying user — granted Key Vault secret management. Get it with: az ad signed-in-user show --query id -o tsv')
 param deployerObjectId string = ''
 
+@description('AEGIS-77: additional user/group object IDs granted Key Vault secret management (e.g. other DevOps leads). Passed at deploy time; not committed.')
+param keyVaultAdminObjectIds array = []
+
 @description('AEGIS-77: wire the backend Container App to read secrets from Key Vault. Deploy once with this false to create the vault, set the secrets (see README), then redeploy with true.')
 param wireKeyVaultSecrets bool = false
+
+@description('AEGIS-66: pull backend/frontend images from ACR using the registry admin user (managed-identity AcrPull is blocked for guest accounts). Requires ACR admin enabled. Set true when deploying real images.')
+param useAcrRegistry bool = false
 
 // Short, stable suffix for globally-unique names (ACR, Postgres, Storage, SB).
 var suffix = uniqueString(resourceGroup().id)
@@ -59,7 +65,8 @@ var backendKeyVaultSecrets = wireKeyVaultSecrets
         keyVaultUrl: '${keyVaultSecretBase}database-url'
       }
       {
-        envVarName: 'JWT_SECRET'
+        // JWT_SECRET_KEY (not JWT_SECRET) to match the backend Settings field.
+        envVarName: 'JWT_SECRET_KEY'
         secretName: 'jwt-secret'
         keyVaultUrl: '${keyVaultSecretBase}jwt-secret'
       }
@@ -83,6 +90,17 @@ module acr 'modules/acr.bicep' = {
     location: location
   }
 }
+
+// AEGIS-66: read the ACR admin credentials to pass to the Container Apps for
+// private-image pull (managed-identity AcrPull is denied for guest accounts).
+// listCredentials() is only evaluated when useAcrRegistry is true, so a fresh
+// deploy with public placeholder images doesn't require admin to be enabled.
+resource acrExisting 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: '${prefix}acr${suffix}'
+}
+var acrServer = useAcrRegistry ? acrExisting.properties.loginServer : ''
+var acrUsername = useAcrRegistry ? acrExisting.listCredentials().username : ''
+var acrPassword = useAcrRegistry ? acrExisting.listCredentials().passwords[0].value : ''
 
 module containerEnv 'modules/containerAppEnv.bicep' = {
   name: 'containerAppEnv'
@@ -133,6 +151,9 @@ module backendApp 'modules/containerApp.bicep' = {
     minReplicas: 1
     targetPort: 8000
     keyVaultSecrets: backendKeyVaultSecrets
+    registryServer: acrServer
+    registryUsername: acrUsername
+    registryPassword: acrPassword
   }
 }
 
@@ -146,6 +167,7 @@ module keyVault 'modules/keyVault.bicep' = {
     location: location
     tenantId: subscription().tenantId
     deployerObjectId: deployerObjectId
+    adminObjectIds: keyVaultAdminObjectIds
     readerPrincipalIds: [
       backendApp.outputs.principalId
     ]
@@ -163,6 +185,9 @@ module frontendApp 'modules/containerApp.bicep' = {
     memory: '0.5Gi'
     minReplicas: 1
     targetPort: 80
+    registryServer: acrServer
+    registryUsername: acrUsername
+    registryPassword: acrPassword
   }
 }
 

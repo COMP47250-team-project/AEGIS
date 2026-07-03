@@ -20,6 +20,34 @@ param targetPort int
 @description('Key Vault-backed secrets injected as env vars (AEGIS-77). Each item: { secretName, keyVaultUrl, envVarName }. The app reads them via its system-assigned identity.')
 param keyVaultSecrets array = []
 
+@description('ACR login server for pulling private images (empty = public image, no registry auth). AEGIS-66.')
+param registryServer string = ''
+
+@description('ACR admin username for image pull.')
+param registryUsername string = ''
+
+@secure()
+@description('ACR admin password for image pull.')
+param registryPassword string = ''
+
+// Key Vault-backed secrets (read via managed identity) + the ACR admin password
+// (a plain-value secret) when pulling private images.
+var kvSecrets = [
+  for s in keyVaultSecrets: {
+    name: s.secretName
+    keyVaultUrl: s.keyVaultUrl
+    identity: 'system'
+  }
+]
+var registrySecrets = empty(registryServer)
+  ? []
+  : [
+      {
+        name: 'acr-password'
+        value: registryPassword
+      }
+    ]
+
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
@@ -34,13 +62,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: targetPort
         transport: 'auto'
       }
-      secrets: [
-        for s in keyVaultSecrets: {
-          name: s.secretName
-          keyVaultUrl: s.keyVaultUrl
-          identity: 'system'
-        }
-      ]
+      registries: empty(registryServer)
+        ? []
+        : [
+            {
+              server: registryServer
+              username: registryUsername
+              passwordSecretRef: 'acr-password'
+            }
+          ]
+      secrets: concat(registrySecrets, kvSecrets)
     }
     template: {
       containers: [

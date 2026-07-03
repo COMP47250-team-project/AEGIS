@@ -11,20 +11,23 @@ param tenantId string
 @description('Object ID of the deploying user — full secret management (get/list/set/delete).')
 param deployerObjectId string = ''
 
+@description('Additional user/group object IDs granted full secret management (e.g. other DevOps leads). Passed at deploy time so no IDs are committed.')
+param adminObjectIds array = []
+
 @description('Principal IDs (e.g. Container App managed identities) granted secret get/list.')
 param readerPrincipalIds array = []
 
-var deployerPolicies = empty(deployerObjectId)
-  ? []
-  : [
-      {
-        tenantId: tenantId
-        objectId: deployerObjectId
-        permissions: {
-          secrets: ['get', 'list', 'set', 'delete']
-        }
-      }
-    ]
+// Full secret management for the deployer + any additional admins.
+var adminObjectIdsAll = empty(deployerObjectId) ? adminObjectIds : union([deployerObjectId], adminObjectIds)
+var adminPolicies = [
+  for oid in adminObjectIdsAll: {
+    tenantId: tenantId
+    objectId: oid
+    permissions: {
+      secrets: ['get', 'list', 'set', 'delete']
+    }
+  }
+]
 
 var readerPolicies = [
   for pid in readerPrincipalIds: {
@@ -48,7 +51,7 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: false
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
-    accessPolicies: concat(deployerPolicies, readerPolicies)
+    accessPolicies: concat(adminPolicies, readerPolicies)
   }
 }
 
