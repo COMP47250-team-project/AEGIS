@@ -21,4 +21,10 @@ export interface SDKConfig {
   sessionToken: string;
   sessionId: string;
   wsUrl: string;
+  /**
+   * Called when the server pushes an `exam_closed` control message — i.e. the
+   * professor closed the exam. Lets the exam UI end the session immediately
+   * (AEGIS-104).
+   */
+  onExamClosed?: () => void;
 }
