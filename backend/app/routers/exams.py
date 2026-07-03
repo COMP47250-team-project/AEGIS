@@ -338,6 +338,27 @@ async def submit_answers(
     return AnswerSubmitResponse(saved=len(saved), answers=answer_reads)
 
 
+@router.get("/{exam_id}/answers", response_model=list[AnswerItemRead])
+async def get_my_answers(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    student_id: str = Depends(require_role("student")),
+) -> list[ExamAnswer]:
+    """Return the calling student's own saved answers for an exam.
+
+    Lets the frontend rehydrate the exam on refresh / re-login so the student
+    resumes with their previously saved answers instead of a blank restart.
+    """
+    await _get_exam_or_404(db, exam_id)
+    result = await db.execute(
+        select(ExamAnswer).where(
+            ExamAnswer.exam_id == exam_id,
+            ExamAnswer.student_id == student_id,
+        )
+    )
+    return list(result.scalars().all())
+
+
 # ---------------------------------------------------------------------------
 # Student session / GDPR consent (AEGIS-38)
 # ---------------------------------------------------------------------------

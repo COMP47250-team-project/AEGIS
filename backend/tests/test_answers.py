@@ -137,6 +137,41 @@ async def test_submit_answers_durable_in_db(client: AsyncClient) -> None:
     assert "saved_at" in answer
 
 
+@pytest.mark.asyncio
+async def test_get_my_answers_returns_saved_answers(client: AsyncClient) -> None:
+    """A student can fetch their own saved answers to resume an exam."""
+    exam_id, short_q_id, mcq_q_id = await _setup_open_exam(client)
+
+    async with _student_client() as student:
+        await student.post(
+            f"/exams/{exam_id}/answers",
+            json={
+                "answers": [
+                    {"question_id": short_q_id, "answer": "Resume me"},
+                    {"question_id": mcq_q_id, "answer": "Network"},
+                ]
+            },
+        )
+        resp = await student.get(f"/exams/{exam_id}/answers")
+
+    assert resp.status_code == 200
+    saved = {a["question_id"]: a["answer"] for a in resp.json()}
+    assert saved[short_q_id] == "Resume me"
+    assert saved[mcq_q_id] == "Network"
+
+
+@pytest.mark.asyncio
+async def test_get_my_answers_empty_when_none_saved(client: AsyncClient) -> None:
+    """No saved answers yet returns an empty list (fresh start, not an error)."""
+    exam_id, _, _ = await _setup_open_exam(client)
+
+    async with _student_client() as student:
+        resp = await student.get(f"/exams/{exam_id}/answers")
+
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 # ---------------------------------------------------------------------------
 # Partial save / upsert (auto-save every 30s)
 # ---------------------------------------------------------------------------
