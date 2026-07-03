@@ -368,22 +368,61 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     };
   }, [showWarning, rememberInternalCopy]);
 
+  // Warn before a browser refresh / tab close so the student doesn't
+  // accidentally interrupt the exam (AEGIS-104). The browser shows its native
+  // "Leave site?" dialog. In-app submit navigates via the router and does not
+  // trigger this; once submitted, the guard is disabled.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasSubmittedRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    apiClient
-      .get<ExamQuestion[]>(`/exams/${examId}/questions`)
-      .then(({ data }) => {
-        if (!cancelled) {
-          setContentState({ kind: "loaded", questions: data });
-          if (data.length > 0) {
-            currentQuestionIdRef.current = data[0].id;
-            questionStartTsRef.current = Date.now();
-          }
+    (async () => {
+      try {
+        const { data: questions } = await apiClient.get<ExamQuestion[]>(
+          `/exams/${examId}/questions`
+        );
+        if (cancelled) return;
+
+        // Rehydrate previously saved answers so a refresh / re-login resumes
+        // the exam instead of restarting it (AEGIS-104).
+        let saved: Answers = {};
+        try {
+          const { data: savedAnswers } = await apiClient.get<
+            { question_id: string; answer: string }[]
+          >(`/exams/${examId}/answers`);
+          if (cancelled) return;
+          saved = Object.fromEntries(
+            savedAnswers.map((a) => [a.question_id, a.answer])
+          );
+        } catch {
+          // No saved answers yet (or fetch failed) — start fresh.
         }
-      })
-      .catch(() => {
+        if (Object.keys(saved).length > 0) setAnswers(saved);
+
+        setContentState({ kind: "loaded", questions });
+        if (questions.length > 0) {
+          // Resume at the first unanswered question; if all are answered,
+          // land on the last one rather than restarting at the top.
+          const firstUnanswered = questions.findIndex(
+            (q) => saved[q.id] === undefined || saved[q.id] === ""
+          );
+          const idx = firstUnanswered === -1 ? questions.length - 1 : firstUnanswered;
+          setCurrentIndex(idx);
+          currentQuestionIdRef.current = questions[idx].id;
+          questionStartTsRef.current = Date.now();
+        }
+      } catch {
         if (!cancelled) setContentState({ kind: "error" });
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
