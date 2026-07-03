@@ -1,4 +1,4 @@
-import { makePasteEvent, pasteCharCount } from "../paste";
+import { isInternalPaste, makePasteEvent, pasteCharCount } from "../paste";
 
 /**
  * AEGIS-44 — Capture paste events in short-answer fields.
@@ -42,5 +42,27 @@ describe("makePasteEvent", () => {
   it("still logs an event when char_count is 0 (empty/whitespace paste) (AC2)", () => {
     const event = makePasteEvent("sess-1", "q-1", 0);
     expect(event.payload).toEqual({ question_id: "q-1", char_count: 0 });
+  });
+});
+
+describe("isInternalPaste", () => {
+  it("treats text copied within the exam as internal (not flagged)", () => {
+    const copied = new Set(["my earlier answer"]);
+    expect(isInternalPaste("my earlier answer", copied)).toBe(true);
+  });
+
+  it("ignores surrounding whitespace when matching", () => {
+    const copied = new Set(["hello world"]);
+    expect(isInternalPaste("  hello world  ", copied)).toBe(true);
+  });
+
+  it("treats text not copied on the page as external (flagged)", () => {
+    const copied = new Set(["something else"]);
+    expect(isInternalPaste("pasted from another tab", copied)).toBe(false);
+  });
+
+  it("never treats an empty paste as internal", () => {
+    const copied = new Set([""]);
+    expect(isInternalPaste("   ", copied)).toBe(false);
   });
 });
