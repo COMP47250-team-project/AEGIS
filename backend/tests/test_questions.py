@@ -256,3 +256,26 @@ async def test_questions_nonexistent_exam_returns_404(client: AsyncClient) -> No
         resp = await student.get(f"/exams/{uuid.uuid4()}/questions")
 
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# max_score (AEGIS-62)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_question_max_score_persists(client: AsyncClient) -> None:
+    quiz_id = (await client.post("/quizzes", json=QUIZ_PAYLOAD)).json()["id"]
+    resp = await client.post(
+        f"/quizzes/{quiz_id}/questions", json={**SHORT_QUESTION, "max_score": 5}
+    )
+    assert resp.status_code == 201
+    assert resp.json()["max_score"] == 5
+
+
+@pytest.mark.asyncio
+async def test_question_max_score_defaults_to_one(client: AsyncClient) -> None:
+    quiz_id = (await client.post("/quizzes", json=QUIZ_PAYLOAD)).json()["id"]
+    resp = await client.post(f"/quizzes/{quiz_id}/questions", json=SHORT_QUESTION)
+    assert resp.status_code == 201
+    assert resp.json()["max_score"] == 1
