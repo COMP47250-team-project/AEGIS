@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import JWTError, jwt
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -60,6 +60,33 @@ class RefreshIn(BaseModel):
 
 class LogoutIn(BaseModel):
     refresh_token: str
+
+
+# Refresh token also travels in an httpOnly cookie so the browser session
+# survives a page refresh without exposing the token to JavaScript (anti-XSS).
+# Scoped to /auth so it's only sent to the refresh/logout endpoints.
+_REFRESH_COOKIE = "refresh_token"
+_REFRESH_COOKIE_PATH = "/auth"
+_REFRESH_MAX_AGE = 7 * 24 * 3600  # matches the 7-day refresh token lifetime
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    is_prod = settings.app_env == "production"
+    response.set_cookie(
+        key=_REFRESH_COOKIE,
+        value=token,
+        httponly=True,
+        # Cross-site (frontend and backend are separate hosts) needs
+        # SameSite=None + Secure in production; localhost dev uses Lax over http.
+        secure=is_prod,
+        samesite="none" if is_prod else "lax",
+        max_age=_REFRESH_MAX_AGE,
+        path=_REFRESH_COOKIE_PATH,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(key=_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH)
 
 
 class TokenResponse(BaseModel):
@@ -133,6 +160,7 @@ def _build_response(user: User) -> TokenResponse:
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(
     payload: RegisterIn,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email))
@@ -150,12 +178,15 @@ async def register(
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return _build_response(user)
+    resp = _build_response(user)
+    _set_refresh_cookie(response, resp.refresh_token)
+    return resp
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginIn,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email))
@@ -170,12 +201,27 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
 
-    return _build_response(user)
+    resp = _build_response(user)
+    _set_refresh_cookie(response, resp.refresh_token)
+    return resp
 
 
 @router.post("/refresh")
-async def refresh(body: RefreshIn) -> dict:
-    data = _decode_jwt(body.refresh_token)
+async def refresh(
+    request: Request,
+    body: RefreshIn | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    # Prefer the httpOnly cookie; fall back to a request body (mobile / tests).
+    token = request.cookies.get(_REFRESH_COOKIE) or (
+        body.refresh_token if body else None
+    )
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
+
+    data = _decode_jwt(token)
     if data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
@@ -192,14 +238,36 @@ async def refresh(body: RefreshIn) -> dict:
         data.get("role", "student"),
         timedelta(minutes=settings.jwt_expire_minutes),
     )
-    return {"access_token": access}
+
+    # Return the user so the frontend can rehydrate its auth state on page load.
+    try:
+        user = (
+            await db.execute(select(User).where(User.id == uuid.UUID(data["sub"])))
+        ).scalar_one_or_none()
+    except (ValueError, KeyError):
+        user = None
+    result: dict = {"access_token": access}
+    if user is not None:
+        result["user"] = UserRead(
+            id=str(user.id), email=user.email, role=user.role, name=user.full_name
+        )
+    return result
 
 
 @router.post("/logout")
-async def logout(body: LogoutIn) -> dict:
-    data = _decode_jwt(body.refresh_token)
-    if data:
-        jti = data.get("jti")
-        if jti:
-            _REVOKED_JTIS.add(jti)
+async def logout(
+    response: Response,
+    request: Request,
+    body: LogoutIn | None = None,
+) -> dict:
+    token = request.cookies.get(_REFRESH_COOKIE) or (
+        body.refresh_token if body else None
+    )
+    if token:
+        data = _decode_jwt(token)
+        if data:
+            jti = data.get("jti")
+            if jti:
+                _REVOKED_JTIS.add(jti)
+    _clear_refresh_cookie(response)
     return {"message": "Logged out"}

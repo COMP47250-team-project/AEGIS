@@ -9,21 +9,16 @@ const apiClient = axios.create({
   withCredentials: true,
 });
 
-// Tokens stored in memory only — never written to localStorage
+// Access token is kept in memory only — never written to localStorage (anti-XSS).
+// The refresh token lives in an httpOnly cookie set by the backend, so it
+// survives page refreshes without being readable by JavaScript.
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 
 export const setAccessToken = (token: string | null) => {
   accessToken = token;
 };
 
 export const getAccessToken = () => accessToken;
-
-export const setRefreshToken = (token: string | null) => {
-  refreshToken = token;
-};
-
-export const getRefreshToken = () => refreshToken;
 
 apiClient.interceptors.request.use((config) => {
   if (accessToken) {
@@ -76,9 +71,10 @@ apiClient.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        // Refresh token is sent automatically via the httpOnly cookie
+        // (withCredentials is enabled) — no request body needed.
         const { data } = await apiClient.post<{ access_token: string }>(
-          "/auth/refresh",
-          { refresh_token: refreshToken }
+          "/auth/refresh"
         );
 
         const newToken = data.access_token;
@@ -89,7 +85,6 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         setAccessToken(null);
-        setRefreshToken(null);
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
