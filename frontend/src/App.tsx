@@ -8,6 +8,7 @@ import RegisterPage from "./pages/Register";
 import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorConsole from "./pages/ProfessorConsole";
 import ProfessorSession from "./pages/ProfessorSession";
+import ExamCreate from "./pages/ExamCreate";
 import ExamShell from "./pages/ExamShell";
 import ExamSubmitted from "./pages/ExamSubmitted";
 import StudentResults from "./pages/StudentResults";
@@ -36,6 +37,7 @@ const App: React.FC = () => {
           {/* Protected — professors only */}
           <Route element={<ProtectedRoute allowedRole="professor" />}>
             <Route path="/professor/dashboard" element={<ProfessorConsole />} />
+            <Route path="/professor/exams/new" element={<ExamCreate />} />
             <Route path="/professor/session/:sessionId" element={<ProfessorSession />} />
           </Route>
 
