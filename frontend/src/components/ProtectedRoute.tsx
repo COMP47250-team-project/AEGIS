@@ -8,7 +8,13 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole }) => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading } = useAuth();
+
+  // While the session is being restored from the refresh cookie, don't redirect
+  // yet — otherwise a page refresh briefly bounces the user to /login.
+  if (loading) {
+    return null;
+  }
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
