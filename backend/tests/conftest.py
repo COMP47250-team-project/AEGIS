@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from jose import jwt
@@ -41,6 +42,22 @@ def _make_token(user_id: str = "prof-001", role: str = "professor") -> str:
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
+
+
+def _auth_headers(user_id: str, role: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {_make_token(user_id, role)}"}
+
+
+@pytest.fixture
+def auth_headers_professor() -> dict[str, str]:
+    """Bearer header for a professor JWT (AEGIS-68)."""
+    return _auth_headers("prof-001", "professor")
+
+
+@pytest.fixture
+def auth_headers_student() -> dict[str, str]:
+    """Bearer header for a student JWT (AEGIS-68)."""
+    return _auth_headers("student-001", "student")
 
 
 @pytest_asyncio.fixture
