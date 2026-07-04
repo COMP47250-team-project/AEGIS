@@ -342,7 +342,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) {
-        showWarning("Leaving this tab has been recorded for integrity review.");
+        showWarning("⚠️ Leaving this tab has been recorded for integrity review.");
       }
     };
     const onCopyOrCut = () => {
@@ -352,7 +352,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       rememberInternalCopy(document.getSelection()?.toString() ?? "");
     };
     const onBlur = () => {
-      showWarning("Window focus lost — this has been recorded.");
+      showWarning("⚠️ Window focus lost — this has been recorded.");
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -486,7 +486,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       if (isInternalPaste(pastedText, internalCopiesRef.current)) {
         return;
       }
-      showWarning("A paste from outside the exam has been recorded for integrity review.");
+      showWarning("⚠️ A paste from outside the exam has been recorded for integrity review.");
       telemetryRef.current?.enqueue(
         makePasteEvent(sessionId, questionId, charCount)
       );
