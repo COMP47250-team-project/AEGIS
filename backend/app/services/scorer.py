@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.exam import ExamSession
 from app.models.risk import RiskFlag
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.services.scoring import Event
@@ -25,14 +26,40 @@ from app.services.scoring.components.tab_blur import tab_blur_score
 
 logger = logging.getLogger(__name__)
 
-_WEIGHTS = {
-    "tab_switch": 0.30,
-    "paste": 0.25,
-    "iki": 0.20,
-    "first_keypress": 0.10,
-    "answer_time": 0.10,
-    "resize": 0.05,
+# Scoring sensitivity presets (AEGIS-84). Each set of weights sums to 1.0.
+# Professors pick a preset per exam; lenient de-weights tab/paste for open-book
+# multi-tab research exams, strict up-weights them for closed-book exams.
+PRESETS: dict[str, dict[str, float]] = {
+    "strict": {
+        "tab_switch": 0.35,
+        "paste": 0.30,
+        "iki": 0.20,
+        "first_keypress": 0.07,
+        "answer_time": 0.05,
+        "resize": 0.03,
+    },
+    "standard": {
+        "tab_switch": 0.30,
+        "paste": 0.25,
+        "iki": 0.20,
+        "first_keypress": 0.10,
+        "answer_time": 0.10,
+        "resize": 0.05,
+    },
+    "lenient": {
+        "tab_switch": 0.15,
+        "paste": 0.20,
+        "iki": 0.25,
+        "first_keypress": 0.15,
+        "answer_time": 0.20,
+        "resize": 0.05,
+    },
 }
+
+DEFAULT_PRESET = "standard"
+
+# Back-compat alias — the default weight set.
+_WEIGHTS = PRESETS[DEFAULT_PRESET]
 
 # Risk threshold — RiskFlag inserted and WS alert fired on first crossing
 RISK_THRESHOLD = 0.70
@@ -75,9 +102,16 @@ def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
     }
 
 
-def compute_risk_score(component_scores: dict[str, float]) -> float:
-    """Weighted sum of component scores → aggregate 0–1 risk score."""
-    return _clamp(sum(_WEIGHTS[k] * component_scores.get(k, 0.0) for k in _WEIGHTS))
+def compute_risk_score(
+    component_scores: dict[str, float], preset: str = DEFAULT_PRESET
+) -> float:
+    """Weighted sum of component scores → aggregate 0–1 risk score.
+
+    ``preset`` selects the weight set (AEGIS-84); an unknown preset falls back
+    to the default so a bad value never breaks scoring.
+    """
+    weights = PRESETS.get(preset, PRESETS[DEFAULT_PRESET])
+    return _clamp(sum(weights[k] * component_scores.get(k, 0.0) for k in weights))
 
 async def _ensure_risk_flag(
     db: AsyncSession,
@@ -158,6 +192,12 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     """Query all telemetry events for a closed exam, compute per-student
     risk scores, and upsert into session_scores."""
 
+    # Load the exam's scoring preset (AEGIS-84) so live and final scores agree.
+    preset_row = await db.execute(
+        select(ExamSession.scoring_preset).where(ExamSession.id == exam_id)
+    )
+    preset = preset_row.scalar_one_or_none() or DEFAULT_PRESET
+
     result = await db.execute(
         select(TelemetryEvent)
         .where(TelemetryEvent.exam_id == exam_id)
@@ -173,7 +213,7 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     students_to_alert: list[tuple[str, float]] = []
     for student_id, student_events in by_student.items():
         components = compute_component_scores(student_events)
-        aggregate = compute_risk_score(components)
+        aggregate = compute_risk_score(components, preset)
 
         # Upsert session_scores
         existing_result = await db.execute(

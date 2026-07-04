@@ -31,6 +31,11 @@ class ExamSession(Base):
     # State machine: draft → open → closed
     state: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
 
+    # Scoring sensitivity preset: strict | standard | lenient (AEGIS-84)
+    scoring_preset: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="standard", server_default="standard"
+    )
+
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     opened_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

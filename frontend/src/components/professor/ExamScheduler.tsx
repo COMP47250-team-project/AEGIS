@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "../../api/client";
+import { SCORING_PRESETS, type ScoringPreset } from "./scoringPresets";
 
 interface Quiz {
   id: string;
@@ -8,6 +9,7 @@ interface Quiz {
   is_published: boolean;
   questions: { id: string }[];
 }
+
 
 interface ExamSchedulerProps {
   preselectedQuizId?: string;
@@ -23,6 +25,7 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
   const [courseId, setCourseId] = useState("");
   const [scheduledStart, setScheduledStart] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
+  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +76,7 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
         course_id: courseId.trim(),
         scheduled_start: new Date(scheduledStart).toISOString(),
         duration_minutes: durationMinutes,
+        scoring_preset: scoringPreset,
       });
       setSuccess(true);
       onScheduled();
@@ -185,6 +189,28 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
           className="w-32 border border-hairline rounded px-3 py-2 text-sm text-ink bg-surface-doc focus:outline-none focus:ring-1 focus:ring-surface-dark"
           required
         />
+      </div>
+
+      {/* Scoring sensitivity preset (AEGIS-84) */}
+      <div>
+        <label className="block text-xs text-mute mb-1" htmlFor="sched-preset">
+          Scoring sensitivity
+        </label>
+        <select
+          id="sched-preset"
+          value={scoringPreset}
+          onChange={(e) => setScoringPreset(e.target.value as ScoringPreset)}
+          className="w-full border border-hairline rounded px-3 py-2 text-sm text-ink bg-surface-doc focus:outline-none focus:ring-1 focus:ring-surface-dark"
+        >
+          {SCORING_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label} — {p.hint}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-ash mt-1">
+          {SCORING_PRESETS.find((p) => p.value === scoringPreset)?.hint}
+        </p>
       </div>
 
       {error && (

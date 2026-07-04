@@ -320,6 +320,7 @@ async def professor_monitor_ws(
         if exam is None or exam.created_by != professor_id:
             await websocket.close(code=1008)
             return
+        scoring_preset = exam.scoring_preset
 
     await websocket.accept()
     exam_key = str(exam_id)
@@ -337,7 +338,7 @@ async def professor_monitor_ws(
 
     try:
         while True:
-            payload = live_monitor.snapshot(str(exam_id))
+            payload = live_monitor.snapshot(str(exam_id), preset=scoring_preset)
             try:
                 await websocket.send_text(json.dumps(payload))
             except WebSocketDisconnect:
