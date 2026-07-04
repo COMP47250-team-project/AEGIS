@@ -1,6 +1,7 @@
 // Reusable per-student event timeline modal with signal score breakdown.
 // Used by ProfessorSession (live view) and ProfessorConsole (history tab).
-import React, { useEffect, useState } from "react";
+
+import React, { useCallback, useEffect, useState } from "react";
 import apiClient from "../../api/client";
 import type { LiveStudent } from "./liveStudents";
 
@@ -15,6 +16,9 @@ interface ScoreData {
   integrity_score?: number;
   components?: Record<string, number>;
 }
+
+const MAX_EVENTS = 1000;
+const PAGE_SIZE = 200;
 
 function fmtTime(d: Date): string {
   return d.toLocaleTimeString(undefined, { hour12: false });
@@ -79,7 +83,6 @@ function formatEventLabel(type: string, payload: Record<string, unknown>): strin
 // ---------------------------------------------------------------------------
 // ScoreBreakdown — bar chart of 6 signal components
 // ---------------------------------------------------------------------------
-
 const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
   sessionId,
   studentId,
@@ -99,7 +102,6 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
 
   if (!score)
     return <p className="text-xs text-mute px-4 py-2">Loading score…</p>;
-
   if (!score.available)
     return (
       <p className="text-xs text-mute px-4 py-2">
@@ -153,26 +155,73 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
 // ---------------------------------------------------------------------------
 // TimelineModal
 // ---------------------------------------------------------------------------
-
 const TimelineModal: React.FC<{
   sessionId: string;
   student: LiveStudent;
   onClose: () => void;
 }> = ({ sessionId, student, onClose }) => {
-  const [events, setEvents] = useState<TimelineItem[] | null>(null);
+  const [events, setEvents] = useState<TimelineItem[]>([]);
+  const [total, setTotal] = useState<number>(0);
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    apiClient
-      .get<{ items: TimelineItem[] }>(
+  // Fetch a single page and append to existing events.
+  const fetchPage = useCallback(
+    async (pageNum: number) => {
+      const { data } = await apiClient.get<{
+        items: TimelineItem[];
+        total: number;
+        page: number;
+        page_size: number;
+      }>(
         `/sessions/${encodeURIComponent(sessionId)}/students/${encodeURIComponent(
           student.student_id
-        )}/events`
-      )
-      .then(({ data }) => setEvents(data.items))
-      .catch(() => setError(true));
-  }, [sessionId, student.student_id]);
+        )}/events?page=${pageNum}&page_size=${PAGE_SIZE}`
+      );
+      return data;
+    },
+    [sessionId, student.student_id]
+  );
 
+  // Initial load — page 1
+  useEffect(() => {
+    setIsLoading(true);
+    setEvents([]);
+    setPage(1);
+    setTotal(0);
+    setError(false);
+
+    fetchPage(1)
+      .then((data) => {
+        setEvents(data.items);
+        setTotal(data.total);
+      })
+      .catch(() => setError(true))
+      .finally(() => setIsLoading(false));
+  }, [fetchPage]);
+
+  // Load more — appends next page, respects MAX_EVENTS cap
+  const handleLoadMore = useCallback(async () => {
+    const nextPage = page + 1;
+    setIsLoadingMore(true);
+    try {
+      const data = await fetchPage(nextPage);
+      setEvents((prev) => {
+        const combined = [...prev, ...data.items];
+        return combined.slice(0, MAX_EVENTS);
+      });
+      setPage(nextPage);
+      setTotal(data.total);
+    } catch {
+      // Silent failure — existing events still visible
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [fetchPage, page]);
+
+  // Escape key closes modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -180,6 +229,13 @@ const TimelineModal: React.FC<{
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  // Whether there are more events to load (and we haven't hit the cap yet)
+  const canLoadMore =
+    !isLoading &&
+    !isLoadingMore &&
+    events.length < total &&
+    events.length < MAX_EVENTS;
 
   return (
     <div
@@ -196,7 +252,15 @@ const TimelineModal: React.FC<{
             <p className="text-sm font-semibold text-ink truncate">
               {student.name ?? student.student_id}
             </p>
-            <p className="text-xs text-mute">Event timeline (read-only)</p>
+            <p className="text-xs text-mute">
+              Event timeline (read-only)
+              {total > 0 && (
+                <span className="ml-1">
+                  — showing {events.length} of {total}
+                  {total > MAX_EVENTS && ` (max ${MAX_EVENTS})`}
+                </span>
+              )}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -209,35 +273,62 @@ const TimelineModal: React.FC<{
 
         <ScoreBreakdown sessionId={sessionId} studentId={student.student_id} />
 
-        <div className="overflow-y-auto p-4">
+        <div className="overflow-y-auto p-4 flex-1">
           {error ? (
             <p className="text-accent-red text-sm">Could not load events.</p>
-          ) : events === null ? (
+          ) : isLoading ? (
             <p className="text-mute text-sm">Loading…</p>
           ) : events.length === 0 ? (
             <p className="text-mute text-sm">No telemetry events yet.</p>
           ) : (
-            <ul className="space-y-2">
-              {events.map((e, i) => {
-                const label = formatEventLabel(e.event_type, e.payload);
-                const icon = eventIcon(e.event_type);
-                return (
-                  <li
-                    key={i}
-                    className="flex items-start gap-3 text-xs border-l-2 border-hairline pl-3 py-1"
+            <>
+              <ul className="space-y-2">
+                {events.map((e, i) => {
+                  const label = formatEventLabel(e.event_type, e.payload);
+                  const icon = eventIcon(e.event_type);
+                  return (
+                    <li
+                      key={i}
+                      className="flex items-start gap-3 text-xs border-l-2 border-hairline pl-3 py-1"
+                    >
+                      <span className="text-mute whitespace-nowrap w-14 shrink-0">
+                        {fmtTime(new Date(e.occurred_at))}
+                      </span>
+                      <span className="text-base shrink-0 w-5">{icon}</span>
+                      <div className="min-w-0">
+                        <span className="font-semibold text-ink block">
+                          {e.event_type}
+                        </span>
+                        <span className="text-mute">{label}</span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {canLoadMore && (
+                <div className="mt-4 text-center">
+                  <button
+                    onClick={handleLoadMore}
+                    className="px-4 py-2 bg-surface-soft text-ink text-xs font-bold rounded-md border border-hairline transition-colors"
                   >
-                    <span className="text-mute whitespace-nowrap w-14 shrink-0">
-                      {fmtTime(new Date(e.occurred_at))}
-                    </span>
-                    <span className="text-base shrink-0 w-5">{icon}</span>
-                    <div className="min-w-0">
-                      <span className="font-semibold text-ink block">{e.event_type}</span>
-                      <span className="text-mute">{label}</span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                    Load more events
+                  </button>
+                </div>
+              )}
+
+              {isLoadingMore && (
+                <p className="text-center text-xs text-mute mt-4">
+                  Loading more…
+                </p>
+              )}
+
+              {events.length >= MAX_EVENTS && (
+                <p className="text-center text-xs text-mute mt-4">
+                  Showing maximum {MAX_EVENTS} events.
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
