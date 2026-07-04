@@ -5,6 +5,10 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/client";
 import { durationMinutes, parseStudentEmails } from "./examCreate.helpers";
+import {
+  SCORING_PRESETS,
+  type ScoringPreset,
+} from "../components/professor/scoringPresets";
 
 type QType = "short" | "mcq";
 
@@ -40,6 +44,7 @@ const ExamCreate: React.FC = () => {
   const [end, setEnd] = useState("");
   const [questions, setQuestions] = useState<DraftQuestion[]>([newQuestion()]);
   const [enrolText, setEnrolText] = useState("");
+  const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,6 +120,7 @@ const ExamCreate: React.FC = () => {
         course_id: courseId.trim(),
         scheduled_start: new Date(start).toISOString(),
         duration_minutes: duration,
+        scoring_preset: scoringPreset,
       });
       const examId = exam.data.id;
 
@@ -209,6 +215,25 @@ const ExamCreate: React.FC = () => {
               onChange={(e) => setEnd(e.target.value)}
             />
           </div>
+        </div>
+
+        {/* Scoring sensitivity preset (AEGIS-84) */}
+        <div>
+          <label className="block text-xs text-mute mb-1" htmlFor="exam-preset">
+            Scoring sensitivity
+          </label>
+          <select
+            id="exam-preset"
+            className={inputClass}
+            value={scoringPreset}
+            onChange={(e) => setScoringPreset(e.target.value as ScoringPreset)}
+          >
+            {SCORING_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label} — {p.hint}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Questions */}

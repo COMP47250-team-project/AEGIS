@@ -12,6 +12,7 @@ QuestionType = Literal["mcq", "short"]
 # ---------------------------------------------------------------------------
 
 ExamState = Literal["draft", "open", "closed"]
+ScoringPreset = Literal["strict", "standard", "lenient"]
 
 
 class ExamCreate(BaseModel):
@@ -19,6 +20,7 @@ class ExamCreate(BaseModel):
     course_id: str = Field(..., min_length=1, max_length=255)
     scheduled_start: datetime
     duration_minutes: int = Field(..., gt=0)
+    scoring_preset: ScoringPreset = "standard"
 
 
 class ExamRead(BaseModel):
@@ -30,6 +32,7 @@ class ExamRead(BaseModel):
     scheduled_start: datetime
     duration_minutes: int
     state: ExamState
+    scoring_preset: ScoringPreset = "standard"
     created_by: str
     opened_at: datetime | None
     closed_at: datetime | None

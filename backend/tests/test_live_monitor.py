@@ -91,7 +91,11 @@ def test_seeded_student_with_no_events_is_inactive():
 
 def test_unknown_exam_snapshot_is_empty():
     monitor = LiveMonitor()
-    assert monitor.snapshot("missing", now=1.0) == {"exam_id": "missing", "students": []}
+    assert monitor.snapshot("missing", now=1.0) == {
+        "exam_id": "missing",
+        "scoring_preset": "standard",
+        "students": [],
+    }
 
 
 def test_email_and_keystroke_score_in_snapshot():

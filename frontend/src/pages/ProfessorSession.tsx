@@ -17,6 +17,7 @@ import TimelineModal from "../components/professor/TimelineModal";
 
 interface ProfessorPayload {
   exam_id: string;
+  scoring_preset?: string;
   students: LiveStudent[];
 }
 
@@ -49,6 +50,7 @@ const ProfessorSession: React.FC = () => {
   const { user, logout } = useAuth();
   const [students, setStudents] = useState<LiveStudent[]>([]);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
+  const [scoringPreset, setScoringPreset] = useState<string | null>(null);
   // One-shot success toast passed from the create-exam redirect (AEGIS-62).
   const [toast, setToast] = useState<string | null>(
     (location.state as { toast?: string } | null)?.toast ?? null,
@@ -84,6 +86,7 @@ const ProfessorSession: React.FC = () => {
       try {
         const payload: ProfessorPayload = JSON.parse(evt.data as string);
         setStudents(payload.students ?? []);
+        if (payload.scoring_preset) setScoringPreset(payload.scoring_preset);
         setUpdatedAt(new Date());
       } catch {
         /* ignore malformed frames */
@@ -123,6 +126,14 @@ const ProfessorSession: React.FC = () => {
           </button>
           <span className="text-hairline mx-1">|</span>
           <span className="text-sm font-semibold text-ink truncate">Live Session</span>
+          {scoringPreset && (
+            <span
+              className="ml-1 text-xs font-medium px-2 py-0.5 rounded-full bg-surface-soft text-body border border-hairline capitalize"
+              title="Scoring sensitivity preset for this exam"
+            >
+              {scoringPreset}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <span className="hidden sm:inline text-sm text-body">{user?.name}</span>
