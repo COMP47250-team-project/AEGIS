@@ -126,35 +126,42 @@ jobs:
 
       # Grant Container App identity AcrPull on the registry
       # (idempotent — safe to run every deploy)
-      - name: Assign AcrPull to backend Container App identity
-        run: |
-          PRINCIPAL_ID=$(az containerapp show \
-            --name "${{ secrets.BACKEND_APP_NAME }}" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query "identity.principalId" -o tsv)
-          ACR_ID=$(az acr show \
-            --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
-            --query id -o tsv)
-          az role assignment create \
-            --assignee "$PRINCIPAL_ID" \
-            --role "AcrPull" \
-            --scope "$ACR_ID" \
-            || true   # ignore if assignment already exists
+      #
+      # DISABLED (AEGIS-65): the deploy service principal has Contributor but
+      # not Microsoft.Authorization/roleAssignments/write on the sponsored
+      # subscription, so `az role assignment create` fails the deploy job. Image
+      # pull already works via the ACR admin credentials configured below, so
+      # these steps aren't needed. Kept (commented) to re-enable for
+      # managed-identity pull once the SP is granted User Access Administrator.
+      # - name: Assign AcrPull to backend Container App identity
+      #   run: |
+      #     PRINCIPAL_ID=$(az containerapp show \
+      #       --name "${{ secrets.BACKEND_APP_NAME }}" \
+      #       --resource-group "$RESOURCE_GROUP" \
+      #       --query "identity.principalId" -o tsv)
+      #     ACR_ID=$(az acr show \
+      #       --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
+      #       --query id -o tsv)
+      #     az role assignment create \
+      #       --assignee "$PRINCIPAL_ID" \
+      #       --role "AcrPull" \
+      #       --scope "$ACR_ID" \
+      #       || true   # ignore if assignment already exists
 
-      - name: Assign AcrPull to frontend Container App identity
-        run: |
-          PRINCIPAL_ID=$(az containerapp show \
-            --name "${{ secrets.FRONTEND_APP_NAME }}" \
-            --resource-group "$RESOURCE_GROUP" \
-            --query "identity.principalId" -o tsv)
-          ACR_ID=$(az acr show \
-            --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
-            --query id -o tsv)
-          az role assignment create \
-            --assignee "$PRINCIPAL_ID" \
-            --role "AcrPull" \
-            --scope "$ACR_ID" \
-            || true
+      # - name: Assign AcrPull to frontend Container App identity
+      #   run: |
+      #     PRINCIPAL_ID=$(az containerapp show \
+      #       --name "${{ secrets.FRONTEND_APP_NAME }}" \
+      #       --resource-group "$RESOURCE_GROUP" \
+      #       --query "identity.principalId" -o tsv)
+      #     ACR_ID=$(az acr show \
+      #       --name "$(echo $ACR_LOGIN_SERVER | cut -d. -f1)" \
+      #       --query id -o tsv)
+      #     az role assignment create \
+      #       --assignee "$PRINCIPAL_ID" \
+      #       --role "AcrPull" \
+      #       --scope "$ACR_ID" \
+      #       || true
 
       # Enable admin credentials on ACR so Container Apps can pull images
       # (managed-identity pull is preferred in production; admin creds work for MVP)
