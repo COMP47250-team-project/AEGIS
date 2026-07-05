@@ -36,6 +36,7 @@ from app.schemas.exam import (
     BulkEnrollResult,
 )
 from app.services.scoring import dispatch_score_job
+from sqlalchemy.engine import CursorResult
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
@@ -266,7 +267,8 @@ async def bulk_enroll_students(
     result = await db.execute(stmt)
     await db.commit()
 
-    enrolled = result.rowcount if result.rowcount is not None else 0
+    cursor = cast(CursorResult, result)
+    enrolled = cursor.rowcount if cursor.rowcount is not None else 0
     skipped = len(unique_ids) - enrolled
 
     return BulkEnrollResult(enrolled=enrolled, skipped=skipped, invalid=[])
