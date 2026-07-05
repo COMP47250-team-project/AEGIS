@@ -32,7 +32,7 @@ from app.schemas.exam import (
     QuestionForStudent,
     StudentGradeEntry,
     StudentSessionRead,
-    BulkEnrollCreate, 
+    BulkEnrollCreate,
     BulkEnrollResult,
 )
 from app.services.scoring import dispatch_score_job
@@ -137,7 +137,7 @@ async def enroll_student(
     )
     existing = existing_result.scalar_one_or_none()
     if existing is not None:
-        return existing 
+        return existing
     enrollment = Enrollment(exam_id=exam.id, student_id=body.student_id)
     db.add(enrollment)
     try:
