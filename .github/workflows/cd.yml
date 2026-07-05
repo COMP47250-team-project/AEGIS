@@ -1,6 +1,5 @@
 # .github/workflows/cd.yml
-# AEGIS-65: CI/CD pipeline — build, push to ACR, deploy to Container Apps.
-#
+
 # Triggers on push to main AFTER CI passes.
 # Runs two parallel jobs (backend / frontend), then a smoke-test job.
 
@@ -183,23 +182,29 @@ jobs:
 
       - name: Update backend Container App
         run: |
+          az containerapp registry set \
+            --name "${{ secrets.BACKEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$ACR_LOGIN_SERVER" \
+            --username "${{ steps.acr-creds.outputs.username }}" \
+            --password "${{ steps.acr-creds.outputs.password }}"
           az containerapp update \
             --name "${{ secrets.BACKEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-backend.outputs.image }}" \
-            --registry-server "$ACR_LOGIN_SERVER" \
-            --registry-username "${{ steps.acr-creds.outputs.username }}" \
-            --registry-password "${{ steps.acr-creds.outputs.password }}"
+            --image "${{ needs.build-backend.outputs.image }}"
 
       - name: Update frontend Container App
         run: |
+          az containerapp registry set \
+            --name "${{ secrets.FRONTEND_APP_NAME }}" \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$ACR_LOGIN_SERVER" \
+            --username "${{ steps.acr-creds.outputs.username }}" \
+            --password "${{ steps.acr-creds.outputs.password }}"
           az containerapp update \
             --name "${{ secrets.FRONTEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-frontend.outputs.image }}" \
-            --registry-server "$ACR_LOGIN_SERVER" \
-            --registry-username "${{ steps.acr-creds.outputs.username }}" \
-            --registry-password "${{ steps.acr-creds.outputs.password }}"
+            --image "${{ needs.build-frontend.outputs.image }}"
 
       # Run Alembic migrations via az containerapp exec
       # (requires containerapp exec enabled — see §5 if this fails)
