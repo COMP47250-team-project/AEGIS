@@ -54,7 +54,7 @@ apiClient.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes("/auth/refresh")
+      !originalRequest.url?.includes("/auth/")
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -74,7 +74,7 @@ apiClient.interceptors.response.use(
         // Refresh token is sent automatically via the httpOnly cookie
         // (withCredentials is enabled) — no request body needed.
         const { data } = await apiClient.post<{ access_token: string }>(
-          "/auth/refresh"
+          "/auth/refresh",
         );
 
         const newToken = data.access_token;
@@ -91,6 +91,6 @@ apiClient.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 export default apiClient;
