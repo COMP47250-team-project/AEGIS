@@ -35,6 +35,8 @@ class TimelineEvent(BaseModel):
     event_type: str
     payload: dict
     occurred_at: datetime
+    # AEGIS-104: human-readable severity so professors can triage at a glance.
+    severity: str = "info"
 
 
 class TimelineResponse(BaseModel):

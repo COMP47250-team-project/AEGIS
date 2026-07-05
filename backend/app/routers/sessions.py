@@ -189,6 +189,23 @@ def _is_valid_uuid(value: str) -> bool:
         return False
 
 
+# AEGIS-104: map each behavioural signal to a triage severity so the professor
+# view can highlight the events that matter most.
+_EVENT_SEVERITY: dict[str, str] = {
+    "paste": "high",
+    "tab_blur": "high",
+    "key_interval": "medium",
+    "resize": "low",
+    "first_keypress": "low",
+    "tab_return": "info",
+    "question_time": "info",
+}
+
+
+def _event_severity(event_type: str) -> str:
+    return _EVENT_SEVERITY.get(event_type, "info")
+
+
 @router.get(
     "/{session_id}/students/{student_id}/events",
     response_model=TimelineResponse,
@@ -223,7 +240,10 @@ async def student_event_timeline(
     )
     items = [
         TimelineEvent(
-            event_type=e.event_type, payload=e.payload, occurred_at=e.occurred_at
+            event_type=e.event_type,
+            payload=e.payload,
+            occurred_at=e.occurred_at,
+            severity=_event_severity(e.event_type),
         )
         for e in result.scalars().all()
     ]

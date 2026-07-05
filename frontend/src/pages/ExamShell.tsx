@@ -229,6 +229,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
+  // Set when the professor closes the exam (pushed over the telemetry socket).
+  const [closedByProfessor, setClosedByProfessor] = useState(false);
 
   // Warning banner (AEGIS-85): shown briefly after monitored events fire.
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
@@ -300,7 +302,12 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       .replace(/^http/, "ws");
     const wsUrl = `${wsBase}/ws/exam/${examId}`;
 
-    const client = new TelemetryClient({ wsUrl, sessionToken: token, sessionId });
+    const client = new TelemetryClient({
+      wsUrl,
+      sessionToken: token,
+      sessionId,
+      onExamClosed: () => setClosedByProfessor(true),
+    });
     telemetryRef.current = client;
 
     const enqueue = client.enqueue.bind(client);
@@ -649,6 +656,27 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       navigate("/student/dashboard", { replace: true });
     }
   }, [submitAndLeave, navigate]);
+
+  // The professor closed the exam — end the session with a clear notice.
+  if (closedByProfessor) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-surface-card rounded-md border border-hairline p-8 text-center">
+          <h1 className="text-lg font-semibold text-ink mb-2">Exam closed</h1>
+          <p className="text-sm text-body mb-6">
+            The professor has closed this exam. Your session has ended and any
+            saved answers have been submitted.
+          </p>
+          <button
+            onClick={() => navigate("/student/dashboard", { replace: true })}
+            className="w-full py-2.5 px-4 bg-primary text-ink text-sm font-bold rounded-md transition-colors"
+          >
+            Back to dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (contentState.kind === "loading") {
     return (

@@ -61,6 +61,31 @@ async def get_professor_websocket(exam_id_str: str) -> WebSocket | None:
 # WebSocket close codes (application-level, 4000-4999)
 _WS_UNAUTHORIZED = 4401
 _WS_FORBIDDEN = 4403
+_WS_EXAM_CLOSED = 4402  # professor closed the exam — client must not reconnect
+
+
+async def close_exam_sessions(exam_id_str: str) -> int:
+    """Notify every connected student that the exam has closed and end their
+    sessions simultaneously (AEGIS-104).
+
+    Sends an `exam_closed` control frame, then closes each socket with
+    `_WS_EXAM_CLOSED` so the client doesn't reconnect. Returns the number of
+    students notified. Per-socket failures are ignored — one dead socket must
+    not stop the others from being closed. Late-imported by exams.py to avoid a
+    module-level import cycle.
+    """
+    async with _registry_lock:
+        sockets = list(_connections.get(exam_id_str, {}).values())
+        _connections.pop(exam_id_str, None)
+
+    message = json.dumps({"type": "exam_closed"})
+    for ws in sockets:
+        try:
+            await ws.send_text(message)
+            await ws.close(code=_WS_EXAM_CLOSED)
+        except Exception:
+            logger.debug("Failed to close a student socket for exam %s", exam_id_str)
+    return len(sockets)
 
 # Heartbeat interval expected by the AEGIS-48 acceptance criteria
 _HEARTBEAT_INTERVAL_S = 30

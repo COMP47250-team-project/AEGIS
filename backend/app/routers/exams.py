@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -34,6 +35,8 @@ from app.schemas.exam import (
 )
 from app.services.exam_scheduling import auto_open_if_due
 from app.services.scoring import dispatch_score_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
@@ -269,6 +272,17 @@ async def close_exam(
     exam.closed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(exam)
+
+    # Notify every connected student that the exam closed and end their sessions
+    # simultaneously (AEGIS-104). Late import avoids a module-level cycle; a WS
+    # failure must never break exam closure.
+    try:
+        from app.routers.telemetry import close_exam_sessions
+
+        notified = await close_exam_sessions(str(exam.id))
+        logger.info("Exam %s closed — notified %d student(s)", exam.id, notified)
+    except Exception:
+        logger.exception("Failed to notify students of exam %s closure", exam.id)
 
     # Dispatch score computation asynchronously — must not block the HTTP response
     background_tasks.add_task(dispatch_score_job, exam.id)
