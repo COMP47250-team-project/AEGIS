@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "../../api/client";
 import { SCORING_PRESETS, type ScoringPreset } from "./scoringPresets";
+import { BulkEnrollStep } from "./BulkEnrollStep"; // ADD THIS LINE
 
 interface Quiz {
   id: string;
@@ -9,7 +10,6 @@ interface Quiz {
   is_published: boolean;
   questions: { id: string }[];
 }
-
 
 interface ExamSchedulerProps {
   preselectedQuizId?: string;
@@ -29,7 +29,7 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [createdExamId, setCreatedExamId] = useState<string | null>(null); // REPLACES: const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     apiClient
@@ -46,7 +46,6 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
       .finally(() => setLoading(false));
   }, [preselectedQuizId]);
 
-  // When quiz selection changes, update default duration
   function handleQuizChange(id: string) {
     setQuizId(id);
     const quiz = quizzes.find((q) => q.id === id);
@@ -71,15 +70,15 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     setError(null);
     setSaving(true);
     try {
-      await apiClient.post("/exams", {
+      // CHANGED: capture the returned exam ID instead of discarding the response
+      const res = await apiClient.post<{ id: string }>("/exams", {
         quiz_id: quizId,
         course_id: courseId.trim(),
         scheduled_start: new Date(scheduledStart).toISOString(),
         duration_minutes: durationMinutes,
         scoring_preset: scoringPreset,
       });
-      setSuccess(true);
-      onScheduled();
+      setCreatedExamId(res.data.id); // REPLACES: setSuccess(true); onScheduled();
     } catch {
       setError("Failed to schedule exam. Please try again.");
     } finally {
@@ -91,20 +90,9 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     return <p className="text-mute text-sm text-center py-10">Loading…</p>;
   }
 
-  if (success) {
-    return (
-      <div className="text-center py-12">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent-green-soft mb-4">
-          <svg className="w-6 h-6 text-accent-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-        <p className="text-ink font-semibold mb-1">Exam scheduled</p>
-        <p className="text-mute text-sm">
-          The exam is in draft state. Open it when you're ready to let students in.
-        </p>
-      </div>
-    );
+  // REPLACES: the old if (success) block
+  if (createdExamId) {
+    return <BulkEnrollStep examId={createdExamId} onDone={onScheduled} />;
   }
 
   if (quizzes.length === 0) {
@@ -191,7 +179,7 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
         />
       </div>
 
-      {/* Scoring sensitivity preset (AEGIS-84) */}
+      {/* Scoring sensitivity preset */}
       <div>
         <label className="block text-xs text-mute mb-1" htmlFor="sched-preset">
           Scoring sensitivity

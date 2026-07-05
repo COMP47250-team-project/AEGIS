@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.database import get_db
 from app.dependencies import require_role
@@ -31,6 +32,8 @@ from app.schemas.exam import (
     QuestionForStudent,
     StudentGradeEntry,
     StudentSessionRead,
+    BulkEnrollCreate, 
+    BulkEnrollResult,
 )
 from app.services.scoring import dispatch_score_job
 
@@ -112,7 +115,7 @@ async def list_enrollments(
 @router.post(
     "/{exam_id}/enrollments",
     response_model=EnrollmentRead,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
 )
 async def enroll_student(
     exam_id: uuid.UUID,
@@ -126,6 +129,15 @@ async def enroll_student(
             status_code=status.HTTP_409_CONFLICT,
             detail="Students can only be enrolled while the exam is in draft state",
         )
+    existing_result = await db.execute(
+        select(Enrollment).where(
+            Enrollment.exam_id == exam_id,
+            Enrollment.student_id == body.student_id,
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing is not None:
+        return existing 
     enrollment = Enrollment(exam_id=exam.id, student_id=body.student_id)
     db.add(enrollment)
     try:
@@ -143,7 +155,7 @@ async def enroll_student(
 @router.post(
     "/{exam_id}/enroll-by-email",
     response_model=EnrollmentRead,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
 )
 async def enroll_student_by_email(
     exam_id: uuid.UUID,
@@ -211,6 +223,53 @@ async def unenroll_student(
     await db.delete(enrollment)
     await db.commit()
 
+@router.post(
+    "/{exam_id}/enroll",
+    response_model=BulkEnrollResult,
+    status_code=status.HTTP_200_OK,
+)
+async def bulk_enroll_students(
+    exam_id: uuid.UUID,
+    body: BulkEnrollCreate,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_role("professor")),
+) -> BulkEnrollResult:
+    """
+    Idempotently enroll one or more students by student_id.
+
+    Duplicate IDs in the request body are deduplicated before hitting the DB.
+    Already-enrolled students are counted as skipped, not errors — this makes
+    the endpoint safe to call repeatedly with the same CSV without side effects.
+    Exam must be in draft state.
+    """
+    exam = await _get_exam_or_404(db, exam_id)
+    if exam.state != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Students can only be enrolled while the exam is in draft state",
+        )
+
+    # Deduplicate while preserving order
+    unique_ids = list(dict.fromkeys(body.student_ids))
+
+    if not unique_ids:
+        return BulkEnrollResult(enrolled=0, skipped=0, invalid=[])
+
+    # ON CONFLICT DO NOTHING — idempotent by design
+    # pg_insert is already imported at the top of this file
+    stmt = pg_insert(Enrollment).values([
+        {"exam_id": exam_id, "student_id": sid} for sid in unique_ids
+    ])
+    stmt = stmt.on_conflict_do_nothing(
+        index_elements=["exam_id", "student_id"]
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+
+    enrolled = result.rowcount if result.rowcount is not None else 0
+    skipped = len(unique_ids) - enrolled
+
+    return BulkEnrollResult(enrolled=enrolled, skipped=skipped, invalid=[])
 
 # ---------------------------------------------------------------------------
 # State transitions

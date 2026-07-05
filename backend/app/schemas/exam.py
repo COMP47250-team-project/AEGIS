@@ -204,3 +204,11 @@ class EnrollmentRead(BaseModel):
     exam_id: uuid.UUID
     student_id: str
     enrolled_at: datetime
+
+class BulkEnrollCreate(BaseModel):
+    student_ids: list[str]
+
+class BulkEnrollResult(BaseModel):
+    enrolled: int
+    skipped: int  # already enrolled — not an error
+    invalid: list[str]  # student_ids that caused unexpected errors
