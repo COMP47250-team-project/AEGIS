@@ -32,6 +32,7 @@ from app.schemas.exam import (
     StudentGradeEntry,
     StudentSessionRead,
 )
+from app.services.exam_scheduling import auto_open_if_due
 from app.services.scoring import dispatch_score_job
 
 router = APIRouter(prefix="/exams", tags=["exams"])
@@ -376,7 +377,9 @@ async def get_student_session(
     The session row is created with consent_at=NULL on first access, so the
     consent screen is always shown on a fresh navigation.
     """
-    await _get_exam_or_404(db, exam_id)
+    exam = await _get_exam_or_404(db, exam_id)
+    # Open the exam if its scheduled start has passed (AEGIS-104 auto-open).
+    await auto_open_if_due(db, exam)
 
     result = await db.execute(
         select(StudentSession).where(
@@ -442,6 +445,8 @@ async def get_exam_questions(
     Requires an open exam and a consented student session.
     """
     exam = await _get_exam_or_404(db, exam_id)
+    # Open on demand if the scheduled start has passed (AEGIS-104 auto-open).
+    await auto_open_if_due(db, exam)
     if exam.state != "open":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
