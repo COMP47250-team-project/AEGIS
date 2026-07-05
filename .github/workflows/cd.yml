@@ -7,7 +7,7 @@ name: CD
 
 on:
   push:
-#    branches: [main]
+    branches: [main]
 
 # Only one deploy at a time; cancel superseded runs.
 concurrency:
@@ -107,7 +107,6 @@ jobs:
   # 3. Deploy to Azure Container Apps
   # ──────────────────────────────────────────────────────────────────────────
   deploy:
-    environment: production
     name: Deploy to Azure
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -221,7 +220,6 @@ jobs:
   # 4. Smoke test
   # ──────────────────────────────────────────────────────────────────────────
   smoke-test:
-    environment: production
     name: Smoke test
     runs-on: ubuntu-latest
     timeout-minutes: 5
