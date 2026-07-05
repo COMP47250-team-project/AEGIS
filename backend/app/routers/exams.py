@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -32,7 +33,10 @@ from app.schemas.exam import (
     StudentGradeEntry,
     StudentSessionRead,
 )
+from app.services.exam_scheduling import auto_open_if_due
 from app.services.scoring import dispatch_score_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
@@ -269,6 +273,17 @@ async def close_exam(
     await db.commit()
     await db.refresh(exam)
 
+    # Notify every connected student that the exam closed and end their sessions
+    # simultaneously (AEGIS-104). Late import avoids a module-level cycle; a WS
+    # failure must never break exam closure.
+    try:
+        from app.routers.telemetry import close_exam_sessions
+
+        notified = await close_exam_sessions(str(exam.id))
+        logger.info("Exam %s closed — notified %d student(s)", exam.id, notified)
+    except Exception:
+        logger.exception("Failed to notify students of exam %s closure", exam.id)
+
     # Dispatch score computation asynchronously — must not block the HTTP response
     background_tasks.add_task(dispatch_score_job, exam.id)
 
@@ -376,7 +391,9 @@ async def get_student_session(
     The session row is created with consent_at=NULL on first access, so the
     consent screen is always shown on a fresh navigation.
     """
-    await _get_exam_or_404(db, exam_id)
+    exam = await _get_exam_or_404(db, exam_id)
+    # Open the exam if its scheduled start has passed (AEGIS-104 auto-open).
+    await auto_open_if_due(db, exam)
 
     result = await db.execute(
         select(StudentSession).where(
@@ -442,6 +459,8 @@ async def get_exam_questions(
     Requires an open exam and a consented student session.
     """
     exam = await _get_exam_or_404(db, exam_id)
+    # Open on demand if the scheduled start has passed (AEGIS-104 auto-open).
+    await auto_open_if_due(db, exam)
     if exam.state != "open":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

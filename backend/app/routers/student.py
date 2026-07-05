@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamAnswer, ExamSession
 from app.models.quiz import Question, Quiz
+from app.services.exam_scheduling import auto_open_due
 from app.schemas.exam import (
     StudentAnswerResult,
     StudentExamListItem,
@@ -33,6 +34,10 @@ async def list_student_sessions(
         .order_by(ExamSession.scheduled_start.desc())
     )
     rows = result.all()
+
+    # Auto-open any exam whose scheduled start has passed so a waiting student
+    # sees it as open without the professor manually triggering it (AEGIS-104).
+    await auto_open_due(db, [exam for exam, _ in rows])
 
     items: list[StudentExamListItem] = []
     for exam, quiz in rows:

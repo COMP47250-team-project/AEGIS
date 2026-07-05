@@ -9,7 +9,16 @@ interface TimelineItem {
   event_type: string;
   payload: Record<string, unknown>;
   occurred_at: string;
+  severity?: "high" | "medium" | "low" | "info";
 }
+
+// AEGIS-104: severity badge styling for the professor triage view.
+const SEVERITY_STYLE: Record<string, string> = {
+  high: "bg-accent-red-soft text-accent-red",
+  medium: "bg-accent-amber-soft text-accent-amber",
+  low: "bg-surface-soft text-mute",
+  info: "bg-surface-soft text-mute",
+};
 
 interface ScoreData {
   available: boolean;
@@ -313,8 +322,17 @@ const TimelineModal: React.FC<{
                       </span>
                       <span className="text-base shrink-0 w-5">{icon}</span>
                       <div className="min-w-0">
-                        <span className="font-semibold text-ink block">
+                        <span className="font-semibold text-ink flex items-center gap-2">
                           {e.event_type}
+                          {e.severity && e.severity !== "info" && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                SEVERITY_STYLE[e.severity] ?? SEVERITY_STYLE.info
+                              }`}
+                            >
+                              {e.severity}
+                            </span>
+                          )}
                         </span>
                         <span className="text-mute">{label}</span>
                       </div>

@@ -86,11 +86,27 @@ export class TelemetryClient {
       this.flushBuffer();
     };
 
+    this.ws.onmessage = (event: MessageEvent) => {
+      // The server pushes control frames (e.g. ping, exam_closed). Ignore
+      // anything that isn't recognised.
+      try {
+        const msg = JSON.parse(event.data as string) as { type?: string };
+        if (msg.type === "exam_closed") {
+          this.isDestroyed = true; // don't reconnect after a deliberate close
+          this.config.onExamClosed?.();
+        }
+      } catch {
+        // Non-JSON / malformed frame — ignore.
+      }
+    };
+
     this.ws.onclose = (event: CloseEvent) => {
       this.ws = null;
-      // 4401 (unauthorized) and 4403 (forbidden) are permanent auth errors.
-      // Retrying with the same token would always fail, so stop here.
-      if (event.code === 4401 || event.code === 4403) return;
+      // 4401 (unauthorized) and 4403 (forbidden) are permanent auth errors;
+      // 4402 is the professor closing the exam. Retrying is pointless — stop.
+      if (event.code === 4401 || event.code === 4403 || event.code === 4402) {
+        return;
+      }
       this.scheduleReconnect();
     };
 

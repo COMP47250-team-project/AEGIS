@@ -19,10 +19,16 @@ def test_low_count_single_paste_scores_zero() -> None:
     assert paste_score([_paste("q1")]) == pytest.approx(0.0)
 
 
-def test_single_large_paste_still_zero() -> None:
-    # Even a >200-char lone paste is 0.0 — the size bonus only applies to
-    # repeat (2+) pastes, since copying the question text is often long.
-    assert paste_score([_paste("q1", char_count=500)]) == pytest.approx(0.0)
+def test_single_large_paste_scores_moderate() -> None:
+    # AEGIS-104: a single >200-char paste now scores 0.40. Internal copy/paste
+    # is filtered on the client, so a received large paste is external — a real
+    # single-shot cheating signal (no extra size bonus on top of the 0.40).
+    assert paste_score([_paste("q1", char_count=500)]) == pytest.approx(0.40)
+
+
+def test_single_paste_at_200_boundary_still_zero() -> None:
+    # Exactly 200 is not "> 200": a lone 200-char paste is not "large" -> 0.0.
+    assert paste_score([_paste("q1", char_count=200)]) == pytest.approx(0.0)
 
 
 def test_two_pastes_same_question() -> None:

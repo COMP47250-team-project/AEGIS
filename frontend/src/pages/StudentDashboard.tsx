@@ -136,6 +136,13 @@ const StudentDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [timers, setTimers]       = useState<Record<string, string>>({});
+  // AEGIS-104: exams that transitioned to "open" since the last poll, surfaced
+  // as a dismissible notification so a logged-in student is told an exam opened.
+  const [newlyOpened, setNewlyOpened] = useState<ExamSession[]>([]);
+
+  // Open exam ids seen on the previous poll. null until the first load so the
+  // initial set of open exams doesn't fire a "just opened" notification.
+  const knownOpenIdsRef = useRef<Set<string> | null>(null);
 
   // useRef stores the polling interval ID so we can clear it on unmount.
   // Using a ref (not state) because changing it should not trigger a re-render.
@@ -151,6 +158,16 @@ const StudentDashboard: React.FC = () => {
     try {
       const data = await fetchStudentSessions();
       setSessions(data);
+
+      // Detect exams that newly became "open" since the previous poll.
+      const openNow = data.filter((s) => s.status === "open");
+      const openIds = new Set(openNow.map((s) => s.exam_id));
+      const known = knownOpenIdsRef.current;
+      if (known !== null) {
+        const justOpened = openNow.filter((s) => !known.has(s.exam_id));
+        if (justOpened.length > 0) setNewlyOpened(justOpened);
+      }
+      knownOpenIdsRef.current = openIds;
     } catch {
       setError("Could not load your exams. Check your connection and try again.");
     } finally {
@@ -169,7 +186,7 @@ const StudentDashboard: React.FC = () => {
 
     pollIntervalRef.current = setInterval(() => {
       loadSessions(false); // background refreshes are silent (no spinner)
-    }, 60_000); // 60 000 ms = 60 seconds
+    }, 20_000); // 20s — near-real-time so a newly opened exam is noticed quickly
 
     return () => {
       if (pollIntervalRef.current) {
@@ -271,9 +288,35 @@ const StudentDashboard: React.FC = () => {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-ink mb-1">My Exams</h1>
           <p className="text-sm text-mute">
-            Your enrolled exam sessions — refreshes automatically every 60 seconds.
+            Your enrolled exam sessions — refreshes automatically.
           </p>
         </div>
+
+        {/* AEGIS-104: notification when an exam the student is enrolled in has
+            just been opened by the professor. Dismissible; links into the exam. */}
+        {newlyOpened.length > 0 && (
+          <div className="mb-6 px-4 py-4 bg-accent-green-soft border-l-2 border-accent-green rounded-md flex items-start gap-3">
+            <svg className="w-5 h-5 text-accent-green flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-ink mb-1">
+                {newlyOpened.length === 1 ? "An exam is now open" : "Exams are now open"}
+              </p>
+              <p className="text-sm text-body">
+                {newlyOpened.map((s) => s.exam_title).join(", ")} — you can start now.
+              </p>
+            </div>
+            <button
+              onClick={() => setNewlyOpened([])}
+              aria-label="Dismiss notification"
+              className="flex-shrink-0 px-2 py-1 text-mute hover:text-ink text-sm font-bold rounded-md"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* ── Loading state ─────────────────────────────────────────────── */}
         {isLoading && <LoadingSkeleton />}
