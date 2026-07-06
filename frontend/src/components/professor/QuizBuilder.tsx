@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import apiClient from "../../api/client";
+import QuestionBankModal, { BankItem } from "./QuestionBankModal";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -182,7 +183,24 @@ const QuizBuilder: React.FC<QuizBuilderProps> = ({ onCreated }) => {
   const [questions, setQuestions] = useState<DraftQuestion[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showBank, setShowBank] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // AEGIS-90: append imported bank questions as editable copies (fresh localId,
+  // so editing them never touches the original quiz).
+  function importFromBank(bankItems: BankItem[]) {
+    setQuestions((prev) => [
+      ...prev,
+      ...bankItems.map((b) => ({
+        localId: nextLocalId(),
+        type: b.question_type,
+        prompt: b.question_text,
+        options: b.question_type === "mcq" ? b.options ?? ["", ""] : [],
+        correct_answer: b.correct_answer ?? "",
+      })),
+    ]);
+    setShowBank(false);
+  }
 
   function addQuestion(type: QuestionType) {
     setQuestions((prev) => [
@@ -354,6 +372,13 @@ const QuizBuilder: React.FC<QuizBuilderProps> = ({ onCreated }) => {
         >
           + Short answer
         </button>
+        <button
+          type="button"
+          onClick={() => setShowBank(true)}
+          className="px-3 py-1.5 border border-hairline rounded text-sm text-body hover:bg-surface-soft transition-colors"
+        >
+          Import from question bank
+        </button>
       </div>
 
       <div ref={bottomRef} />
@@ -375,6 +400,13 @@ const QuizBuilder: React.FC<QuizBuilderProps> = ({ onCreated }) => {
         <p className="text-xs text-mute text-center mt-2">
           Add at least one question to publish.
         </p>
+      )}
+
+      {showBank && (
+        <QuestionBankModal
+          onClose={() => setShowBank(false)}
+          onImport={importFromBank}
+        />
       )}
     </form>
   );

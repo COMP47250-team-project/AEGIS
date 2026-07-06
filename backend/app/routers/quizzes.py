@@ -1,14 +1,16 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.dependencies import get_current_user_id
+from app.dependencies import get_current_user_id, require_role
 from app.models.quiz import Question, Quiz
 from app.schemas.quiz import (
+    QuestionBankItem,
+    QuestionBankResponse,
     QuestionCreate,
     QuestionRead,
     QuestionUpdate,
@@ -51,6 +53,53 @@ async def list_quizzes(
         .order_by(Quiz.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+# NOTE: this must be declared BEFORE `/{quiz_id}` so "question-bank" isn't
+# captured as a quiz id.
+@router.get("/question-bank", response_model=QuestionBankResponse)
+async def question_bank(
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+    search: str | None = Query(None, description="Filter by question text (prompt)."),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+) -> QuestionBankResponse:
+    """Paginated bank of every question across the professor's own quizzes, so
+    they can reuse well-tested questions in a new quiz (AEGIS-90)."""
+    base = (
+        select(Question, Quiz.title, Quiz.created_at)
+        .join(Quiz, Question.quiz_id == Quiz.id)
+        .where(Quiz.created_by == user_id)
+    )
+    if search:
+        base = base.where(Question.prompt.ilike(f"%{search}%"))
+
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = (
+        await db.execute(
+            base.order_by(Quiz.created_at.desc(), Question.position)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+
+    items = [
+        QuestionBankItem(
+            question_id=q.id,
+            quiz_id=q.quiz_id,
+            quiz_title=quiz_title,
+            question_text=q.prompt,
+            question_type=q.type,
+            options=q.options,
+            correct_answer=q.correct_answer,
+            created_at=created_at,
+        )
+        for (q, quiz_title, created_at) in rows
+    ]
+    return QuestionBankResponse(
+        items=items, total=total, page=page, page_size=page_size
+    )
 
 
 @router.get("/{quiz_id}", response_model=QuizRead)

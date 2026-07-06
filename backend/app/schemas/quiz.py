@@ -58,6 +58,30 @@ class QuestionRead(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Question bank (AEGIS-90) — reuse questions from a professor's past quizzes
+# ---------------------------------------------------------------------------
+
+
+class QuestionBankItem(BaseModel):
+    question_id: uuid.UUID
+    quiz_id: uuid.UUID
+    quiz_title: str
+    question_text: str
+    question_type: str
+    options: list[str] | None
+    correct_answer: str | None
+    # Questions have no own timestamp; this is the parent quiz's creation time.
+    created_at: datetime
+
+
+class QuestionBankResponse(BaseModel):
+    items: list[QuestionBankItem]
+    total: int
+    page: int
+    page_size: int
+
+
+# ---------------------------------------------------------------------------
 # Quiz schemas
 # ---------------------------------------------------------------------------
 
