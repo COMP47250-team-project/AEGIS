@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from datetime import datetime, timezone, timedelta
 from typing import List, Tuple
-from passlib.context import CryptContext
+from bcrypt import hashpw, gensalt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,8 +30,7 @@ from app.models.exam import ExamSession, Enrollment, StudentSession
 from app.models.telemetry import TelemetryEvent, StudentBaseline, SessionScore
 
 # ── Password hashing ──────────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-DEMO_PASSWORD = pwd_context.hash("demo1234")
+DEMO_PASSWORD = hashpw("demo1234".encode(), gensalt(rounds=12)).decode()
 
 
 # =============================================================================
