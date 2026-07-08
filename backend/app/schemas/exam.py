@@ -73,6 +73,7 @@ class AnswerItemRead(BaseModel):
     question_id: uuid.UUID
     answer: str
     saved_at: datetime
+    manual_score: float | None = None
 
 
 class AnswerSubmitResponse(BaseModel):
@@ -92,6 +93,7 @@ class StudentSessionRead(BaseModel):
     exam_id: uuid.UUID
     student_id: str
     consent_at: datetime | None
+    exam_state: str = "open"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +151,7 @@ class StudentExamResults(BaseModel):
     mcq_correct: int
     mcq_total: int
     questions: list[StudentAnswerResult]
+    integrity_score: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -158,12 +161,15 @@ class StudentExamResults(BaseModel):
 
 class GradeAnswerItem(BaseModel):
     question_id: uuid.UUID
+    answer_id: uuid.UUID | None = None
     position: int
     question_type: QuestionType
     prompt: str
     student_answer: str
     correct_answer: str | None
     is_correct: bool | None  # None for short-answer
+    manual_score: float | None = None
+    max_score: int = 1
 
 
 class StudentGradeEntry(BaseModel):
@@ -173,6 +179,11 @@ class StudentGradeEntry(BaseModel):
     mcq_correct: int
     mcq_total: int
     answers: list[GradeAnswerItem]
+
+
+class ManualGradeSubmit(BaseModel):
+    answer_id: uuid.UUID
+    score: float = Field(..., ge=0)
 
 
 class ExamGradeReport(BaseModel):

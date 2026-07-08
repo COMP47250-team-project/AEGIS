@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -130,3 +131,4 @@ class ExamAnswer(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    manual_score: Mapped[float | None] = mapped_column(Float, nullable=True)

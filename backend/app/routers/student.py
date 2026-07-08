@@ -10,6 +10,7 @@ from app.database import get_db
 from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamAnswer, ExamSession
 from app.models.quiz import Question, Quiz
+from app.models.telemetry import SessionScore
 from app.services.exam_scheduling import auto_open_due
 from app.schemas.exam import (
     StudentAnswerResult,
@@ -157,6 +158,16 @@ async def get_student_exam_results(
             )
         )
 
+    # Fetch the integrity score computed by the async scoring service.
+    score_result = await db.execute(
+        select(SessionScore).where(
+            SessionScore.exam_id == exam_id,
+            SessionScore.student_id == student_id,
+        )
+    )
+    session_score = score_result.scalar_one_or_none()
+    integrity_score = session_score.integrity_score if session_score else None
+
     return StudentExamResults(
         exam_id=exam_id,
         exam_title=quiz.title if quiz else "Unknown Quiz",
@@ -165,4 +176,5 @@ async def get_student_exam_results(
         mcq_correct=mcq_correct,
         mcq_total=mcq_total,
         questions=answer_results,
+        integrity_score=integrity_score,
     )
