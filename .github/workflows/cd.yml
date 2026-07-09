@@ -152,8 +152,7 @@ jobs:
           az containerapp update \
             --name "${{ secrets.BACKEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-backend.outputs.image }}" \
-            --set-env-vars "APP_ENV=production"
+            --image "${{ needs.build-backend.outputs.image }}"
 
       - name: Update frontend Container App
         run: |
@@ -166,8 +165,7 @@ jobs:
           az containerapp update \
             --name "${{ secrets.FRONTEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-frontend.outputs.image }}" \
-            --set-env-vars "APP_ENV=production"
+            --image "${{ needs.build-frontend.outputs.image }}"
 
       # Run Alembic migrations via az containerapp exec
       - name: Run database migrations
