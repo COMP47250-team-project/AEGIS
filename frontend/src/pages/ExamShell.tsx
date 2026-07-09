@@ -47,6 +47,7 @@ interface StudentSession {
 interface ExamSessionMeta {
   id: string;
   scheduled_start: string; // ISO 8601
+  opened_at: string | null; // ISO 8601 — set when professor opens the exam
   duration_minutes: number;
 }
 
@@ -185,7 +186,7 @@ function useServerEndTime(examId: string): {
   const fetchEndTime = useCallback(async () => {
     try {
       const { data } = await apiClient.get<ExamSessionMeta>(`/exams/${examId}`);
-      const startMs = new Date(data.scheduled_start).getTime();
+      const startMs = new Date(data.opened_at ?? data.scheduled_start).getTime();
       const endMs = startMs + data.duration_minutes * 60_000;
       setEndTimeIso(new Date(endMs).toISOString());
     } catch {
