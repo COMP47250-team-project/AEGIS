@@ -37,6 +37,7 @@ interface StudentSession {
   exam_id: string;
   student_id: string;
   consent_at: string | null;
+  exam_state: string;
 }
 
 // AEGIS-40: shape returned by GET /exams/{exam_id} — used to derive the
@@ -122,27 +123,21 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
           <li className="flex items-start gap-2">
             <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-semibold text-ink">
-                Tab switching
-              </strong>{" "}
+              <strong className="font-semibold text-ink">Tab switching</strong>{" "}
               — when you leave and return to this browser tab
             </span>
           </li>
           <li className="flex items-start gap-2">
             <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-semibold text-ink">
-                Paste events
-              </strong>{" "}
-              — when text is pasted into an answer field (not what was pasted)
+              <strong className="font-semibold text-ink">Paste events</strong> —
+              when text is pasted into an answer field (not what was pasted)
             </span>
           </li>
           <li className="flex items-start gap-2">
             <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-hairline mt-1.5" />
             <span>
-              <strong className="font-semibold text-ink">
-                Window resize
-              </strong>{" "}
+              <strong className="font-semibold text-ink">Window resize</strong>{" "}
               — changes in the browser window size during the exam
             </span>
           </li>
@@ -150,8 +145,8 @@ const ConsentScreen: React.FC<ConsentScreenProps> = ({
       </div>
       <div className="mb-6 px-4 py-3 bg-accent-green-soft rounded-md border-l-2 border-accent-green text-sm text-ink">
         No webcam, microphone, screen recording, or clipboard contents are ever
-        collected. Signals are combined into a confidence score for human
-        review only — no automatic academic-misconduct verdicts are issued.
+        collected. Signals are combined into a confidence score for human review
+        only — no automatic academic-misconduct verdicts are issued.
       </div>
       <div className="flex flex-col gap-3">
         <button
@@ -298,8 +293,9 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     const token = getAccessToken();
     if (!token) return;
 
-    const wsBase = (import.meta.env.VITE_API_URL ?? "http://localhost:8000")
-      .replace(/^http/, "ws");
+    const wsBase = (
+      import.meta.env.VITE_API_URL ?? "http://localhost:8000"
+    ).replace(/^http/, "ws");
     const wsUrl = `${wsBase}/ws/exam/${examId}`;
 
     const client = new TelemetryClient({
@@ -349,7 +345,9 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) {
-        showWarning("⚠️ Leaving this tab has been recorded for integrity review.");
+        showWarning(
+          "⚠️ Leaving this tab has been recorded for integrity review.",
+        );
       }
     };
     const onCopyOrCut = () => {
@@ -394,7 +392,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     (async () => {
       try {
         const { data: questions } = await apiClient.get<ExamQuestion[]>(
-          `/exams/${examId}/questions`
+          `/exams/${examId}/questions`,
         );
         if (cancelled) return;
 
@@ -407,7 +405,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           >(`/exams/${examId}/answers`);
           if (cancelled) return;
           saved = Object.fromEntries(
-            savedAnswers.map((a) => [a.question_id, a.answer])
+            savedAnswers.map((a) => [a.question_id, a.answer]),
           );
         } catch {
           // No saved answers yet (or fetch failed) — start fresh.
@@ -419,9 +417,10 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           // Resume at the first unanswered question; if all are answered,
           // land on the last one rather than restarting at the top.
           const firstUnanswered = questions.findIndex(
-            (q) => saved[q.id] === undefined || saved[q.id] === ""
+            (q) => saved[q.id] === undefined || saved[q.id] === "",
           );
-          const idx = firstUnanswered === -1 ? questions.length - 1 : firstUnanswered;
+          const idx =
+            firstUnanswered === -1 ? questions.length - 1 : firstUnanswered;
           setCurrentIndex(idx);
           currentQuestionIdRef.current = questions[idx].id;
           questionStartTsRef.current = Date.now();
@@ -438,7 +437,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   useEffect(() => {
     if (contentState.kind !== "loaded") return;
     const shortQuestions = contentState.questions.filter(
-      (q) => q.type === "short"
+      (q) => q.type === "short",
     );
     if (shortQuestions.length === 0) return;
 
@@ -470,7 +469,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     (questionId: string, value: string) => {
       setAnswers((prev) => ({ ...prev, [questionId]: value }));
     },
-    []
+    [],
   );
 
   const handleMcqChange = useCallback(
@@ -484,7 +483,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           /* local state is preserved on network failure */
         });
     },
-    [examId]
+    [examId],
   );
 
   const handlePaste = useCallback(
@@ -493,18 +492,23 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       if (isInternalPaste(pastedText, internalCopiesRef.current)) {
         return;
       }
-      showWarning("⚠️ A paste from outside the exam has been recorded for integrity review.");
+      showWarning(
+        "⚠️ A paste from outside the exam has been recorded for integrity review.",
+      );
       telemetryRef.current?.enqueue(
-        makePasteEvent(sessionId, questionId, charCount)
+        makePasteEvent(sessionId, questionId, charCount),
       );
     },
-    [sessionId, showWarning]
+    [sessionId, showWarning],
   );
 
   const goTo = useCallback(
     (index: number) => {
       if (contentState.kind !== "loaded") return;
-      const nextIndex = Math.max(0, Math.min(index, contentState.questions.length - 1));
+      const nextIndex = Math.max(
+        0,
+        Math.min(index, contentState.questions.length - 1),
+      );
       if (nextIndex === currentIndex) return;
 
       // Accumulate time on the question we're leaving (cumulative across
@@ -512,15 +516,19 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
       const leavingQuestion = contentState.questions[currentIndex];
       if (leavingQuestion) {
         const elapsed = Date.now() - questionStartTsRef.current;
-        accumulateDuration(questionDurationsRef.current, leavingQuestion.id, elapsed);
+        accumulateDuration(
+          questionDurationsRef.current,
+          leavingQuestion.id,
+          elapsed,
+        );
         telemetryRef.current?.enqueue(
           makeQuestionTimeEvent(
             sessionId,
             leavingQuestion.id,
             questionDurationsRef.current.get(leavingQuestion.id) ?? 0,
             leavingQuestion.position,
-            contentState.questions.length
-          )
+            contentState.questions.length,
+          ),
         );
       }
 
@@ -532,7 +540,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
       setCurrentIndex(nextIndex);
     },
-    [contentState, currentIndex, sessionId]
+    [contentState, currentIndex, sessionId],
   );
 
   // ── Shared submit-and-leave logic ─────────────────────────────────────────
@@ -563,7 +571,11 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     const currentQuestion = state.questions[idx];
     if (currentQuestion) {
       const elapsed = Date.now() - questionStartTsRef.current;
-      accumulateDuration(questionDurationsRef.current, currentQuestion.id, elapsed);
+      accumulateDuration(
+        questionDurationsRef.current,
+        currentQuestion.id,
+        elapsed,
+      );
     }
 
     // Emit a question_time event for EVERY question, including ones never
@@ -576,8 +588,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
           q.id,
           questionDurationsRef.current.get(q.id) ?? 0,
           q.position,
-          totalQuestions
-        )
+          totalQuestions,
+        ),
       );
     }
 
@@ -594,7 +606,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     try {
       const { data } = await apiClient.post<{ submitted_at?: string }>(
         `/exams/${examId}/answers`,
-        { answers: allAnswers, final: true }
+        { answers: allAnswers, final: true },
       );
       // Prefer the server's own submitted_at if it returns one — it's the
       // authoritative timestamp the professor's grade report will use.
@@ -708,7 +720,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
   const current = questions[currentIndex];
   const answeredCount = questions.filter(
-    (q) => answers[q.id] !== undefined && answers[q.id] !== ""
+    (q) => answers[q.id] !== undefined && answers[q.id] !== "",
   ).length;
 
   return (
@@ -784,7 +796,9 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
                   question={current}
                   answer={answers[current.id] ?? ""}
                   onAnswerChange={
-                    current.type === "mcq" ? handleMcqChange : handleAnswerChange
+                    current.type === "mcq"
+                      ? handleMcqChange
+                      : handleAnswerChange
                   }
                   onPaste={handlePaste}
                 />
@@ -838,6 +852,10 @@ const ExamShell: React.FC = () => {
       .get<StudentSession>(`/exams/${examId}/session`)
       .then(({ data }) => {
         if (cancelled) return;
+        if (data.exam_state === "closed") {
+          navigate(`/student/exams/${examId}/results`, { replace: true });
+          return;
+        }
         if (data.consent_at) {
           setState({ kind: "exam-active", session: data });
         } else {
@@ -859,7 +877,7 @@ const ExamShell: React.FC = () => {
     setIsSubmitting(true);
     try {
       const { data } = await apiClient.post<StudentSession>(
-        `/exams/${examId}/consent`
+        `/exams/${examId}/consent`,
       );
       setState({ kind: "exam-active", session: data });
     } catch {
@@ -911,7 +929,9 @@ const ExamShell: React.FC = () => {
   }
 
   // state.kind === "exam-active"
-  return <ExamContent examId={state.session.exam_id} sessionId={state.session.id} />;
+  return (
+    <ExamContent examId={state.session.exam_id} sessionId={state.session.id} />
+  );
 };
 
 export default ExamShell;

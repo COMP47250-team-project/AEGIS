@@ -29,6 +29,7 @@ from app.schemas.exam import (
     ExamGradeReport,
     ExamRead,
     GradeAnswerItem,
+    ManualGradeSubmit,
     QuestionForStudent,
     StudentGradeEntry,
     StudentSessionRead,
@@ -408,7 +409,9 @@ async def get_student_session(
         await db.commit()
         await db.refresh(session)
 
-    return StudentSessionRead.model_validate(session)
+    read = StudentSessionRead.model_validate(session)
+    read.exam_state = exam.state
+    return read
 
 
 @router.post("/{exam_id}/consent", response_model=StudentSessionRead)
@@ -440,7 +443,10 @@ async def record_consent(
 
     await db.commit()
     await db.refresh(session)
-    return StudentSessionRead.model_validate(session)
+    exam = await _get_exam_or_404(db, exam_id)
+    read = StudentSessionRead.model_validate(session)
+    read.exam_state = exam.state
+    return read
 
 
 # ---------------------------------------------------------------------------
@@ -575,12 +581,15 @@ async def get_exam_grade(
             grade_answers.append(
                 GradeAnswerItem(
                     question_id=q.id,
+                    answer_id=answer_row.id if answer_row else None,
                     position=q.position,
                     question_type=cast(Literal["mcq", "short"], q.type),
                     prompt=q.prompt,
                     student_answer=student_answer,
                     correct_answer=q.correct_answer if q.type == "mcq" else None,
                     is_correct=is_correct,
+                    manual_score=answer_row.manual_score if answer_row else None,
+                    max_score=q.max_score,
                 )
             )
 
@@ -603,6 +612,65 @@ async def get_exam_grade(
         short_total=short_total,
         students=student_entries,
     )
+
+
+@router.patch("/{exam_id}/answers/grade", status_code=status.HTTP_200_OK)
+async def submit_manual_grade(
+    exam_id: uuid.UUID,
+    body: ManualGradeSubmit,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+) -> dict:
+    """Set a manual score on a short-answer ExamAnswer row.
+
+    Only the exam owner can grade; only works on closed exams; only applies to short-answer questions (MCQ scores are computed automatically).
+    """
+    exam = await _get_exam_or_404(db, exam_id)
+    _assert_owner(exam, user_id)
+
+    if exam.state != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Grades can only be submitted for closed exams",
+        )
+
+    answer_result = await db.execute(
+        select(ExamAnswer).where(
+            ExamAnswer.id == body.answer_id,
+            ExamAnswer.exam_id == exam_id,
+        )
+    )
+    answer = answer_result.scalar_one_or_none()
+    if answer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Answer not found",
+        )
+
+    # validate score against question max_score
+    q_result = await db.execute(
+        select(Question).where(Question.id == answer.question_id)
+    )
+    question = q_result.scalar_one_or_none()
+    if question is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found",
+        )
+    if question.type != "short":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Manual grading only applies to short-answer questions",
+        )
+    if body.score < 0 or body.score > question.max_score:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Score must be between 0 and {question.max_score}",
+        )
+
+    answer.manual_score = body.score
+    await db.commit()
+    return {"answer_id": str(body.answer_id), "manual_score": body.score}
 
 
 # ---------------------------------------------------------------------------
