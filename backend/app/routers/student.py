@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_role
-from app.models.exam import Enrollment, ExamAnswer, ExamSession
+from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
 from app.models.quiz import Question, Quiz
 from app.models.telemetry import SessionScore
 from app.services.exam_scheduling import auto_open_due
@@ -28,9 +28,14 @@ async def list_student_sessions(
 ) -> list[StudentExamListItem]:
     """Return all exam sessions the authenticated student is enrolled in."""
     result = await db.execute(
-        select(ExamSession, Quiz)
+        select(ExamSession, Quiz, StudentSession)
         .join(Quiz, ExamSession.quiz_id == Quiz.id)
         .join(Enrollment, Enrollment.exam_id == ExamSession.id)
+        .outerjoin(
+            StudentSession,
+            (StudentSession.exam_id == ExamSession.id)
+            & (StudentSession.student_id == student_id),
+        )
         .where(Enrollment.student_id == student_id)
         .order_by(ExamSession.scheduled_start.desc())
     )
@@ -38,15 +43,21 @@ async def list_student_sessions(
 
     # Auto-open any exam whose scheduled start has passed so a waiting student
     # sees it as open without the professor manually triggering it (AEGIS-104).
-    await auto_open_due(db, [exam for exam, _ in rows])
+    await auto_open_due(db, [exam for exam, _, _ in rows])
 
     items: list[StudentExamListItem] = []
-    for exam, quiz in rows:
-        if exam.state == "open":
-            status_val = "open"
-            effective_start = exam.opened_at or exam.scheduled_start
-        elif exam.state == "closed":
+    for exam, quiz, session in rows:
+        submitted = session is not None and session.submitted_at is not None
+        if exam.state == "closed":
             status_val = "completed"
+            effective_start = exam.opened_at or exam.scheduled_start
+        elif submitted:
+            # AEGIS-111: student finished — show "submitted" (no re-entry),
+            # even while the exam is still open for others.
+            status_val = "submitted"
+            effective_start = exam.opened_at or exam.scheduled_start
+        elif exam.state == "open":
+            status_val = "open"
             effective_start = exam.opened_at or exam.scheduled_start
         else:
             status_val = "upcoming"

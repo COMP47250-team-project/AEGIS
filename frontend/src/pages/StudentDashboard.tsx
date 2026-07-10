@@ -21,7 +21,7 @@ export interface ExamSession {
   exam_id: string;       // exam UUID — used in the URL /exam/{exam_id}
   exam_title: string;    // display name shown on the card e.g. "Midterm Exam"
   course_name: string;   // course label shown above the title e.g. "CS101"
-  status: "open" | "upcoming" | "completed";
+  status: "open" | "upcoming" | "completed" | "submitted";
   starts_at: string;     // ISO 8601 datetime string e.g. "2026-06-19T09:00:00Z"
   ends_at: string;       // ISO 8601 datetime string — countdown target for open exams
 }
@@ -239,7 +239,9 @@ const StudentDashboard: React.FC = () => {
 
   const openSessions      = sessions.filter((s) => s.status === "open");
   const upcomingSessions  = sessions.filter((s) => s.status === "upcoming");
-  const completedSessions = sessions.filter((s) => s.status === "completed");
+  const completedSessions = sessions.filter(
+    (s) => s.status === "completed" || s.status === "submitted"
+  );
   const hasAnySessions    = sessions.length > 0;
 
   // ── Render ─────────────────────────────────────────────────────────────────

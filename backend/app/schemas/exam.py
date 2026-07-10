@@ -122,7 +122,7 @@ class QuestionForStudent(BaseModel):
 # Student dashboard — list of enrolled exam sessions
 # ---------------------------------------------------------------------------
 
-ExamStatusForStudent = Literal["open", "upcoming", "completed"]
+ExamStatusForStudent = Literal["open", "upcoming", "completed", "submitted"]
 
 
 class StudentExamListItem(BaseModel):
