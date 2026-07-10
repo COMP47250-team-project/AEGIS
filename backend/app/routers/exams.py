@@ -317,6 +317,20 @@ async def submit_answers(
             detail="Answers can only be submitted while the exam is open",
         )
 
+    # AEGIS-111: once the exam is finished, it's final — no re-entry or edits.
+    session_result = await db.execute(
+        select(StudentSession).where(
+            StudentSession.exam_id == exam_id,
+            StudentSession.student_id == student_id,
+        )
+    )
+    session = session_result.scalar_one_or_none()
+    if session is not None and session.submitted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This exam has already been submitted and can no longer be changed.",
+        )
+
     now = datetime.now(timezone.utc)
     saved: list[ExamAnswer] = []
 
@@ -344,6 +358,14 @@ async def submit_answers(
             db.add(new_answer)
             saved.append(new_answer)
 
+    # AEGIS-111: finalise the exam on the "Finish Exam" submit so it can't be
+    # re-entered. Create the session row if it doesn't exist yet (defensive).
+    if body.final:
+        if session is None:
+            session = StudentSession(exam_id=exam_id, student_id=student_id)
+            db.add(session)
+        session.submitted_at = now
+
     # Commit DB writes unconditionally — this is the durable store.
     await db.commit()
 
@@ -351,7 +373,11 @@ async def submit_answers(
         await db.refresh(answer)
 
     answer_reads = [AnswerItemRead.model_validate(a) for a in saved]
-    return AnswerSubmitResponse(saved=len(saved), answers=answer_reads)
+    return AnswerSubmitResponse(
+        saved=len(saved),
+        answers=answer_reads,
+        submitted_at=session.submitted_at if session else None,
+    )
 
 
 @router.get("/{exam_id}/answers", response_model=list[AnswerItemRead])
@@ -484,6 +510,12 @@ async def get_exam_questions(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Consent required before accessing exam questions",
+        )
+    # AEGIS-111: a finished exam can't be re-opened.
+    if session.submitted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This exam has already been submitted.",
         )
 
     q_result = await db.execute(

@@ -62,6 +62,9 @@ class AnswerItem(BaseModel):
 
 class AnswerSubmit(BaseModel):
     answers: list[AnswerItem] = Field(..., min_length=1)
+    # AEGIS-111: true when the student clicks "Finish Exam" — finalises the
+    # submission so the exam can't be re-entered or re-submitted.
+    final: bool = False
 
 
 class AnswerItemRead(BaseModel):
@@ -79,6 +82,8 @@ class AnswerItemRead(BaseModel):
 class AnswerSubmitResponse(BaseModel):
     saved: int
     answers: list[AnswerItemRead]
+    # AEGIS-111: set once the exam is finalised (final=true submit).
+    submitted_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +98,8 @@ class StudentSessionRead(BaseModel):
     exam_id: uuid.UUID
     student_id: str
     consent_at: datetime | None
+    # AEGIS-111: when set, the exam is complete and the student can't re-enter.
+    submitted_at: datetime | None = None
     exam_state: str = "open"
 
 

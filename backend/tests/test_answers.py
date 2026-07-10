@@ -333,3 +333,59 @@ async def test_submit_answers_unauthenticated_returns_401_or_403() -> None:
         )
 
     assert resp.status_code in (401, 403)
+
+
+# ---------------------------------------------------------------------------
+# AEGIS-111 — a finished exam is final (no re-entry / resubmission)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_final_submit_marks_submitted_and_blocks_changes(
+    client: AsyncClient,
+) -> None:
+    exam_id, short_q_id, _ = await _setup_open_exam(client)
+
+    async with _student_client() as student:
+        await student.post(f"/exams/{exam_id}/consent")
+
+        final = await student.post(
+            f"/exams/{exam_id}/answers",
+            json={
+                "answers": [{"question_id": short_q_id, "answer": "Final answer"}],
+                "final": True,
+            },
+        )
+        assert final.status_code == 200
+        assert final.json()["submitted_at"] is not None
+
+        # The session now reports the exam as submitted.
+        sess = await student.get(f"/exams/{exam_id}/session")
+        assert sess.json()["submitted_at"] is not None
+
+        # A further answer submission is rejected.
+        again = await student.post(
+            f"/exams/{exam_id}/answers",
+            json={"answers": [{"question_id": short_q_id, "answer": "Changed"}]},
+        )
+        assert again.status_code == 409
+
+        # Re-entering (fetching questions) is blocked.
+        questions = await student.get(f"/exams/{exam_id}/questions")
+        assert questions.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_non_final_submit_does_not_finalise(client: AsyncClient) -> None:
+    exam_id, short_q_id, _ = await _setup_open_exam(client)
+
+    async with _student_client() as student:
+        resp = await student.post(
+            f"/exams/{exam_id}/answers",
+            json={"answers": [{"question_id": short_q_id, "answer": "draft"}]},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["submitted_at"] is None
+
+        sess = await student.get(f"/exams/{exam_id}/session")
+        assert sess.json()["submitted_at"] is None
