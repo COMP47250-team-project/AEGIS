@@ -49,7 +49,9 @@ const ExamCreate: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   function patchQuestion(i: number, patch: Partial<DraftQuestion>) {
-    setQuestions((qs) => qs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
+    setQuestions((qs) =>
+      qs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)),
+    );
   }
 
   async function handleCsv(e: React.ChangeEvent<HTMLInputElement>) {
@@ -69,7 +71,8 @@ const ExamCreate: React.FC = () => {
     if (questions.length < 1) return "Add at least 1 question.";
     for (const [i, q] of questions.entries()) {
       if (!q.prompt.trim()) return `Question ${i + 1}: prompt is required.`;
-      if (q.maxScore <= 0) return `Question ${i + 1}: max score must be above 0.`;
+      if (q.maxScore <= 0)
+        return `Question ${i + 1}: max score must be above 0.`;
       if (q.type === "mcq") {
         const opts = q.options.map((o) => o.trim()).filter(Boolean);
         if (opts.length < 2)
@@ -192,7 +195,10 @@ const ExamCreate: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-mute mb-1" htmlFor="exam-start">
+            <label
+              className="block text-xs text-mute mb-1"
+              htmlFor="exam-start"
+            >
               Start <span className="text-accent-red">*</span>
             </label>
             <input
@@ -255,7 +261,9 @@ const ExamCreate: React.FC = () => {
               className="border border-hairline rounded-md p-3 space-y-3 bg-surface-card"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-mute">Question {i + 1}</span>
+                <span className="text-xs font-medium text-mute">
+                  Question {i + 1}
+                </span>
                 {questions.length > 1 && (
                   <button
                     type="button"
@@ -272,9 +280,13 @@ const ExamCreate: React.FC = () => {
               <div className="flex gap-3">
                 <select
                   aria-label={`Question ${i + 1} type`}
+                  name={`q-type-${i}`}
+                  data-testid={`q-type-${i}`}
                   className={`${inputClass} w-40`}
                   value={q.type}
-                  onChange={(e) => patchQuestion(i, { type: e.target.value as QType })}
+                  onChange={(e) =>
+                    patchQuestion(i, { type: e.target.value as QType })
+                  }
                 >
                   <option value="short">Text</option>
                   <option value="mcq">Multiple choice</option>
@@ -296,6 +308,8 @@ const ExamCreate: React.FC = () => {
 
               <textarea
                 aria-label={`Question ${i + 1} prompt`}
+                name={`q-prompt-${i}`}
+                data-testid={`q-prompt-${i}`}
                 className={inputClass}
                 rows={2}
                 value={q.prompt}
@@ -312,10 +326,14 @@ const ExamCreate: React.FC = () => {
                         name={`correct-${i}`}
                         aria-label={`Question ${i + 1} option ${oi + 1} correct`}
                         checked={!!opt && q.correctAnswer === opt}
-                        onChange={() => patchQuestion(i, { correctAnswer: opt })}
+                        onChange={() =>
+                          patchQuestion(i, { correctAnswer: opt })
+                        }
                       />
                       <input
                         className={inputClass}
+                        name={`q-opt-${i}-${oi}`}
+                        data-testid={`q-opt-${i}-${oi}`}
                         value={opt}
                         onChange={(e) => {
                           const options = q.options.map((o, idx) =>
@@ -396,6 +414,7 @@ const ExamCreate: React.FC = () => {
         <button
           type="submit"
           disabled={saving}
+          data-testid="create-exam-submit"
           className="w-full py-2.5 bg-primary text-ink font-semibold text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary-pressed transition-colors"
         >
           {saving ? "Creating…" : "Create Exam"}

@@ -12,7 +12,7 @@ on:
 # Only one deploy at a time; cancel superseded runs.
 concurrency:
   group: cd-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

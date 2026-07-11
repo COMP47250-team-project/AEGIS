@@ -69,8 +69,16 @@ const RegisterPage: React.FC = () => {
         {/* Brand mark */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
-            <svg className="w-7 h-7 text-on-dark" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            <svg
+              className="w-7 h-7 text-on-dark"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
                 d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
               />
             </svg>
@@ -91,7 +99,10 @@ const RegisterPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-body mb-1.5">
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-body mb-1.5"
+              >
                 Full name
               </label>
               <input
@@ -107,7 +118,10 @@ const RegisterPage: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-body mb-1.5">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-body mb-1.5"
+              >
                 Email address
               </label>
               <input
@@ -132,6 +146,7 @@ const RegisterPage: React.FC = () => {
                   <button
                     key={r}
                     type="button"
+                    data-testid={`role-${r}`}
                     onClick={() => setRole(r)}
                     className={[
                       "py-2.5 px-4 rounded-md border text-sm font-medium capitalize transition-colors focus:outline-none focus:ring-2 focus:ring-accent-blue/30",
@@ -147,7 +162,10 @@ const RegisterPage: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-body mb-1.5">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-body mb-1.5"
+              >
                 Password
               </label>
               <input
@@ -163,7 +181,10 @@ const RegisterPage: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-body mb-1.5">
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-medium text-body mb-1.5"
+              >
                 Confirm password
               </label>
               <input
@@ -181,6 +202,7 @@ const RegisterPage: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
+              data-testid="register-submit"
               className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
             >
               {isLoading ? "Creating account…" : "Create account"}
