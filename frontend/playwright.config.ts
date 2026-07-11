@@ -23,7 +23,7 @@ export default defineConfig({
     command: "docker compose up --wait",
     cwd: "..",
     url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120_000,
     stdout: "ignore",
     stderr: "pipe",
