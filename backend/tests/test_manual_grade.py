@@ -149,3 +149,25 @@ async def test_results_hidden_until_released_for_mixed_exam(
         after = (await student.get(f"/student/exams/{exam_id}/results")).json()
     assert after["results_released"] is True
     assert after["points_earned"] == 8
+
+
+@pytest.mark.asyncio
+async def test_results_ready_flag_in_student_list(client: AsyncClient) -> None:
+    exam_id, answer_id = await _setup_exam_with_answer(client, close=True)
+
+    # Mixed exam, not released -> not ready in the dashboard list.
+    async with _student_client() as student:
+        items = (await student.get("/student/sessions")).json()
+    item = next(i for i in items if i["exam_id"] == exam_id)
+    assert item["results_ready"] is False
+
+    await client.patch(
+        f"/exams/{exam_id}/answers/grade",
+        json={"answer_id": answer_id, "score": 5},
+    )
+    await client.post(f"/exams/{exam_id}/release-results")
+
+    async with _student_client() as student:
+        items = (await student.get("/student/sessions")).json()
+    item = next(i for i in items if i["exam_id"] == exam_id)
+    assert item["results_ready"] is True

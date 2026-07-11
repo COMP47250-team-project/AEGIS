@@ -132,6 +132,9 @@ class StudentExamListItem(BaseModel):
     status: ExamStatusForStudent
     starts_at: datetime
     ends_at: datetime
+    # AEGIS-112c: results are viewable (closed + released, or MCQ-only). Drives
+    # the "results ready" notification + the card's View Results action.
+    results_ready: bool = False
 
 
 # ---------------------------------------------------------------------------

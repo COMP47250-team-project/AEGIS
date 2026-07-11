@@ -45,6 +45,19 @@ async def list_student_sessions(
     # sees it as open without the professor manually triggering it (AEGIS-104).
     await auto_open_due(db, [exam for exam, _, _ in rows])
 
+    # AEGIS-112c: which quizzes have short-answer questions? MCQ-only exams
+    # release results immediately; exams with short answers need an explicit
+    # release before results are ready.
+    quiz_ids = list({exam.quiz_id for exam, _, _ in rows})
+    quizzes_with_short: set[uuid.UUID] = set()
+    if quiz_ids:
+        short_rows = await db.execute(
+            select(Question.quiz_id)
+            .where(Question.quiz_id.in_(quiz_ids), Question.type == "short")
+            .distinct()
+        )
+        quizzes_with_short = {qid for (qid,) in short_rows.all()}
+
     items: list[StudentExamListItem] = []
     for exam, quiz, session in rows:
         submitted = session is not None and session.submitted_at is not None
@@ -65,6 +78,11 @@ async def list_student_sessions(
 
         ends_at = effective_start + timedelta(minutes=exam.duration_minutes)
 
+        has_short = exam.quiz_id in quizzes_with_short
+        results_ready = exam.state == "closed" and (
+            not has_short or exam.results_released_at is not None
+        )
+
         items.append(
             StudentExamListItem(
                 exam_id=exam.id,
@@ -73,6 +91,7 @@ async def list_student_sessions(
                 status=status_val,
                 starts_at=exam.scheduled_start,
                 ends_at=ends_at,
+                results_ready=results_ready,
             )
         )
 
