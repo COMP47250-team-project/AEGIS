@@ -141,6 +141,9 @@ class StudentAnswerResult(BaseModel):
     student_answer: str
     correct_answer: str | None  # revealed for MCQ after closing
     is_correct: bool | None  # None for short-answer (manual grading)
+    # AEGIS-112: the professor's manual score for a short answer (once graded).
+    manual_score: float | None = None
+    max_score: int = 1
 
 
 class StudentExamResults(BaseModel):
@@ -152,6 +155,11 @@ class StudentExamResults(BaseModel):
     mcq_total: int
     questions: list[StudentAnswerResult]
     integrity_score: float | None = None
+    # AEGIS-112: overall points (MCQ + manually graded short answers).
+    points_earned: float = 0.0
+    points_possible: int = 0
+    # False while any short answer is still awaiting a manual grade.
+    fully_graded: bool = True
 
 
 # ---------------------------------------------------------------------------

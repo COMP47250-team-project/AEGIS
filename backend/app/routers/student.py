@@ -129,21 +129,33 @@ async def get_student_exam_results(
     answer_results: list[StudentAnswerResult] = []
     mcq_correct = 0
     mcq_total = 0
+    points_earned = 0.0
+    points_possible = 0
+    fully_graded = True
 
     for q in questions:
         qid = str(q.id)
         ans = answers_by_qid.get(qid)
         student_answer = ans.answer if ans else ""
 
+        manual_score = ans.manual_score if ans else None
+        # AEGIS-112: build the overall points total (MCQ + manual short answers).
+        points_possible += q.max_score
+
         if q.type == "mcq":
             mcq_total += 1
             is_correct = student_answer == q.correct_answer if student_answer else False
             if is_correct:
                 mcq_correct += 1
+                points_earned += q.max_score
             correct_answer = q.correct_answer
         else:
             is_correct = None
             correct_answer = None
+            if manual_score is not None:
+                points_earned += manual_score
+            else:
+                fully_graded = False  # a short answer still needs grading
 
         answer_results.append(
             StudentAnswerResult(
@@ -155,6 +167,8 @@ async def get_student_exam_results(
                 student_answer=student_answer,
                 correct_answer=correct_answer,
                 is_correct=is_correct,
+                manual_score=manual_score,
+                max_score=q.max_score,
             )
         )
 
@@ -177,4 +191,7 @@ async def get_student_exam_results(
         mcq_total=mcq_total,
         questions=answer_results,
         integrity_score=integrity_score,
+        points_earned=points_earned,
+        points_possible=points_possible,
+        fully_graded=fully_graded,
     )

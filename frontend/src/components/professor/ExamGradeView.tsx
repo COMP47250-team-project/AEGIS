@@ -138,6 +138,16 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
     }
   };
 
+  // AEGIS-112: overall points (MCQ + manual short answers), reflecting the
+  // live-saved scores so the total updates the moment a grade is saved.
+  const totalPossible = entry.answers.reduce((sum, a) => sum + a.max_score, 0);
+  const totalEarned = entry.answers.reduce((sum, a) => {
+    if (a.question_type === "mcq") return sum + (a.is_correct ? a.max_score : 0);
+    const live = a.answer_id ? savedScores[a.answer_id] : undefined;
+    const score = live !== undefined && live !== null ? live : a.manual_score;
+    return sum + (score ?? 0);
+  }, 0);
+
   return (
     <div className="border border-hairline rounded-md overflow-hidden">
       <button
@@ -151,6 +161,11 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {totalPossible > 0 && (
+            <span className="inline-block px-2 py-0.5 rounded border border-hairline bg-surface-soft text-xs font-semibold text-ink">
+              {totalEarned}/{totalPossible} pts
+            </span>
+          )}
           <ScorePill correct={entry.mcq_correct} total={entry.mcq_total} />
           <svg
             className={`w-4 h-4 text-mute transition-transform ${expanded ? "rotate-180" : ""}`}
