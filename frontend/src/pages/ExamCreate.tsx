@@ -1,7 +1,7 @@
 // frontend/src/pages/ExamCreate.tsx
 // AEGIS-62: professor creates an exam (quiz + questions), schedules it, and
 // enrols students — one form. Orchestrates the existing quiz/exam/enroll APIs.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/client";
 import { durationMinutes, parseStudentEmails } from "./examCreate.helpers";
@@ -45,8 +45,25 @@ const ExamCreate: React.FC = () => {
   const [questions, setQuestions] = useState<DraftQuestion[]>([newQuestion()]);
   const [enrolText, setEnrolText] = useState("");
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiClient
+      .get<{ id: string; name: string }[]>("/groups")
+      .then(({ data }) => setGroups(data))
+      .catch(() => {});
+  }, []);
+
+  async function addGroupEmails(groupId: string) {
+    if (!groupId) return;
+    const { data } = await apiClient.get<{ members: { email: string }[] }>(
+      `/groups/${groupId}`
+    );
+    const emails = data.members.map((m) => m.email).filter(Boolean).join("\n");
+    if (emails) setEnrolText((prev) => (prev ? `${prev}\n${emails}` : emails));
+  }
 
   function patchQuestion(i: number, patch: Partial<DraftQuestion>) {
     setQuestions((qs) => qs.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
@@ -385,6 +402,24 @@ const ExamCreate: React.FC = () => {
             className="mt-2 text-xs text-mute"
             aria-label="Upload student emails CSV"
           />
+          {groups.length > 0 && (
+            <select
+              aria-label="Add students from group"
+              className={`${inputClass} mt-2`}
+              defaultValue=""
+              onChange={(e) => {
+                addGroupEmails(e.target.value);
+                e.target.value = "";
+              }}
+            >
+              <option value="">Add from group…</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {error && (
