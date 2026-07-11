@@ -15,9 +15,11 @@ from app.dependencies import require_role
 from typing import Literal, cast
 
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
+from app.models.group import GroupMember, StudentGroup
 from app.models.quiz import Question, Quiz
 from app.models.telemetry import SessionScore
 from app.models.user import User
+from app.schemas.groups import EnrollGroup
 from app.schemas.exam import (
     AnswerItemRead,
     AnswerSubmit,
@@ -184,6 +186,46 @@ async def enroll_student_by_email(
         )
     await db.refresh(enrollment)
     return enrollment
+
+
+@router.post("/{exam_id}/enroll-group", status_code=status.HTTP_201_CREATED)
+async def enroll_group(
+    exam_id: uuid.UUID,
+    body: EnrollGroup,
+    db: AsyncSession = Depends(get_db),
+    professor_id: str = Depends(require_role("professor")),
+) -> dict:
+    """Enroll every current member of a group, skipping already-enrolled students."""
+    exam = await _get_exam_or_404(db, exam_id)
+    _assert_owner(exam, professor_id)
+    if exam.state != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Students can only be enrolled while the exam is in draft state",
+        )
+    group = (
+        await db.execute(select(StudentGroup).where(StudentGroup.id == body.group_id))
+    ).scalar_one_or_none()
+    if group is None or group.professor_id != professor_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+
+    member_ids = (
+        await db.execute(
+            select(GroupMember.student_id).where(GroupMember.group_id == body.group_id)
+        )
+    ).scalars().all()
+    existing = set(
+        (
+            await db.execute(
+                select(Enrollment.student_id).where(Enrollment.exam_id == exam.id)
+            )
+        ).scalars().all()
+    )
+    new_ids = [sid for sid in member_ids if sid not in existing]
+    for sid in new_ids:
+        db.add(Enrollment(exam_id=exam.id, student_id=sid))
+    await db.commit()
+    return {"enrolled": len(new_ids), "group_size": len(member_ids)}
 
 
 @router.delete(

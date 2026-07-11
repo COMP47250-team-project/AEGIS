@@ -6,16 +6,18 @@ import QuizBuilder from "../components/professor/QuizBuilder";
 import ExamScheduler from "../components/professor/ExamScheduler";
 import SessionDashboard from "../components/professor/SessionDashboard";
 import SessionHistoryView from "../components/professor/SessionHistoryView";
+import GroupsManager from "../components/professor/GroupsManager";
 import TimelineModal from "../components/professor/TimelineModal";
 import type { LiveStudent } from "../components/professor/liveStudents";
 
-type Tab = "dashboard" | "exams" | "build" | "schedule" | "history";
+type Tab = "dashboard" | "exams" | "build" | "schedule" | "groups" | "history";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "exams", label: "My Exams" },
   { id: "build", label: "Build Quiz" },
   { id: "schedule", label: "Schedule Exam" },
+  { id: "groups", label: "Groups" },
   { id: "history", label: "History" },
 ];
 
@@ -143,6 +145,13 @@ const ProfessorConsole: React.FC = () => {
               preselectedQuizId={pendingQuizId}
               onScheduled={handleExamScheduled}
             />
+          </section>
+        )}
+
+        {activeTab === "groups" && (
+          <section aria-label="Student Groups">
+            <h2 className="text-base font-semibold text-ink mb-4">Student Groups</h2>
+            <GroupsManager />
           </section>
         )}
 
