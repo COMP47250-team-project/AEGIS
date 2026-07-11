@@ -34,6 +34,7 @@ interface StudentExamResults {
   points_earned: number;
   points_possible: number;
   fully_graded: boolean;
+  results_released: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +434,19 @@ const StudentResults: React.FC = () => {
           </p>
         </div>
 
+        {/* AEGIS-112b: hide scores/breakdown until the professor releases them */}
+        {!results.results_released ? (
+          <div className="px-5 py-10 bg-accent-blue-soft border border-accent-blue/20 rounded-md text-center">
+            <p className="text-lg font-semibold text-ink mb-1">
+              Results under review
+            </p>
+            <p className="text-sm text-body max-w-md mx-auto">
+              Your professor is still grading this exam. Your score and feedback
+              will appear here once grading is complete.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Score cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <TotalScoreCard
@@ -492,6 +506,8 @@ const StudentResults: React.FC = () => {
             <QuestionResultCard key={ans.question_id} ans={ans} index={i} />
           ))}
         </div>
+          </>
+        )}
       </main>
     </div>
   );

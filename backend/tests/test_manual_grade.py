@@ -122,3 +122,30 @@ async def test_manual_grade_on_open_exam_is_rejected(client: AsyncClient) -> Non
         json={"answer_id": str(uuid.uuid4()), "score": 5},
     )
     assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_results_hidden_until_released_for_mixed_exam(
+    client: AsyncClient,
+) -> None:
+    exam_id, answer_id = await _setup_exam_with_answer(client, close=True)
+
+    # Before release: the student sees "under review" — scores redacted.
+    async with _student_client() as student:
+        before = (await student.get(f"/student/exams/{exam_id}/results")).json()
+    assert before["results_released"] is False
+    assert before["points_earned"] == 0
+
+    # Professor grades then releases.
+    await client.patch(
+        f"/exams/{exam_id}/answers/grade",
+        json={"answer_id": answer_id, "score": 8},
+    )
+    released = (await client.post(f"/exams/{exam_id}/release-results")).json()
+    assert released["results_released"] is True
+
+    # After release: the student sees the score.
+    async with _student_client() as student:
+        after = (await student.get(f"/student/exams/{exam_id}/results")).json()
+    assert after["results_released"] is True
+    assert after["points_earned"] == 8

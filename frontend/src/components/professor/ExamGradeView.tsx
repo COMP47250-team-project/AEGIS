@@ -35,6 +35,8 @@ interface ExamGradeReport {
   mcq_total: number;
   short_total: number;
   students: StudentGradeEntry[];
+  results_released: boolean;
+  ungraded_short: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +338,27 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
   const [report, setReport] = useState<ExamGradeReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  // AEGIS-112b: release results to students ("Submit Grades").
+  const handleRelease = async () => {
+    setReleasing(true);
+    setReleaseError(null);
+    try {
+      const { data } = await apiClient.post<ExamGradeReport>(
+        `/exams/${examId}/release-results`
+      );
+      setReport(data);
+    } catch (err) {
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+      setReleaseError(
+        typeof detail === "string" ? detail : "Failed to release results."
+      );
+    } finally {
+      setReleasing(false);
+    }
+  };
 
   useEffect(() => {
     apiClient
@@ -400,6 +423,41 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
           This exam has {report.short_total} short-answer question
           {report.short_total !== 1 ? "s" : ""} that require manual grading.
         </div>
+      )}
+
+      {/* AEGIS-112b: Submit Grades — releases results to students. Only shown
+          for exams with short answers (MCQ-only results are instant). */}
+      {report.short_total > 0 && (
+        <div className="mb-6 flex items-center justify-between gap-3 px-4 py-3 bg-surface-card border border-hairline rounded-md">
+          {report.results_released ? (
+            <p className="text-sm text-accent-green font-semibold">
+              ✓ Results released to students.
+            </p>
+          ) : (
+            <p className="text-sm text-body">
+              Results are hidden from students until you submit grades.
+              {report.ungraded_short > 0 && (
+                <span className="text-mute">
+                  {" "}
+                  {report.ungraded_short} answer
+                  {report.ungraded_short !== 1 ? "s" : ""} still ungraded.
+                </span>
+              )}
+            </p>
+          )}
+          {!report.results_released && (
+            <button
+              onClick={handleRelease}
+              disabled={releasing}
+              className="flex-shrink-0 px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
+            >
+              {releasing ? "Releasing…" : "Submit Grades"}
+            </button>
+          )}
+        </div>
+      )}
+      {releaseError && (
+        <p className="text-sm text-accent-red mb-4">{releaseError}</p>
       )}
 
       {/* Per-student rows */}

@@ -44,6 +44,11 @@ class ExamSession(Base):
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # AEGIS-112b: set when the professor clicks "Submit Grades". Until then, an
+    # exam with short-answer questions keeps results hidden from students.
+    results_released_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
