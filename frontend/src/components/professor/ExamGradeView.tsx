@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import apiClient from "../../api/client";
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,11 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
   const [scores, setScores] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  // The score currently persisted in the DB, so a save is visibly reflected.
+  const [savedScores, setSavedScores] = useState<Record<string, number | null>>(
+    {}
+  );
   const displayName =
     entry.student_name ?? entry.student_email ?? entry.student_id;
 
@@ -81,31 +87,66 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
     if (initialised.current) return;
     initialised.current = true;
     const init: Record<string, string> = {};
+    const initSaved: Record<string, number | null> = {};
     for (const ans of entry.answers) {
       if (ans.question_type === "short" && ans.answer_id) {
         init[ans.answer_id] =
           ans.manual_score !== null ? String(ans.manual_score) : "";
+        initSaved[ans.answer_id] = ans.manual_score;
       }
     }
     setScores(init);
+    setSavedScores(initSaved);
   }, [entry.answers]);
 
   const handleSaveScore = async (answerId: string, maxScore: number) => {
     const raw = scores[answerId] ?? "";
     const val = parseFloat(raw);
-    if (isNaN(val) || val < 0 || val > maxScore) return;
+    setErrors((e) => ({ ...e, [answerId]: "" }));
+
+    // AEGIS-112a: validation failures used to return silently, so the professor
+    // got no feedback and thought the score "wasn't saving". Surface them.
+    if (raw.trim() === "" || isNaN(val)) {
+      setErrors((e) => ({ ...e, [answerId]: "Enter a score." }));
+      return;
+    }
+    if (val < 0 || val > maxScore) {
+      setErrors((e) => ({ ...e, [answerId]: `Score must be 0–${maxScore}.` }));
+      return;
+    }
+
     setSaving((s) => ({ ...s, [answerId]: true }));
     try {
       await apiClient.patch(`/exams/${examId}/answers/grade`, {
         answer_id: answerId,
         score: val,
       });
+      setSavedScores((s) => ({ ...s, [answerId]: val }));
       setSaved((s) => ({ ...s, [answerId]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [answerId]: false })), 2000);
+    } catch (err) {
+      const detail = axios.isAxiosError(err)
+        ? err.response?.data?.detail
+        : null;
+      setErrors((e) => ({
+        ...e,
+        [answerId]:
+          typeof detail === "string" ? detail : "Failed to save score.",
+      }));
     } finally {
       setSaving((s) => ({ ...s, [answerId]: false }));
     }
   };
+
+  // AEGIS-112: overall points (MCQ + manual short answers), reflecting the
+  // live-saved scores so the total updates the moment a grade is saved.
+  const totalPossible = entry.answers.reduce((sum, a) => sum + a.max_score, 0);
+  const totalEarned = entry.answers.reduce((sum, a) => {
+    if (a.question_type === "mcq") return sum + (a.is_correct ? a.max_score : 0);
+    const live = a.answer_id ? savedScores[a.answer_id] : undefined;
+    const score = live !== undefined && live !== null ? live : a.manual_score;
+    return sum + (score ?? 0);
+  }, 0);
 
   return (
     <div className="border border-hairline rounded-md overflow-hidden">
@@ -120,6 +161,11 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {totalPossible > 0 && (
+            <span className="inline-block px-2 py-0.5 rounded border border-hairline bg-surface-soft text-xs font-semibold text-ink">
+              {totalEarned}/{totalPossible} pts
+            </span>
+          )}
           <ScorePill correct={entry.mcq_correct} total={entry.mcq_total} />
           <svg
             className={`w-4 h-4 text-mute transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -251,7 +297,18 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
                                   ? "Saved ✓"
                                   : "Save"}
                             </button>
+                            {/* Reflect the persisted score so a save is visible */}
+                            {savedScores[ans.answer_id] != null && (
+                              <span className="text-xs text-accent-green font-semibold">
+                                {savedScores[ans.answer_id]}/{ans.max_score} saved
+                              </span>
+                            )}
                           </div>
+                        )}
+                        {ans.answer_id && errors[ans.answer_id] && (
+                          <p className="text-xs text-accent-red mt-1">
+                            {errors[ans.answer_id]}
+                          </p>
                         )}
                       </div>
                     )}

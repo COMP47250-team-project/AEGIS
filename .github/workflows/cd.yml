@@ -9,10 +9,11 @@ on:
   push:
     branches: [main]
 
-# Only one deploy at a time; cancel superseded runs.
+# Only one deploy at a time; let an in-progress deploy finish rather than
+# cancelling it (cancelling mid-deploy could leave a Container App half-updated).
 concurrency:
   group: cd-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read

@@ -18,6 +18,8 @@ interface StudentAnswerResult {
   student_answer: string;
   correct_answer: string | null;
   is_correct: boolean | null;
+  manual_score: number | null;
+  max_score: number;
 }
 
 interface StudentExamResults {
@@ -29,6 +31,9 @@ interface StudentExamResults {
   mcq_total: number;
   questions: StudentAnswerResult[];
   integrity_score: number | null;
+  points_earned: number;
+  points_possible: number;
+  fully_graded: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +80,45 @@ const ScoreCard: React.FC<{ correct: number; total: number }> = ({
         </>
       ) : (
         <p className="text-sm text-mute">No MCQ questions</p>
+      )}
+    </div>
+  );
+};
+
+// AEGIS-112: overall score across MCQ + manually graded short answers.
+const TotalScoreCard: React.FC<{
+  earned: number;
+  possible: number;
+  fullyGraded: boolean;
+}> = ({ earned, possible, fullyGraded }) => {
+  const pct = possible > 0 ? Math.round((earned / possible) * 100) : null;
+  const color =
+    pct === null
+      ? "text-mute"
+      : pct >= 80
+        ? "text-accent-green"
+        : pct >= 50
+          ? "text-primary-active"
+          : "text-accent-red";
+  return (
+    <div className="bg-surface-card border border-hairline rounded-md p-6 flex flex-col items-center justify-center">
+      <p className="text-xs text-mute uppercase tracking-widest mb-1">
+        Total Score
+      </p>
+      {pct !== null ? (
+        <>
+          <p className={`text-4xl font-bold ${color}`}>{pct}%</p>
+          <p className="text-sm text-mute mt-1">
+            {earned} / {possible} points
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-mute">—</p>
+      )}
+      {!fullyGraded && (
+        <p className="text-xs text-accent-blue mt-2">
+          Some answers are still being graded.
+        </p>
       )}
     </div>
   );
@@ -270,6 +314,18 @@ const QuestionResultCard: React.FC<QuestionResultCardProps> = ({
               <em className="text-mute">No answer submitted</em>
             )}
           </p>
+          {/* AEGIS-112: the professor's manual grade, once given */}
+          <div className="mt-2 pt-2 border-t border-hairline-soft">
+            {ans.manual_score !== null ? (
+              <span className="text-xs font-semibold text-accent-green">
+                Score: {ans.manual_score} / {ans.max_score}
+              </span>
+            ) : (
+              <span className="text-xs text-accent-blue">
+                Awaiting grading
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -379,6 +435,11 @@ const StudentResults: React.FC = () => {
 
         {/* Score cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <TotalScoreCard
+            earned={results.points_earned}
+            possible={results.points_possible}
+            fullyGraded={results.fully_graded}
+          />
           <ScoreCard correct={results.mcq_correct} total={results.mcq_total} />
           <IntegrityScoreCard score={results.integrity_score} />
           <div className="sm:col-span-2 bg-surface-card border border-hairline rounded-md p-5 flex flex-col justify-center">
