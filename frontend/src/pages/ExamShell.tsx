@@ -37,6 +37,7 @@ interface StudentSession {
   exam_id: string;
   student_id: string;
   consent_at: string | null;
+  submitted_at: string | null;
   exam_state: string;
 }
 
@@ -852,6 +853,15 @@ const ExamShell: React.FC = () => {
       .get<StudentSession>(`/exams/${examId}/session`)
       .then(({ data }) => {
         if (cancelled) return;
+        // AEGIS-111: a finished exam can't be re-entered — send the student to
+        // the completion page instead of reopening the exam.
+        if (data.submitted_at) {
+          navigate(`/exam/${examId}/submitted`, {
+            replace: true,
+            state: { submittedAt: data.submitted_at },
+          });
+          return;
+        }
         if (data.exam_state === "closed") {
           navigate(`/student/exams/${examId}/results`, { replace: true });
           return;
