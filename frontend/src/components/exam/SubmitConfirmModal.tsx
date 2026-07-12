@@ -42,13 +42,14 @@ const SubmitConfirmModal: React.FC<SubmitConfirmModalProps> = ({
           Are you sure? You cannot return.
         </h2>
         <p className="text-sm text-body mb-6">
-          Once you submit, your answers are final and you won't be able to
-          come back into this exam.
+          Once you submit, your answers are final and you won't be able to come
+          back into this exam.
         </p>
         <div className="flex flex-col gap-2">
           <button
             onClick={onConfirm}
             disabled={isSubmitting}
+            data-testid="confirm-submit"
             className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
           >
             {isSubmitting ? "Submitting…" : "Yes, submit my exam"}
