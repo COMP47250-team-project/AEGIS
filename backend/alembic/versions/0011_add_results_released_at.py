@@ -2,12 +2,8 @@
 
 Lets a professor release results for a manually-graded exam (AEGIS-112b).
 
-NOTE: numbered 0011 with down_revision 0009 because AEGIS-111 independently adds
-a 0010 off the same 0009 head. When both land on main they form two heads off
-0009 — resolve with `alembic merge` (or rebase this down_revision onto 0010).
-
 Revision ID: 0011
-Revises: 0009
+Revises: 0010b
 Create Date: 2026-07-09
 
 """
@@ -18,7 +14,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0011"
-down_revision: Union[str, None] = "0009"
+down_revision: Union[str, None] = "0010b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
