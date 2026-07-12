@@ -228,46 +228,59 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
 // ---------------------------------------------------------------------------
 // T3: Professor checks session history for non-zero risk score
 // ---------------------------------------------------------------------------
+// T3: Professor closes exam then checks session history for non-zero risk score
+// ---------------------------------------------------------------------------
 
 test("professor session history shows risk score > 0% after student submission", async ({
   page,
+  request,
 }) => {
-  // Navigate to the dashboard. The professor may already have a valid session
-  // cookie (from T1, same browser context in serial mode) or may not (retries
-  // run in a fresh browser context). Don't assume either way.
+  // Close the exam via the API so it moves to "closed" state and scoring runs.
+  // The History tab only shows closed exams; the async scorer only runs on close.
+  // We need an access token — log in via the API directly.
+  const loginRes = await request.post("http://localhost:8000/auth/login", {
+    data: { email: PROF_EMAIL, password: PROF_PASS },
+  });
+  expect(loginRes.ok()).toBeTruthy();
+  const { access_token } = await loginRes.json();
+
+  const closeRes = await request.post(
+    `http://localhost:8000/exams/${examId}/close`,
+    { headers: { Authorization: `Bearer ${access_token}` } },
+  );
+  // 200 = closed now, 409 = already closed (idempotent on retry) — both are fine
+  expect([200, 409]).toContain(closeRes.status());
+
+  // Navigate to the professor dashboard
   await page.goto("/professor/dashboard");
 
   // Wait for EITHER the tab nav (cookie valid → already logged in) OR the
-  // login form (no cookie → ProtectedRoute redirected to /login). This is the
-  // only reliable anchor because waitForURL with 'commit' fires before React
-  // mounts, before AuthProvider resolves, and before ProtectedRoute decides
-  // where to send the user.
+  // login form (no cookie → ProtectedRoute redirected to /login).
   const tabOrLogin = await Promise.race([
     page.waitForSelector('[data-testid="tab-history"]', { timeout: 30_000 }),
     page.waitForSelector('[data-testid="login-submit"]', { timeout: 30_000 }),
   ]);
 
-  const tagName = await tabOrLogin.evaluate((el) => (el as HTMLElement).dataset.testid);
+  const testId = await tabOrLogin.evaluate((el) => (el as HTMLElement).dataset.testid);
 
-  if (tagName === "login-submit") {
-    // No valid cookie — log in first
+  if (testId === "login-submit") {
     await page.fill("#email", PROF_EMAIL);
     await page.fill("#password", PROF_PASS);
     await page.click('[data-testid="login-submit"]');
-    // Wait for the tab nav to appear after login
     await page.waitForSelector('[data-testid="tab-history"]', { timeout: 30_000 });
   }
 
   // Navigate to History tab
   await page.click('[data-testid="tab-history"]');
 
+  // The exam should now appear in history (it's closed)
   await expect(async () => {
     await expect(page.locator(`text=${EXAM_TITLE}`)).toBeVisible();
   }).toPass({ timeout: 20_000, intervals: [2_000] });
 
   await page.click(`text=${EXAM_TITLE}`);
 
-  // Poll for non-zero risk score (async scorer may take ~30 s)
+  // Poll for non-zero risk score (async scorer may take ~30 s after close)
   let integrityPct = 0;
   await expect(async () => {
     const pctLocator = page.locator("text=/\\d+%/").first();
