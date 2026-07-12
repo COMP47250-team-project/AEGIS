@@ -17,6 +17,8 @@ const LoginPage: React.FC = () => {
     if (user) {
       if (user.role === "professor") {
         navigate("/professor/dashboard", { replace: true });
+      } else if (user.role === "super_admin") {
+        navigate("/admin", { replace: true });
       } else {
         navigate("/student/dashboard", { replace: true });
       }
