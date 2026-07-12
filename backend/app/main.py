@@ -7,6 +7,7 @@ from app.routers import (
     auth,
     courses,
     exams,
+    groups,
     health,
     quizzes,
     sessions,
@@ -41,5 +42,6 @@ app.include_router(student.router)
 app.include_router(users.router)
 app.include_router(telemetry.router)
 app.include_router(sessions.router)
+app.include_router(groups.router)
 app.include_router(export_router)
 app.include_router(health.router)
