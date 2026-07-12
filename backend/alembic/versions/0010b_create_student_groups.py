@@ -1,8 +1,11 @@
 """create student_groups and group_members
 
-Revision ID: 0010
-Revises: 0009
+Revision ID: 0010b
+Revises: 0010
 Create Date: 2026-07-04
+
+NOTE: originally authored as 0010 off 0009 (AEGIS-105), the same id AEGIS-111
+independently used. Re-chained as 0010b after 0010 to give a single linear head.
 
 """
 
@@ -12,8 +15,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0010"
-down_revision: Union[str, None] = "0009"
+revision: str = "0010b"
+down_revision: Union[str, None] = "0010"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

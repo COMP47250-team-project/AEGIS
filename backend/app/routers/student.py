@@ -143,6 +143,7 @@ async def get_student_exam_results(
     points_earned = 0.0
     points_possible = 0
     fully_graded = True
+    has_short = False
 
     for q in questions:
         qid = str(q.id)
@@ -163,6 +164,7 @@ async def get_student_exam_results(
         else:
             is_correct = None
             correct_answer = None
+            has_short = True
             if manual_score is not None:
                 points_earned += manual_score
             else:
@@ -193,6 +195,20 @@ async def get_student_exam_results(
     session_score = score_result.scalar_one_or_none()
     integrity_score = session_score.integrity_score if session_score else None
 
+    # AEGIS-112b: MCQ-only exams show results immediately; an exam with short
+    # answers stays "Under Review" until the professor releases results. When
+    # not released, redact all scores/feedback (the student keeps their own
+    # answers) so nothing leaks via the API.
+    results_released = (not has_short) or (exam.results_released_at is not None)
+    if not results_released:
+        integrity_score = None
+        points_earned = 0.0
+        mcq_correct = 0
+        for ar in answer_results:
+            ar.is_correct = None
+            ar.correct_answer = None
+            ar.manual_score = None
+
     return StudentExamResults(
         exam_id=exam_id,
         exam_title=quiz.title if quiz else "Unknown Quiz",
@@ -205,4 +221,5 @@ async def get_student_exam_results(
         points_earned=points_earned,
         points_possible=points_possible,
         fully_graded=fully_graded,
+        results_released=results_released,
     )
