@@ -38,7 +38,7 @@ def get_current_user_id(
         )
 
 
-def require_role(role: Literal["student", "professor"]):
+def require_role(role: Literal["student", "professor", "super_admin"]):
     """Dependency factory allowing only callers whose JWT role matches `role`.
 
     Missing/expired/invalid token -> 401; wrong role -> 403. Returns the user id.
