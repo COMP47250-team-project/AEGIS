@@ -17,7 +17,7 @@
   <h1>AEGIS</h1>
   <p><strong>Adaptive Exam Guardian and Integrity System</strong></p>
   <p>
-    A browser-native anti-cheat exam portal that monitors student behaviour in real time using privacy-minimised telemetry, scores six signals into a single confidence score, and surfaces integrity reports for human review — without webcams, browser extensions, or invasive surveillance.
+    A browser-native anti-cheat exam portal that monitors student behaviour in real time using privacy-minimised telemetry, scores six signals into a single confidence score, and surfaces integrity reports for human review: without webcams, browser extensions, or invasive surveillance.
   </p>
   <p>
     <a href="http://localhost:8000/docs"><strong>API Docs (local) »</strong></a>
@@ -46,15 +46,14 @@
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#option-a--docker-compose-recommended">Option A — Docker Compose (recommended)</a></li>
-        <li><a href="#option-b--manual-local-setup">Option B — Manual local setup</a></li>
+        <li><a href="#option-a--docker-compose-recommended">Option A: Docker Compose (recommended)</a></li>
+        <li><a href="#option-b--manual-local-setup">Option B: Manual local setup</a></li>
       </ul>
     </li>
     <li><a href="#environment-variables">Environment Variables</a></li>
     <li><a href="#running-tests--ci-checks">Running Tests & CI Checks</a></li>
     <li><a href="#azure-environment">Azure Environment</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -68,14 +67,14 @@
 
 AEGIS is built by a 6-person MSc Computer Science team at University College Dublin for the **COMP47250 Team Software Project** (Microsoft partnership, 2026).
 
-Professors create and schedule online exams. During an exam, the student's browser emits privacy-minimised telemetry (tab visibility, paste events, keystroke intervals, window focus/blur, answer timing). A scoring engine combines these six signals into a 0–1 confidence score. After the exam, professors review a flagged-event timeline and decide whether to investigate — no automatic academic-misconduct verdicts are ever issued.
+Professors create and schedule online exams. During an exam, the student's browser emits privacy-minimised telemetry (tab visibility, paste events, keystroke intervals, window focus/blur, answer timing). A scoring engine combines these six signals into a 0–1 confidence score. After the exam, professors review a flagged-event timeline and decide whether to investigate: no automatic academic-misconduct verdicts are ever issued.
 
 ### Core Design Principles
 
-- **Non-blocking** — telemetry collection and answer submission are fully independent; a network hiccup never pauses the exam.
-- **Privacy by design** — event metadata only; no key content, clipboard text, screen recordings, or biometrics.
-- **Human review** — the system provides evidence for professors, not verdicts.
-- **Data minimisation** — six behavioural signals, nothing more.
+- **Non-blocking**: telemetry collection and answer submission are fully independent; a network hiccup never pauses the exam.
+- **Privacy by design**: event metadata only; no key content, clipboard text, screen recordings, or biometrics.
+- **Human review**: the system provides evidence for professors, not verdicts.
+- **Data minimisation**: six behavioural signals, nothing more.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -99,18 +98,18 @@ Professors create and schedule online exams. During an exam, the student's brows
 
 ### Prerequisites
 
-| Tool | Minimum version | Check |
-|------|----------------|-------|
-| Docker + Docker Compose | 24.x / 2.x | `docker --version` |
-| Node.js (for manual setup) | 22 | `node --version` |
-| uv (for manual setup) | 0.4+ | `uv --version` |
-| PostgreSQL (for manual setup) | 16 | `psql --version` |
+| Tool                          | Minimum version | Check              |
+| ----------------------------- | --------------- | ------------------ |
+| Docker + Docker Compose       | 24.x / 2.x      | `docker --version` |
+| Node.js (for manual setup)    | 22              | `node --version`   |
+| uv (for manual setup)         | 0.4+            | `uv --version`     |
+| PostgreSQL (for manual setup) | 16              | `psql --version`   |
 
 Install uv via the [official installer](https://docs.astral.sh/uv/getting-started/installation/): `curl -LsSf https://astral.sh/uv/install.sh \| sh`
 
 ---
 
-### Option A — Docker Compose (recommended)
+### Option A: Docker Compose (recommended)
 
 This spins up **PostgreSQL 16**, the **FastAPI backend** (with Alembic migrations), the **React/Vite frontend**, and an **Azurite** Azure Storage emulator — all with hot-reload.
 
@@ -129,13 +128,13 @@ export JWT_SECRET_KEY="$(openssl rand -hex 32)"
 docker compose up --build
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| ReDoc | http://localhost:8000/redoc |
-| Azurite Blob | http://localhost:10000 |
+| Service      | URL                         |
+| ------------ | --------------------------- |
+| Frontend     | http://localhost:5173       |
+| Backend API  | http://localhost:8000       |
+| Swagger UI   | http://localhost:8000/docs  |
+| ReDoc        | http://localhost:8000/redoc |
+| Azurite Blob | http://localhost:10000      |
 
 To stop and remove volumes (wipes database):
 
@@ -147,7 +146,7 @@ docker compose down -v
 
 ---
 
-### Option B — Manual local setup
+### Option B: Manual local setup
 
 Use this path when you want faster iteration on a single service without Docker.
 
@@ -208,23 +207,23 @@ The app is now available at http://localhost:5173.
 
 ### Backend
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async PostgreSQL connection string (asyncpg) |
-| `DATABASE_URL_SYNC` | Yes | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis` | Sync connection string for Alembic migrations |
-| `JWT_SECRET_KEY` | Yes | `change_me_to_a_random_64_char_string` | Secret used to sign JWTs — **change in production** |
-| `JWT_ALGORITHM` | No | `HS256` | JWT signing algorithm |
-| `JWT_EXPIRE_MINUTES` | No | `480` | Token lifetime in minutes (8 hours) |
-| `APP_ENV` | No | `development` | Application environment (`development` / `production`) |
-| `LOG_LEVEL` | No | `DEBUG` | Uvicorn log level |
-| `AZURE_SERVICE_BUS_CONNECTION_STRING` | No | — | Azure Service Bus connection string; telemetry dispatch is skipped if unset |
-| `AZURE_SERVICE_BUS_QUEUE_NAME` | No | `telemetry-events` | Queue name for telemetry events |
+| Variable                              | Required | Default                                                        | Description                                                                 |
+| ------------------------------------- | -------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `DATABASE_URL`                        | Yes      | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async PostgreSQL connection string (asyncpg)                                |
+| `DATABASE_URL_SYNC`                   | Yes      | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis`         | Sync connection string for Alembic migrations                               |
+| `JWT_SECRET_KEY`                      | Yes      | `change_me_to_a_random_64_char_string`                         | Secret used to sign JWTs — **change in production**                         |
+| `JWT_ALGORITHM`                       | No       | `HS256`                                                        | JWT signing algorithm                                                       |
+| `JWT_EXPIRE_MINUTES`                  | No       | `480`                                                          | Token lifetime in minutes (8 hours)                                         |
+| `APP_ENV`                             | No       | `development`                                                  | Application environment (`development` / `production`)                      |
+| `LOG_LEVEL`                           | No       | `DEBUG`                                                        | Uvicorn log level                                                           |
+| `AZURE_SERVICE_BUS_CONNECTION_STRING` | No       | —                                                              | Azure Service Bus connection string; telemetry dispatch is skipped if unset |
+| `AZURE_SERVICE_BUS_QUEUE_NAME`        | No       | `telemetry-events`                                             | Queue name for telemetry events                                             |
 
 ### Frontend
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `VITE_API_URL` | Yes | `http://localhost:8000` | Base URL of the FastAPI backend |
+| Variable       | Required | Default                 | Description                     |
+| -------------- | -------- | ----------------------- | ------------------------------- |
+| `VITE_API_URL` | Yes      | `http://localhost:8000` | Base URL of the FastAPI backend |
 
 > **Security note:** Never commit `.env` files. Both `.env` files are already listed in `.gitignore`. Use the provided `*.example` files as templates.
 
@@ -268,6 +267,35 @@ npm run build
 
 CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and runs on GitHub Actions.
 
+### E2E Tests (Playwright)
+
+End-to-end tests drive a real Chromium browser through the full professor → student → report flow.
+They require the full stack (`docker compose up`) to be running.
+
+```sh
+# Start the full stack (from repo root, one-time)
+docker compose up -d --wait
+
+# Install Playwright browsers (one-time per machine)
+cd frontend
+npx playwright install chromium
+
+# Run all E2E tests
+npx playwright test
+
+# View the HTML report after a run
+npx playwright show-report
+
+# Run a single test file
+npx playwright test e2e/exam-flow.spec.ts
+
+# Run in headed mode (watch the browser)
+npx playwright test --headed
+```
+
+The CI `e2e` job runs automatically after `backend` and `frontend` checks pass. On failure it
+uploads the Playwright HTML report (screenshots + traces) as a GitHub Actions artifact.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ---
@@ -280,12 +308,12 @@ Infrastructure-as-Code under [`infra/azure/`](infra/azure/) bootstraps the cloud
 - A **subscription-wide €30/month budget** with email alerts (80% / 100% actual, 100% forecast)
 - **Contributor** role for the DevOps leads
 
-| File | Purpose |
-|------|---------|
-| `infra/azure/main.bicep` | Resource group + cost budget (subscription scope) |
+| File                          | Purpose                                           |
+| ----------------------------- | ------------------------------------------------- |
+| `infra/azure/main.bicep`      | Resource group + cost budget (subscription scope) |
 | `infra/azure/main.bicepparam` | Parameter values — **edit the alert emails here** |
-| `infra/azure/provision.ps1` | Windows runner: deploy Bicep + assign roles |
-| `infra/azure/provision.sh` | macOS/Linux runner (same steps) |
+| `infra/azure/provision.ps1`   | Windows runner: deploy Bicep + assign roles       |
+| `infra/azure/provision.sh`    | macOS/Linux runner (same steps)                   |
 
 ### Prerequisites
 
@@ -304,33 +332,6 @@ az deployment sub what-if --location westeurope \
   --template-file main.bicep --parameters main.bicepparam
 # 4. Apply:  ./provision.ps1   (Windows)   |   ./provision.sh   (macOS/Linux)
 ```
-
-### Verify
-
-- **Resource group**: `az group show -n aegis-prod-rg`
-- **Budget**: Azure Portal → *Cost Management → Budgets* → `aegis-monthly-budget` (€30 / Monthly)
-- **Roles**: `az role assignment list --scope /subscriptions/<id> --query "[?roleDefinitionName=='Contributor'].principalName"`
-- **Subscription ID** → record it in the team Google Doc (not in git — it's account metadata).
-
-> **Notes:** budgets use the subscription's billing currency (adjust `budgetAmount` if it bills in USD). Re-running is idempotent — the resource group and budget are upserted by name.
-
-### Cost estimate
-
-Rough **monthly** list-price estimate for the resources in `infra/main.bicep` (West Europe, EUR). Container Apps and Log Analytics are consumption-based, so actual cost depends on usage.
-
-| Resource | SKU / size | Est. €/month |
-|----------|-----------|-------------:|
-| Container Registry | Basic | ~€4 |
-| PostgreSQL Flexible Server | Standard_B1ms (1 vCore, Burstable) + 32 GiB | ~€14 |
-| Service Bus | Standard namespace | ~€9 |
-| Storage account | Standard_LRS (low usage) | ~€1 |
-| Container Apps | backend 0.5 vCPU/1 GiB + frontend 0.25 vCPU/0.5 GiB, min-replicas 1 (after the monthly free grant) | ~€15 |
-| Log Analytics workspace | PerGB2018, low ingest | ~€3 |
-| **Total** | | **~€46 / month** |
-
-✅ Within the **≤ €50/month** target — but it **crosses the €30 budget alert**, so either bump the budget to ~€60 or treat the alert as an early warning (student credits cover this short-term).
-
-**Levers to trim toward €30:** Container Apps min-replicas 0 (scale-to-zero, cold start on first request) · Service Bus Basic instead of Standard (no topics/sessions — fine if only the `aegis-events` queue is needed) · stop/deallocate Postgres when not demoing. Prices are indicative; use `az deployment group what-if` + the Azure Pricing Calculator for an exact quote.
 
 ### Secrets — Azure Key Vault
 
@@ -408,28 +409,6 @@ AEGIS/
 
 ---
 
-## Roadmap
-
-- [x] User authentication — register, login, JWT tokens
-- [x] Professor exam and quiz creation
-- [x] Student session tracking
-- [x] GDPR consent gate with server-side enforcement
-- [x] Answer submission API
-- [x] CI pipeline (ruff · pyright · pytest · eslint · tsc)
-- [x] Docker Compose full-stack development environment
-- [ ] Browser telemetry SDK (tab visibility, paste, keystroke intervals, window focus)
-- [ ] Signal scoring engine (0–1 confidence score)
-- [ ] Integrity report dashboard for professors
-- [ ] Azure Service Bus integration for async telemetry ingestion
-- [ ] Azure Container Apps deployment via Bicep IaC
-- [ ] Real-time cohort view during live exams
-
-See [open issues](https://github.com/COMP47250-team-project/AEGIS/issues) for a full list of proposed features and known bugs.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
 ## Contributing
 
 1. Fork the repository
@@ -464,11 +443,11 @@ Project repository: [https://github.com/COMP47250-team-project/AEGIS](https://gi
 
 ## Acknowledgments
 
-* [FastAPI](https://fastapi.tiangolo.com/) — the async Python web framework powering the backend
-* [Vite](https://vitejs.dev/) — lightning-fast frontend build tooling
-* [Tailwind CSS](https://tailwindcss.com/) — utility-first CSS framework
-* [Alembic](https://alembic.sqlalchemy.org/) — database schema migrations
-* [othneildrew/Best-README-Template](https://github.com/othneildrew/Best-README-Template) — README structure
+- [FastAPI](https://fastapi.tiangolo.com/) — the async Python web framework powering the backend
+- [Vite](https://vitejs.dev/) — lightning-fast frontend build tooling
+- [Tailwind CSS](https://tailwindcss.com/) — utility-first CSS framework
+- [Alembic](https://alembic.sqlalchemy.org/) — database schema migrations
+- [othneildrew/Best-README-Template](https://github.com/othneildrew/Best-README-Template) — README structure
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -478,45 +457,31 @@ Project repository: [https://github.com/COMP47250-team-project/AEGIS](https://gi
 
 [contributors-shield]: https://img.shields.io/github/contributors/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [contributors-url]: https://github.com/COMP47250-team-project/AEGIS/graphs/contributors
-
 [forks-shield]: https://img.shields.io/github/forks/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [forks-url]: https://github.com/COMP47250-team-project/AEGIS/network/members
-
 [stars-shield]: https://img.shields.io/github/stars/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [stars-url]: https://github.com/COMP47250-team-project/AEGIS/stargazers
-
 [issues-shield]: https://img.shields.io/github/issues/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [issues-url]: https://github.com/COMP47250-team-project/AEGIS/issues
-
 [license-shield]: https://img.shields.io/github/license/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [license-url]: https://github.com/COMP47250-team-project/AEGIS/blob/main/LICENSE
-
 [ci-shield]: https://github.com/COMP47250-team-project/AEGIS/actions/workflows/ci.yml/badge.svg?branch=main
 [ci-url]: https://github.com/COMP47250-team-project/AEGIS/actions/workflows/ci.yml
-
 [fastapi-badge]: https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi
 [fastapi-url]: https://fastapi.tiangolo.com/
-
 [python-badge]: https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white
 [python-url]: https://www.python.org/
-
 [react-badge]: https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
 [react-url]: https://react.dev/
-
 [typescript-badge]: https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white
 [typescript-url]: https://www.typescriptlang.org/
-
 [vite-badge]: https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white
 [vite-url]: https://vitejs.dev/
-
 [tailwind-badge]: https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white
 [tailwind-url]: https://tailwindcss.com/
-
 [postgres-badge]: https://img.shields.io/badge/PostgreSQL_16-316192?style=for-the-badge&logo=postgresql&logoColor=white
 [postgres-url]: https://www.postgresql.org/
-
 [docker-badge]: https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white
 [docker-url]: https://www.docker.com/
-
 [azure-badge]: https://img.shields.io/badge/Azure-0089D6?style=for-the-badge&logo=microsoft-azure&logoColor=white
 [azure-url]: https://azure.microsoft.com/

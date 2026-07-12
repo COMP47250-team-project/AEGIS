@@ -64,16 +64,21 @@ const ProfessorConsole: React.FC = () => {
           </span>
           <span className="text-sm font-semibold text-ink">AEGIS</span>
           <span className="text-hairline mx-1">|</span>
-          <span className="hidden sm:inline text-sm text-mute">Professor Console</span>
+          <span className="hidden sm:inline text-sm text-mute">
+            Professor Console
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <Link
             to="/professor/exams/new"
+            data-testid="new-exam-btn"
             className="px-3 py-1.5 bg-primary text-ink text-xs font-semibold rounded hover:bg-primary-pressed transition-colors"
           >
             + New Exam
           </Link>
-          <span className="hidden sm:inline text-sm text-body">{user?.name}</span>
+          <span className="hidden sm:inline text-sm text-body">
+            {user?.name}
+          </span>
           <button
             onClick={logout}
             className="text-xs text-mute hover:text-ink transition-colors"
@@ -85,12 +90,16 @@ const ProfessorConsole: React.FC = () => {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {/* Tab nav */}
-        <nav className="flex border-b border-hairline mb-6 overflow-x-auto" role="tablist">
+        <nav
+          className="flex border-b border-hairline mb-6 overflow-x-auto"
+          role="tablist"
+        >
           {TABS.map((tab) => (
             <button
               key={tab.id}
               role="tab"
               aria-selected={activeTab === tab.id}
+              data-testid={`tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
                 activeTab === tab.id
@@ -107,7 +116,9 @@ const ProfessorConsole: React.FC = () => {
         {activeTab === "dashboard" && (
           <section aria-label="Active Sessions">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-ink">Active Sessions</h2>
+              <h2 className="text-base font-semibold text-ink">
+                Active Sessions
+              </h2>
               <p className="hidden sm:block text-xs text-mute">
                 Auto-refreshes every 30s · click a card to monitor live
               </p>
@@ -133,14 +144,18 @@ const ProfessorConsole: React.FC = () => {
 
         {activeTab === "build" && (
           <section aria-label="Build Quiz">
-            <h2 className="text-base font-semibold text-ink mb-4">Build a Quiz</h2>
+            <h2 className="text-base font-semibold text-ink mb-4">
+              Build a Quiz
+            </h2>
             <QuizBuilder onCreated={handleQuizCreated} />
           </section>
         )}
 
         {activeTab === "schedule" && (
           <section aria-label="Schedule Exam">
-            <h2 className="text-base font-semibold text-ink mb-4">Schedule an Exam</h2>
+            <h2 className="text-base font-semibold text-ink mb-4">
+              Schedule an Exam
+            </h2>
             <ExamScheduler
               preselectedQuizId={pendingQuizId}
               onScheduled={handleExamScheduled}
@@ -157,7 +172,9 @@ const ProfessorConsole: React.FC = () => {
 
         {activeTab === "history" && (
           <section aria-label="Completed Exams">
-            <h2 className="text-base font-semibold text-ink mb-4">Completed Exams</h2>
+            <h2 className="text-base font-semibold text-ink mb-4">
+              Completed Exams
+            </h2>
             <SessionHistoryView
               onViewTimeline={(sessionId, studentId, studentName) =>
                 setHistoryTimeline({ sessionId, studentId, studentName })

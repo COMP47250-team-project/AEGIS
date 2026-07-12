@@ -111,6 +111,7 @@ const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
+              data-testid="login-submit"
               className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
             >
               {isLoading ? "Signing in…" : "Sign in"}
