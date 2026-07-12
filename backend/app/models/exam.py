@@ -102,6 +102,11 @@ class StudentSession(Base):
     ws_disconnected_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # AEGIS-111: set when the student finishes the exam. Once set, the exam is
+    # final — re-entry and further answer changes are blocked.
+    submitted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ExamAnswer(Base):

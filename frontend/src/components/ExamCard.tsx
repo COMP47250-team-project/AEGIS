@@ -71,6 +71,18 @@ const StatusBadge: React.FC<BadgeProps> = ({ status }) => {
     );
   }
 
+  // "submitted" — student finished but the exam window is still open for others.
+  if (status === "submitted") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-blue-soft border border-accent-blue/30 text-accent-blue text-xs font-semibold">
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+        </svg>
+        Submitted
+      </span>
+    );
+  }
+
   // "completed" — green success badge (accent-green-soft + accent-green border)
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-green-soft border border-accent-green/30 text-accent-green text-xs font-semibold">
@@ -89,6 +101,7 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
   const isOpen = session.status === "open";
   const isCompleted = session.status === "completed";
   const isUpcoming = session.status === "upcoming";
+  const isSubmitted = session.status === "submitted";
 
   return (
     // Card container — white card on canvas, 1px hairline border, no shadow
@@ -145,6 +158,11 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
             Ended {formatDateTime(session.ends_at)}
           </span>
         )}
+
+        {/* SUBMITTED: finished, waiting for the exam to close before results */}
+        {isSubmitted && (
+          <span className="text-mute">You have finished this exam</span>
+        )}
       </div>
 
       {/* ── Row 3: divider + action ───────────────────────────────────────── */}
@@ -172,6 +190,16 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
         {isUpcoming && (
           <span className="inline-flex items-center px-4 py-2 bg-surface-soft text-ash text-sm font-bold rounded-md cursor-not-allowed">
             Not open yet
+          </span>
+        )}
+
+        {/* SUBMITTED: no re-entry; results become available once the exam closes */}
+        {isSubmitted && (
+          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-soft text-ash text-sm font-bold rounded-md cursor-not-allowed">
+            <svg className="w-4 h-4 text-accent-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Submitted — awaiting results
           </span>
         )}
 
