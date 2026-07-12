@@ -47,6 +47,139 @@ function formatDate(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// CSV bulk enroll section
+// ---------------------------------------------------------------------------
+
+interface ParsedRow { email: string; name: string; }
+
+function parseCSV(raw: string): { valid: ParsedRow[]; invalid: string[] } {
+  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  const valid: ParsedRow[] = [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  for (const line of lines) {
+    const cols = line.split(",").map((c) => c.trim());
+    const email = cols[0] ?? "";
+    const name = cols[1] ?? "";
+    if (email.toLowerCase() === "email") continue;
+    if (!email.includes("@")) { invalid.push(line); continue; }
+    if (seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    valid.push({ email, name });
+  }
+  return { valid, invalid };
+}
+
+const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
+  examId,
+  onUpdated,
+}) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [parsed, setParsed] = React.useState<{ valid: ParsedRow[]; invalid: string[] } | null>(null);
+  const [working, setWorking] = React.useState(false);
+  const [result, setResult] = React.useState<{ enrolled: number; failed: string[] } | null>(null);
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setParsed(parseCSV(ev.target?.result as string));
+      setResult(null);
+    };
+    reader.readAsText(file);
+  }
+
+  async function handleEnroll() {
+    if (!parsed || parsed.valid.length === 0) return;
+    setWorking(true);
+    let enrolled = 0;
+    const failed: string[] = [];
+    for (const row of parsed.valid) {
+      try {
+        await apiClient.post(`/exams/${examId}/enroll-by-email`, { email: row.email });
+        enrolled++;
+      } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) { enrolled++; } else { failed.push(row.email); }
+      }
+    }
+    setResult({ enrolled, failed });
+    setWorking(false);
+    onUpdated();
+  }
+
+  return (
+    <div className="border-t border-hairline pt-3 space-y-2">
+      <p className="text-xs font-medium text-mute">Bulk enroll via CSV</p>
+      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+      <button
+        type="button"
+        onClick={() => fileInputRef.current?.click()}
+        className="px-3 py-1.5 bg-surface-soft text-ink text-xs font-semibold rounded border border-hairline"
+      >
+        Choose CSV file
+      </button>
+      <p className="text-xs text-ash">Format: <code>email,name</code> — one student per row</p>
+
+      {parsed && (
+        <div className="space-y-2">
+          {parsed.valid.length > 0 && (
+            <div>
+              <p className="text-xs text-mute mb-1">
+                {parsed.valid.length} student{parsed.valid.length !== 1 ? "s" : ""} parsed
+                {parsed.valid.length > 5 ? " (showing first 5)" : ""}
+              </p>
+              <table className="w-full text-xs border border-hairline rounded overflow-hidden">
+                <thead className="bg-surface-soft">
+                  <tr>
+                    <th className="text-left px-2 py-1 text-mute">Email</th>
+                    <th className="text-left px-2 py-1 text-mute">Name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsed.valid.slice(0, 5).map((row, i) => (
+                    <tr key={i} className="border-t border-hairline">
+                      <td className="px-2 py-1 text-ink">{row.email}</td>
+                      <td className="px-2 py-1 text-body">{row.name || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <button
+                type="button"
+                onClick={handleEnroll}
+                disabled={working}
+                className="mt-2 w-full py-1.5 bg-primary text-ink text-xs font-semibold rounded disabled:opacity-50"
+              >
+                {working ? "Enrolling…" : `Enroll ${parsed.valid.length} student${parsed.valid.length !== 1 ? "s" : ""}`}
+              </button>
+            </div>
+          )}
+          {parsed.invalid.length > 0 && (
+            <div className="px-3 py-2 bg-accent-red-soft border-l-2 border-accent-red rounded">
+              <p className="text-xs font-semibold text-ink mb-1">{parsed.invalid.length} invalid row{parsed.invalid.length !== 1 ? "s" : ""} skipped:</p>
+              {parsed.invalid.slice(0, 3).map((l, i) => (
+                <p key={i} className="text-xs font-mono text-body">{l}</p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {result && (
+        <div className={`px-3 py-2 rounded border-l-2 ${result.failed.length === 0 ? "bg-accent-green-soft border-accent-green" : "bg-accent-red-soft border-accent-red"}`}>
+          <p className="text-xs font-semibold text-ink">
+            {result.enrolled} enrolled{result.failed.length > 0 ? `, ${result.failed.length} failed` : ""}
+          </p>
+          {result.failed.map((e, i) => <p key={i} className="text-xs text-body">{e}</p>)}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Enroll panel — shown inline below a draft exam row
 // ---------------------------------------------------------------------------
 
@@ -159,6 +292,9 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
         </p>
       )}
 
+      {/* Bulk enroll via CSV */}
+      <CsvEnrollSection examId={examId} onUpdated={() => { reload(); onUpdated(); }} />
+
       {/* Currently enrolled */}
       {enrollments.length > 0 && (
         <div>
@@ -220,8 +356,8 @@ const ExamList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
-  const [working, setWorking] = useState<string | null>(null); // exam id being actioned
-  const [expandEnroll, setExpandEnroll] = useState<string | null>(null); // exam id with enroll panel open
+  const [working, setWorking] = useState<string | null>(null);
+  const [expandEnroll, setExpandEnroll] = useState<string | null>(null);
   const [gradeExamId, setGradeExamId] = useState<string | null>(null);
 
   const loadExams = useCallback(async () => {
@@ -320,10 +456,8 @@ const ExamList: React.FC = () => {
 
           return (
             <div key={exam.id} className="bg-surface-card border border-hairline rounded-md overflow-hidden">
-              {/* Exam row */}
               <div className="p-4">
                 <div className="flex items-start justify-between gap-4">
-                  {/* Left: title + meta */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge.classes}`}>
@@ -340,7 +474,6 @@ const ExamList: React.FC = () => {
                     </p>
                   </div>
 
-                  {/* Right: actions */}
                   <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                     {exam.state === "draft" && (
                       <>
@@ -387,7 +520,6 @@ const ExamList: React.FC = () => {
                 </div>
               </div>
 
-              {/* Inline enroll panel */}
               {enrollOpen && (
                 <div className="border-t border-hairline px-4 pb-4 pt-0">
                   <EnrollPanel
