@@ -45,10 +45,9 @@ interface StudentSession {
 // authoritative end time. We only need these three fields here; the full
 // ExamRead schema on the backend has more (enrollment_count, quiz_title etc.)
 // but we deliberately type only what this component consumes.
-interface ExamSessionMeta {
-  id: string;
-  scheduled_start: string; // ISO 8601
-  duration_minutes: number;
+interface StudentSessionItem {
+  exam_id: string;
+  ends_at: string; // ISO 8601 — authoritative end time from server
 }
 
 type Answers = Record<string, string>;
@@ -185,9 +184,10 @@ function useServerEndTime(examId: string): {
 
   const fetchEndTime = useCallback(async () => {
     try {
-      const { data } = await apiClient.get<ExamSessionMeta>(`/exams/${examId}`);
-      const startMs = new Date(data.scheduled_start).getTime();
-      const endMs = startMs + data.duration_minutes * 60_000;
+      const { data } = await apiClient.get<StudentSessionItem[]>('/student/sessions');
+      const session = data.find((s) => s.exam_id === examId);
+      if (!session) return;
+      const endMs = new Date(session.ends_at).getTime();
       setEndTimeIso(new Date(endMs).toISOString());
     } catch {
       // If this particular re-sync fails (e.g. brief network blip), keep
