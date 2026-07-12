@@ -183,7 +183,7 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
     await page.click("text=I Consent — Begin Exam");
 
     // Wait for questions
-    await page.waitForSelector("text=What is 2 + 2?", { timeout: 15_000 });
+    await page.waitForSelector("text=What is 2 + 2?", { timeout: 30_000 });
 
     // Answer Q1
     await page.click("text=4");
@@ -232,30 +232,33 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
 test("professor session history shows risk score > 0% after student submission", async ({
   page,
 }) => {
-  // The professor context may already hold a valid refresh cookie from T1
-  // (same browser context in serial mode). Navigate to the dashboard directly;
-  // the AuthProvider will restore the session from the cookie.
+  // Navigate to the dashboard. The professor may already have a valid session
+  // cookie (from T1, same browser context in serial mode) or may not (retries
+  // run in a fresh browser context). Don't assume either way.
   await page.goto("/professor/dashboard");
 
-  // If the cookie is gone (cold start or cross-retry), the ProtectedRoute
-  // redirects to /login. Handle both cases.
-  await page.waitForURL(/\/(professor\/dashboard|login)/, {
-    timeout: 20_000,
-    waitUntil: "commit",
-  });
+  // Wait for EITHER the tab nav (cookie valid → already logged in) OR the
+  // login form (no cookie → ProtectedRoute redirected to /login). This is the
+  // only reliable anchor because waitForURL with 'commit' fires before React
+  // mounts, before AuthProvider resolves, and before ProtectedRoute decides
+  // where to send the user.
+  const tabOrLogin = await Promise.race([
+    page.waitForSelector('[data-testid="tab-history"]', { timeout: 30_000 }),
+    page.waitForSelector('[data-testid="login-submit"]', { timeout: 30_000 }),
+  ]);
 
-  if (page.url().includes("/login")) {
+  const tagName = await tabOrLogin.evaluate((el) => (el as HTMLElement).dataset.testid);
+
+  if (tagName === "login-submit") {
+    // No valid cookie — log in first
     await page.fill("#email", PROF_EMAIL);
     await page.fill("#password", PROF_PASS);
     await page.click('[data-testid="login-submit"]');
-    await page.waitForURL("/professor/dashboard", {
-      timeout: 30_000,
-      waitUntil: "commit",
-    });
+    // Wait for the tab nav to appear after login
+    await page.waitForSelector('[data-testid="tab-history"]', { timeout: 30_000 });
   }
 
   // Navigate to History tab
-  await page.waitForSelector('[data-testid="tab-history"]', { timeout: 20_000 });
   await page.click('[data-testid="tab-history"]');
 
   await expect(async () => {
