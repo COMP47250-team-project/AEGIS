@@ -132,6 +132,9 @@ class StudentExamListItem(BaseModel):
     status: ExamStatusForStudent
     starts_at: datetime
     ends_at: datetime
+    # AEGIS-112c: results are viewable (closed + released, or MCQ-only). Drives
+    # the "results ready" notification + the card's View Results action.
+    results_ready: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +151,9 @@ class StudentAnswerResult(BaseModel):
     student_answer: str
     correct_answer: str | None  # revealed for MCQ after closing
     is_correct: bool | None  # None for short-answer (manual grading)
+    # AEGIS-112: the professor's manual score for a short answer (once graded).
+    manual_score: float | None = None
+    max_score: int = 1
 
 
 class StudentExamResults(BaseModel):
@@ -159,6 +165,14 @@ class StudentExamResults(BaseModel):
     mcq_total: int
     questions: list[StudentAnswerResult]
     integrity_score: float | None = None
+    # AEGIS-112: overall points (MCQ + manually graded short answers).
+    points_earned: float = 0.0
+    points_possible: int = 0
+    # False while any short answer is still awaiting a manual grade.
+    fully_graded: bool = True
+    # AEGIS-112b: false while a manually-graded exam is still "Under Review"
+    # (professor hasn't clicked Submit Grades). MCQ-only exams are always true.
+    results_released: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +214,10 @@ class ExamGradeReport(BaseModel):
     mcq_total: int
     short_total: int
     students: list[StudentGradeEntry]
+    # AEGIS-112b: have results been released to students, and how many short
+    # answers still need a manual grade before release.
+    results_released: bool = False
+    ungraded_short: int = 0
 
 
 # ---------------------------------------------------------------------------

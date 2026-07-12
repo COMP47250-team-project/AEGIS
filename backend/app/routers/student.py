@@ -45,6 +45,19 @@ async def list_student_sessions(
     # sees it as open without the professor manually triggering it (AEGIS-104).
     await auto_open_due(db, [exam for exam, _, _ in rows])
 
+    # AEGIS-112c: which quizzes have short-answer questions? MCQ-only exams
+    # release results immediately; exams with short answers need an explicit
+    # release before results are ready.
+    quiz_ids = list({exam.quiz_id for exam, _, _ in rows})
+    quizzes_with_short: set[uuid.UUID] = set()
+    if quiz_ids:
+        short_rows = await db.execute(
+            select(Question.quiz_id)
+            .where(Question.quiz_id.in_(quiz_ids), Question.type == "short")
+            .distinct()
+        )
+        quizzes_with_short = {qid for (qid,) in short_rows.all()}
+
     items: list[StudentExamListItem] = []
     for exam, quiz, session in rows:
         submitted = session is not None and session.submitted_at is not None
@@ -65,6 +78,11 @@ async def list_student_sessions(
 
         ends_at = effective_start + timedelta(minutes=exam.duration_minutes)
 
+        has_short = exam.quiz_id in quizzes_with_short
+        results_ready = exam.state == "closed" and (
+            not has_short or exam.results_released_at is not None
+        )
+
         items.append(
             StudentExamListItem(
                 exam_id=exam.id,
@@ -73,6 +91,7 @@ async def list_student_sessions(
                 status=status_val,
                 starts_at=exam.scheduled_start,
                 ends_at=ends_at,
+                results_ready=results_ready,
             )
         )
 
@@ -140,21 +159,35 @@ async def get_student_exam_results(
     answer_results: list[StudentAnswerResult] = []
     mcq_correct = 0
     mcq_total = 0
+    points_earned = 0.0
+    points_possible = 0
+    fully_graded = True
+    has_short = False
 
     for q in questions:
         qid = str(q.id)
         ans = answers_by_qid.get(qid)
         student_answer = ans.answer if ans else ""
 
+        manual_score = ans.manual_score if ans else None
+        # AEGIS-112: build the overall points total (MCQ + manual short answers).
+        points_possible += q.max_score
+
         if q.type == "mcq":
             mcq_total += 1
             is_correct = student_answer == q.correct_answer if student_answer else False
             if is_correct:
                 mcq_correct += 1
+                points_earned += q.max_score
             correct_answer = q.correct_answer
         else:
             is_correct = None
             correct_answer = None
+            has_short = True
+            if manual_score is not None:
+                points_earned += manual_score
+            else:
+                fully_graded = False  # a short answer still needs grading
 
         answer_results.append(
             StudentAnswerResult(
@@ -166,6 +199,8 @@ async def get_student_exam_results(
                 student_answer=student_answer,
                 correct_answer=correct_answer,
                 is_correct=is_correct,
+                manual_score=manual_score,
+                max_score=q.max_score,
             )
         )
 
@@ -179,6 +214,20 @@ async def get_student_exam_results(
     session_score = score_result.scalar_one_or_none()
     integrity_score = session_score.integrity_score if session_score else None
 
+    # AEGIS-112b: MCQ-only exams show results immediately; an exam with short
+    # answers stays "Under Review" until the professor releases results. When
+    # not released, redact all scores/feedback (the student keeps their own
+    # answers) so nothing leaks via the API.
+    results_released = (not has_short) or (exam.results_released_at is not None)
+    if not results_released:
+        integrity_score = None
+        points_earned = 0.0
+        mcq_correct = 0
+        for ar in answer_results:
+            ar.is_correct = None
+            ar.correct_answer = None
+            ar.manual_score = None
+
     return StudentExamResults(
         exam_id=exam_id,
         exam_title=quiz.title if quiz else "Unknown Quiz",
@@ -188,4 +237,8 @@ async def get_student_exam_results(
         mcq_total=mcq_total,
         questions=answer_results,
         integrity_score=integrity_score,
+        points_earned=points_earned,
+        points_possible=points_possible,
+        fully_graded=fully_graded,
+        results_released=results_released,
     )

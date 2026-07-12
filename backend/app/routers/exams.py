@@ -630,6 +630,7 @@ async def get_exam_grade(
         answers_by_student.setdefault(ans.student_id, {})[str(ans.question_id)] = ans
 
     student_entries: list[StudentGradeEntry] = []
+    ungraded_short = 0  # AEGIS-112b: submitted short answers still lacking a score
     for enrollment in enrollments:
         sid = enrollment.student_id
         student_answers = answers_by_student.get(sid, {})
@@ -651,6 +652,8 @@ async def get_exam_grade(
                     mcq_correct += 1
             else:
                 is_correct = None
+                if answer_row is not None and answer_row.manual_score is None:
+                    ungraded_short += 1
 
             grade_answers.append(
                 GradeAnswerItem(
@@ -685,7 +688,34 @@ async def get_exam_grade(
         mcq_total=mcq_total,
         short_total=short_total,
         students=student_entries,
+        results_released=exam.results_released_at is not None,
+        ungraded_short=ungraded_short,
     )
+
+
+@router.post("/{exam_id}/release-results", response_model=ExamGradeReport)
+async def release_results(
+    exam_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(require_role("professor")),
+) -> ExamGradeReport:
+    """AEGIS-112b: release results to students ("Submit Grades").
+
+    Only the owner, on a closed exam. Idempotent — releasing again just returns
+    the current report (so re-editing a grade and re-releasing is safe).
+    Returns the refreshed grade report.
+    """
+    exam = await _get_exam_or_404(db, exam_id)
+    _assert_owner(exam, user_id)
+    if exam.state != "closed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Results can only be released for a closed exam",
+        )
+    if exam.results_released_at is None:
+        exam.results_released_at = datetime.now(timezone.utc)
+        await db.commit()
+    return await get_exam_grade(exam_id, db=db, user_id=user_id)
 
 
 @router.patch("/{exam_id}/answers/grade", status_code=status.HTTP_200_OK)

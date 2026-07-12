@@ -203,8 +203,8 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
           </span>
         )}
 
-        {/* COMPLETED: view results link */}
-        {isCompleted && (
+        {/* COMPLETED: view results link — only once released (AEGIS-112c) */}
+        {isCompleted && session.results_ready && (
           <Link
             to={`/student/exams/${session.exam_id}/results`}
             className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-soft text-body text-sm font-bold rounded-md hover:bg-surface-card border border-hairline transition-colors"
@@ -215,6 +215,17 @@ const ExamCard: React.FC<ExamCardProps> = ({ session, timeLeft }) => {
             </svg>
             View Results
           </Link>
+        )}
+
+        {/* COMPLETED but not yet released — results still being graded */}
+        {isCompleted && !session.results_ready && (
+          <span className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface-soft text-ash text-sm font-bold rounded-md cursor-not-allowed">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M12 8v4l2.5 2.5M12 3a9 9 0 100 18A9 9 0 0012 3z" />
+            </svg>
+            Results pending
+          </span>
         )}
       </div>
     </div>

@@ -22,6 +22,7 @@ export interface ExamSession {
   exam_title: string;    // display name shown on the card e.g. "Midterm Exam"
   course_name: string;   // course label shown above the title e.g. "CS101"
   status: "open" | "upcoming" | "completed" | "submitted";
+  results_ready: boolean;
   starts_at: string;     // ISO 8601 datetime string e.g. "2026-06-19T09:00:00Z"
   ends_at: string;       // ISO 8601 datetime string — countdown target for open exams
 }
@@ -139,6 +140,9 @@ const StudentDashboard: React.FC = () => {
   // AEGIS-104: exams that transitioned to "open" since the last poll, surfaced
   // as a dismissible notification so a logged-in student is told an exam opened.
   const [newlyOpened, setNewlyOpened] = useState<ExamSession[]>([]);
+  // AEGIS-112c: exams whose results became available since the last poll.
+  const [newlyReady, setNewlyReady] = useState<ExamSession[]>([]);
+  const knownReadyIdsRef = useRef<Set<string> | null>(null);
 
   // Open exam ids seen on the previous poll. null until the first load so the
   // initial set of open exams doesn't fire a "just opened" notification.
@@ -168,6 +172,16 @@ const StudentDashboard: React.FC = () => {
         if (justOpened.length > 0) setNewlyOpened(justOpened);
       }
       knownOpenIdsRef.current = openIds;
+
+      // AEGIS-112c: detect exams whose results just became ready.
+      const readyNow = data.filter((s) => s.results_ready);
+      const readyIds = new Set(readyNow.map((s) => s.exam_id));
+      const knownReady = knownReadyIdsRef.current;
+      if (knownReady !== null) {
+        const justReady = readyNow.filter((s) => !knownReady.has(s.exam_id));
+        if (justReady.length > 0) setNewlyReady(justReady);
+      }
+      knownReadyIdsRef.current = readyIds;
     } catch {
       setError("Could not load your exams. Check your connection and try again.");
     } finally {
@@ -312,6 +326,35 @@ const StudentDashboard: React.FC = () => {
             </div>
             <button
               onClick={() => setNewlyOpened([])}
+              aria-label="Dismiss notification"
+              className="flex-shrink-0 px-2 py-1 text-mute hover:text-ink text-sm font-bold rounded-md"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* AEGIS-112c: notification when a professor releases results for an
+            exam the student sat. Dismissible. */}
+        {newlyReady.length > 0 && (
+          <div className="mb-6 px-4 py-4 bg-accent-blue-soft border-l-2 border-accent-blue rounded-md flex items-start gap-3">
+            <svg className="w-5 h-5 text-accent-blue flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-ink mb-1">
+                {newlyReady.length === 1
+                  ? "Your results are ready"
+                  : "Results are ready"}
+              </p>
+              <p className="text-sm text-body">
+                {newlyReady.map((s) => s.exam_title).join(", ")} — log in to view
+                your score and feedback.
+              </p>
+            </div>
+            <button
+              onClick={() => setNewlyReady([])}
               aria-label="Dismiss notification"
               className="flex-shrink-0 px-2 py-1 text-mute hover:text-ink text-sm font-bold rounded-md"
             >
