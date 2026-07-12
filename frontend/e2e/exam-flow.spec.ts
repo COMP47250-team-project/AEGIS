@@ -73,20 +73,26 @@ async function registerOrLogin(
   await page.fill("#confirmPassword", opts.password);
   await page.click('[data-testid="register-submit"]');
 
-  // Wait a short time for the response to process
-  await page.waitForTimeout(1_000);
+  // React Router navigate() is a SPA transition — no HTTP load event fires.
+  // Use waitUntil:'commit' so waitForURL resolves on URL change, not page load.
+  try {
+    await page.waitForURL(opts.dashboardUrl, {
+      timeout: 15_000,
+      waitUntil: "commit",
+    });
+    return; // registration succeeded
+  } catch {
+    // 409 (email already exists on retry) or other error — fall back to login
+  }
 
-  const url = page.url();
-
-  // Happy path: registration succeeded → already redirected
-  if (url.includes(opts.dashboardUrl)) return;
-
-  // 409 (email exists) or any other auth failure → fall back to login
   await page.goto("/login");
   await page.fill("#email", opts.email);
   await page.fill("#password", opts.password);
   await page.click('[data-testid="login-submit"]');
-  await page.waitForURL(opts.dashboardUrl, { timeout: 30_000 });
+  await page.waitForURL(opts.dashboardUrl, {
+    timeout: 30_000,
+    waitUntil: "commit",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +112,10 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
 
   // Navigate to create exam page
   await page.click('[data-testid="new-exam-btn"]');
-  await page.waitForURL("/professor/exams/new", { timeout: 15_000 });
+  await page.waitForURL("/professor/exams/new", {
+    timeout: 15_000,
+    waitUntil: "commit",
+  });
 
   // Fill exam details — starts in 5 s so it auto-opens before T2 enters it
   const startTime = new Date(Date.now() + 5_000);
@@ -131,7 +140,10 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
   await page.fill("#exam-enrol", STUD_EMAIL);
 
   await page.click('[data-testid="create-exam-submit"]');
-  await page.waitForURL(/\/professor\/session\/.+/, { timeout: 30_000 });
+  await page.waitForURL(/\/professor\/session\/.+/, {
+    timeout: 30_000,
+    waitUntil: "commit",
+  });
 
   const match = page.url().match(/\/professor\/session\/([\w-]+)/);
   expect(match).not.toBeNull();
@@ -203,7 +215,10 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
       timeout: 10_000,
     });
     await page.click('[data-testid="confirm-submit"]');
-    await page.waitForURL(/\/exam\/.*\/submitted/, { timeout: 20_000 });
+    await page.waitForURL(/\/exam\/.*\/submitted/, {
+      timeout: 20_000,
+      waitUntil: "commit",
+    });
     await expect(page.locator("text=Submitted successfully")).toBeVisible();
   } finally {
     await ctx.close().catch(() => {});
@@ -224,13 +239,19 @@ test("professor session history shows risk score > 0% after student submission",
 
   // If the cookie is gone (cold start or cross-retry), the ProtectedRoute
   // redirects to /login. Handle both cases.
-  await page.waitForURL(/\/(professor\/dashboard|login)/, { timeout: 20_000 });
+  await page.waitForURL(/\/(professor\/dashboard|login)/, {
+    timeout: 20_000,
+    waitUntil: "commit",
+  });
 
   if (page.url().includes("/login")) {
     await page.fill("#email", PROF_EMAIL);
     await page.fill("#password", PROF_PASS);
     await page.click('[data-testid="login-submit"]');
-    await page.waitForURL("/professor/dashboard", { timeout: 30_000 });
+    await page.waitForURL("/professor/dashboard", {
+      timeout: 30_000,
+      waitUntil: "commit",
+    });
   }
 
   // Navigate to History tab

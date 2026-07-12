@@ -167,15 +167,6 @@ jobs:
             --resource-group "$RESOURCE_GROUP" \
             --image "${{ needs.build-frontend.outputs.image }}"
 
-      # Run Alembic migrations via az containerapp exec
-      - name: Run database migrations
-        run: |
-          az containerapp exec \
-            --name "${{ secrets.BACKEND_APP_NAME }}" \
-            --resource-group "$RESOURCE_GROUP" \
-            --command "alembic upgrade head"
-        continue-on-error: true # Don't fail deploy if exec times out; check logs
-
   # ──────────────────────────────────────────────────────────────────────────
   # 4. Smoke test
   # ──────────────────────────────────────────────────────────────────────────
