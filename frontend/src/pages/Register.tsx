@@ -53,8 +53,17 @@ const RegisterPage: React.FC = () => {
         typeof err.response === "object" &&
         "data" in err.response
       ) {
-        const data = (err.response as { data?: { detail?: string } }).data;
-        setError(data?.detail || "Registration failed. Please try again.");
+        const data = (err.response as { data?: { detail?: unknown } }).data;
+        const detail = data?.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (Array.isArray(detail) && detail.length > 0) {
+          // Pydantic 422: detail is [{msg, loc, ...}, ...] — show first message
+          const first = detail[0] as { msg?: string };
+          setError(first.msg ?? "Registration failed. Please try again.");
+        } else {
+          setError("Registration failed. Please try again.");
+        }
       } else {
         setError("Unable to reach the server. Is the backend running?");
       }

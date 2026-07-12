@@ -8,13 +8,14 @@
 //   Test 2: student registers + takes exam + triggers telemetry events
 //   Test 3: professor verifies risk score > 0 in session history
 
-import { test, expect, Browser } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 // Unique suffix prevents email collisions across parallel CI runs on the same DB.
+// Use .example domain — it is IANA-reserved and accepted by Pydantic's EmailStr validator.
 const RUN = Date.now();
-const PROF_EMAIL = `prof_${RUN}@e2e.test`;
+const PROF_EMAIL = `prof_${RUN}@example.com`;
 const PROF_PASS = "E2eTest1234!";
-const STUD_EMAIL = `stud_${RUN}@e2e.test`;
+const STUD_EMAIL = `stud_${RUN}@example.com`;
 const STUD_PASS = "E2eTest1234!";
 const EXAM_TITLE = `E2E Exam ${RUN}`;
 
@@ -88,7 +89,6 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
   await page.fill('[data-testid="q-opt-0-0"]', "3");
   await page.fill('[data-testid="q-opt-0-1"]', "4");
   // Click the radio for option "4" (second option, index 1) — select it as correct answer
-  // The radio is before the option text input; click the radio whose sibling input has value "4"
   await page.locator('input[type="radio"][name="correct-0"]').nth(1).click();
 
   // 5. Add Q2 as short-answer
@@ -119,14 +119,14 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
 
 test("student registers, takes exam, triggers tab blur + paste events, submits", async ({
   browser,
-}: {
-  browser: Browser;
 }) => {
-  // Use a separate browser context (incognito) so the student session is independent.
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
+  // Use a separate browser context so student and professor sessions are isolated.
+  // We manage the context ourselves so it outlives any single page action.
+  const ctx = await browser.newContext({ baseURL: "http://localhost:5173" });
 
   try {
+    const page = await ctx.newPage();
+
     // 1. Register as student
     await page.goto("/register");
     await page.fill("#name", "E2E Student");
@@ -137,18 +137,22 @@ test("student registers, takes exam, triggers tab blur + paste events, submits",
     await page.click('[data-testid="register-submit"]');
     await page.waitForURL("/student/dashboard");
 
-    // 2. Wait for the exam to auto-open (it was scheduled 3s from now in Test 1)
-    // Poll the dashboard until the exam appears as "Open"
+    // 2. Wait for the exam to auto-open (it was scheduled 3s from now in Test 1).
+    // Poll the dashboard every 2s until the exam title appears with "Open" status.
     await expect(async () => {
       await page.reload();
       await expect(page.locator(`text=${EXAM_TITLE}`)).toBeVisible();
-    }).toPass({ timeout: 20_000, intervals: [2_000] });
+      // Confirm the exam is actually open (not just upcoming)
+      await expect(page.locator("text=Enter Exam")).toBeVisible();
+    }).toPass({ timeout: 30_000, intervals: [2_000] });
 
     // 3. Enter the exam
     await page.click("text=Enter Exam");
 
     // 4. Accept GDPR consent
-    await page.waitForSelector("text=I Consent — Begin Exam");
+    await page.waitForSelector("text=I Consent — Begin Exam", {
+      timeout: 15_000,
+    });
     await page.click("text=I Consent — Begin Exam");
 
     // 5. Exam shell should now be active — wait for questions to load
@@ -194,7 +198,10 @@ test("student registers, takes exam, triggers tab blur + paste events, submits",
     await page.waitForURL(/\/exam\/.*\/submitted/, { timeout: 20_000 });
     await expect(page.locator("text=Submitted successfully")).toBeVisible();
   } finally {
-    await ctx.close();
+    // Always close the context, even if the test fails mid-way.
+    // Playwright has already cleaned up the browser if the test timed out,
+    // so guard against "context already closed" gracefully.
+    await ctx.close().catch(() => {});
   }
 });
 
