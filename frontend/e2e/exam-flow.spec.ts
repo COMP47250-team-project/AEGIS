@@ -255,6 +255,7 @@ test("professor session history shows risk score > 0% after student submission",
   }
 
   // Navigate to History tab
+  await page.waitForSelector('[data-testid="tab-history"]', { timeout: 20_000 });
   await page.click('[data-testid="tab-history"]');
 
   await expect(async () => {
