@@ -14,3 +14,4 @@ from app.models.telemetry import (
     StudentBaseline,
     SessionScore,
 )  # noqa: F401
+from app.models.group import StudentGroup, GroupMember  # noqa: F401
