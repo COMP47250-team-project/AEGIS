@@ -11,6 +11,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import ExamCard from "../components/ExamCard";
+import ThemeToggle from "../components/ThemeToggle";
 import apiClient from "../api/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -286,6 +287,7 @@ const StudentDashboard: React.FC = () => {
             <span className="text-sm text-mute hidden sm:block">
               {user?.name}
             </span>
+            <ThemeToggle />
             {/* button-secondary: bg-surface-soft, text-ink, rounded-md */}
             <button
               onClick={logout}

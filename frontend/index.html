@@ -11,6 +11,19 @@
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AEGIS — Adaptive Exam Guardian</title>
+    <!-- Apply the saved theme before first paint to avoid a light/dark flash
+         (AEGIS-74). Only sets data-theme when the user has made an explicit
+         choice; otherwise the CSS prefers-color-scheme default applies. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("aegis-theme");
+          if (t === "dark" || t === "light") {
+            document.documentElement.setAttribute("data-theme", t);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <!-- 
