@@ -24,10 +24,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
-# Per-check timeouts keep the whole endpoint comfortably under the 3s budget.
+# Per-check timeouts. The DB check is local and fast (1s). Service Bus and Blob
+# reach out to Azure and, on a cold start, the first call must open a fresh TLS
+# connection + authenticate, which exceeds 1s and caused spurious "degraded"
+# readings right after a deploy (AEGIS-74 follow-up). Checks run in parallel, so
+# the endpoint's worst case is ~4s, not the sum.
 _DB_TIMEOUT_S = 1.0
-_SB_TIMEOUT_S = 1.0
-_BLOB_TIMEOUT_S = 1.0
+_SB_TIMEOUT_S = 4.0
+_BLOB_TIMEOUT_S = 4.0
 _STORAGE_CONTAINER = "session-tapes"
 
 
