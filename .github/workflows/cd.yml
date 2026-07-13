@@ -181,23 +181,34 @@ jobs:
   smoke-test:
     name: Smoke test
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     needs: [deploy]
 
     steps:
-      - name: Wait for Container Apps to stabilise
-        run: sleep 30
-
+      # Poll rather than a single check after a fixed wait: the backend now runs
+      # `alembic upgrade head` before uvicorn binds, and Service Bus/Blob
+      # connections take a few seconds to warm up, so a new revision may not be
+      # ready within a fixed 30s. Retry for up to ~3 min before failing.
       - name: Backend health check
         run: |
           BACKEND_URL="https://${{ secrets.BACKEND_FQDN }}"
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BACKEND_URL}/healthz")
-          echo "Backend /healthz returned HTTP $STATUS"
-          [ "$STATUS" = "200" ] || exit 1
+          for i in $(seq 1 18); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BACKEND_URL}/healthz" || echo 000)
+            echo "Attempt $i: backend /healthz -> HTTP $STATUS"
+            [ "$STATUS" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "Backend health check failed after retries"
+          exit 1
 
       - name: Frontend health check
         run: |
           FRONTEND_URL="https://${{ secrets.FRONTEND_FQDN }}"
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FRONTEND_URL}/health")
-          echo "Frontend /health returned HTTP $STATUS"
-          [ "$STATUS" = "200" ] || exit 1
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${FRONTEND_URL}/health" || echo 000)
+            echo "Attempt $i: frontend /health -> HTTP $STATUS"
+            [ "$STATUS" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "Frontend health check failed after retries"
+          exit 1
