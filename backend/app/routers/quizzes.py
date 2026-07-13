@@ -1,10 +1,8 @@
 import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
 from app.database import get_db
 from app.dependencies import get_current_user_id, require_role
 from app.models.quiz import Question, Quiz
@@ -17,14 +15,17 @@ from app.schemas.quiz import (
     QuizCreate,
     QuizRead,
 )
+from app.services.quiz_cache import (
+    get_cached_quiz,
+    invalidate_cached_quiz,
+    set_cached_quiz,
+)
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
-
 
 # ---------------------------------------------------------------------------
 # Quiz endpoints
 # ---------------------------------------------------------------------------
-
 
 @router.post("", response_model=QuizRead, status_code=status.HTTP_201_CREATED)
 async def create_quiz(
@@ -74,7 +75,6 @@ async def question_bank(
     )
     if search:
         base = base.where(Question.prompt.ilike(f"%{search}%"))
-
     total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
     rows = (
         await db.execute(
@@ -83,7 +83,6 @@ async def question_bank(
             .limit(page_size)
         )
     ).all()
-
     items = [
         QuestionBankItem(
             question_id=q.id,
@@ -108,6 +107,13 @@ async def get_quiz(
     db: AsyncSession = Depends(get_db),
     _: str = Depends(get_current_user_id),
 ) -> Quiz:
+    # AEGIS-108: check in-process cache first to avoid repeated DB reads
+    # when many students load the same exam shell simultaneously.
+    cache_key = str(quiz_id)
+    cached = get_cached_quiz(cache_key)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
     result = await db.execute(
         select(Quiz).where(Quiz.id == quiz_id).options(selectinload(Quiz.questions))
     )
@@ -116,13 +122,15 @@ async def get_quiz(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Quiz not found"
         )
+
+    # Store in cache for subsequent reads within the TTL window
+    set_cached_quiz(cache_key, quiz)
     return quiz
 
 
 # ---------------------------------------------------------------------------
 # Question endpoints
 # ---------------------------------------------------------------------------
-
 
 @router.post(
     "/{quiz_id}/questions",
@@ -136,13 +144,11 @@ async def add_question(
     _: str = Depends(get_current_user_id),
 ) -> Question:
     quiz = await _get_quiz_or_404(db, quiz_id)
-
     if body.position is None:
         existing = await db.execute(select(Question).where(Question.quiz_id == quiz_id))
         next_position = len(existing.scalars().all())
     else:
         next_position = body.position
-
     question = Question(
         quiz_id=quiz.id,
         type=body.type,
@@ -155,6 +161,8 @@ async def add_question(
     db.add(question)
     await db.commit()
     await db.refresh(question)
+    # Invalidate cache — quiz structure changed
+    invalidate_cached_quiz(str(quiz_id))
     return question
 
 
@@ -168,13 +176,10 @@ async def update_question(
 ) -> Question:
     await _get_quiz_or_404(db, quiz_id)
     question = await _get_question_or_404(db, quiz_id, question_id)
-
     patch = body.model_dump(exclude_unset=True)
-
     # Merge update fields, then validate MCQ rules with merged state
     new_type = patch.get("type", question.type)
     new_options = patch.get("options", question.options)
-
     if new_type == "mcq":
         if new_options is None or len(new_options) < 2:
             raise HTTPException(
@@ -187,12 +192,12 @@ async def update_question(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="MCQ questions require a correct_answer",
             )
-
     for field, value in patch.items():
         setattr(question, field, value)
-
     await db.commit()
     await db.refresh(question)
+    # Invalidate cache — question content changed
+    invalidate_cached_quiz(str(quiz_id))
     return question
 
 
@@ -203,27 +208,26 @@ async def publish_quiz(
     _: str = Depends(get_current_user_id),
 ) -> Quiz:
     quiz = await _get_quiz_or_404(db, quiz_id)
-
     if quiz.is_published:
         result = await db.execute(
             select(Quiz).where(Quiz.id == quiz_id).options(selectinload(Quiz.questions))
         )
         return result.scalar_one()
-
     result = await db.execute(select(Question).where(Question.quiz_id == quiz_id))
     if not result.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="A quiz must have at least 1 question before it can be published",
         )
-
     quiz.is_published = True
     await db.commit()
-
     result = await db.execute(
         select(Quiz).where(Quiz.id == quiz_id).options(selectinload(Quiz.questions))
     )
-    return result.scalar_one()
+    fetched = result.scalar_one()
+    # Invalidate cache — published state changed
+    invalidate_cached_quiz(str(quiz_id))
+    return fetched
 
 
 @router.delete(
@@ -239,12 +243,13 @@ async def delete_question(
     question = await _get_question_or_404(db, quiz_id, question_id)
     await db.delete(question)
     await db.commit()
+    # Invalidate cache — quiz structure changed
+    invalidate_cached_quiz(str(quiz_id))
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 
 async def _get_quiz_or_404(db: AsyncSession, quiz_id: uuid.UUID) -> Quiz:
     result = await db.execute(select(Quiz).where(Quiz.id == quiz_id))
