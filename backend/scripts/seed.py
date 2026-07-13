@@ -39,15 +39,24 @@ DEMO_PASSWORD = hashpw("demo1234".encode(), gensalt(rounds=12)).decode()
 
 
 async def get_or_create_user(
-    db: AsyncSession, email: str, full_name: str, role: str
+    db: AsyncSession,
+    email: str,
+    full_name: str,
+    role: str,
+    password: str | None = None,
 ) -> User:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if user:
         return user
+    hashed = (
+        hashpw(password.encode(), gensalt(rounds=12)).decode()
+        if password
+        else DEMO_PASSWORD
+    )
     user = User(
         email=email,
-        hashed_password=DEMO_PASSWORD,
+        hashed_password=hashed,
         role=role,
         full_name=full_name,
         is_active=True,
@@ -341,6 +350,16 @@ async def seed() -> None:
     async with AsyncSessionLocal() as db:
         try:
             print("Starting seed...\n")
+
+            # ── Super admin (AEGIS-107) ───────────────────────────────────────
+            print("  [0/7] Super admin...")
+            await get_or_create_user(
+                db,
+                "admin@aegis.ie",
+                "AEGIS Super Admin",
+                "super_admin",
+                password="SuperAdmin123!",
+            )
 
             # ── Professors ────────────────────────────────────────────────────
             print("  [1/7] Professors...")

@@ -19,6 +19,12 @@ from app.models.group import GroupMember, StudentGroup
 from app.models.quiz import Question, Quiz
 from app.models.telemetry import SessionScore
 from app.models.user import User
+from app.services.audit import (
+    EXAM_CLOSED,
+    EXAM_CREATED,
+    EXAM_OPENED,
+    record_audit_event,
+)
 from app.schemas.groups import EnrollGroup
 from app.schemas.exam import (
     AnswerItemRead,
@@ -63,6 +69,14 @@ async def create_exam(
 ) -> ExamRead:
     exam = ExamSession(**body.model_dump(), created_by=user_id)
     db.add(exam)
+    await db.flush()
+    record_audit_event(
+        db,
+        EXAM_CREATED,
+        actor_id=user_id,
+        target_id=str(exam.id),
+        metadata={"course_id": exam.course_id},
+    )
     await db.commit()
     await db.refresh(exam)
     return ExamRead.model_validate(exam)
@@ -289,6 +303,9 @@ async def open_exam(
 
     exam.state = "open"
     exam.opened_at = datetime.now(timezone.utc)
+    record_audit_event(
+        db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id)
+    )
     await db.commit()
     await db.refresh(exam)
     return ExamRead.from_orm_with_count(exam, count)
@@ -313,6 +330,9 @@ async def close_exam(
 
     exam.state = "closed"
     exam.closed_at = datetime.now(timezone.utc)
+    record_audit_event(
+        db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id)
+    )
     await db.commit()
     await db.refresh(exam)
 

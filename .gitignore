@@ -450,4 +450,4 @@ backend/auth/keys/*.pem
 
 .agents
 .claude
-skills-lock.json
+skills-lock.jsonbackend/session_tapes/

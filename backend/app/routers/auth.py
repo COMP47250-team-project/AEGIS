@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
+from app.services.audit import USER_REGISTERED, record_audit_event
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -176,6 +177,14 @@ async def register(
         full_name=payload.name,
     )
     db.add(user)
+    await db.flush()
+    record_audit_event(
+        db,
+        USER_REGISTERED,
+        actor_id=str(user.id),
+        target_id=str(user.id),
+        metadata={"email": user.email, "role": user.role},
+    )
     await db.commit()
     await db.refresh(user)
     resp = _build_response(user)
@@ -201,7 +210,9 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
 
-    resp = _build_response(user)
+    user.last_login = datetime.now(timezone.utc)
+    resp = _build_response(user)  # read attrs before commit expires them
+    await db.commit()
     _set_refresh_cookie(response, resp.refresh_token)
     return resp
 
