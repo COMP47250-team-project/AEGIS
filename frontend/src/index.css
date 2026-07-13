@@ -92,6 +92,9 @@
     background-color: rgb(var(--canvas));
     color: rgb(var(--body));
     font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    /* AEGIS-74c: guard against accidental horizontal scroll at narrow widths
+       (e.g. 375px). Safe here — no element relies on position: sticky. */
+    overflow-x: hidden;
   }
 
   /* AEGIS-74b: visible keyboard-focus indicator for all interactive elements.
