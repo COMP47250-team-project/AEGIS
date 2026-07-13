@@ -9,7 +9,7 @@ import apiClient, { setAccessToken } from "../api/client";
 export interface User {
   id: string;
   email: string;
-  role: "student" | "professor";
+  role: "student" | "professor" | "super_admin";
   name: string | null;
 }
 

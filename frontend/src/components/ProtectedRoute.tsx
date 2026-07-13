@@ -4,7 +4,7 @@ import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 interface ProtectedRouteProps {
-  allowedRole?: "student" | "professor";
+  allowedRole?: "student" | "professor" | "super_admin";
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole }) => {
@@ -29,6 +29,9 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRole }) => {
   if (allowedRole && user?.role !== allowedRole) {
     if (user?.role === "student") {
       return <Navigate to="/student/dashboard" replace />;
+    }
+    if (user?.role === "super_admin") {
+      return <Navigate to="/admin" replace />;
     }
     return <Navigate to="/professor/dashboard" replace />;
   }
