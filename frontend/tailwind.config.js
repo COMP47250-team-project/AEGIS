@@ -13,41 +13,44 @@ export default {
   ],
   theme: {
     extend: {
-      // DESIGN.md color tokens (PostHog design system applied to AEGIS)
+      // DESIGN.md color tokens (PostHog design system applied to AEGIS).
+      // Each token resolves to a CSS variable so light/dark can be swapped at
+      // runtime (AEGIS-74) — see src/index.css. `<alpha-value>` keeps Tailwind
+      // opacity utilities (e.g. bg-primary/15) working.
       colors: {
         // Surfaces
-        canvas: "#eeefe9",
-        "surface-soft": "#e5e7e0",
-        "surface-card": "#ffffff",
-        "surface-doc": "#fcfcfa",
-        "surface-dark": "#23251d",
+        canvas: "rgb(var(--canvas) / <alpha-value>)",
+        "surface-soft": "rgb(var(--surface-soft) / <alpha-value>)",
+        "surface-card": "rgb(var(--surface-card) / <alpha-value>)",
+        "surface-doc": "rgb(var(--surface-doc) / <alpha-value>)",
+        "surface-dark": "rgb(var(--surface-dark) / <alpha-value>)",
         // Borders
-        hairline: "#bfc1b7",
-        "hairline-soft": "#dcdfd2",
+        hairline: "rgb(var(--hairline) / <alpha-value>)",
+        "hairline-soft": "rgb(var(--hairline-soft) / <alpha-value>)",
         // Brand
-        primary: "#f7a501",
-        "primary-pressed": "#dd9001",
-        "primary-active": "#b17816",
+        primary: "rgb(var(--primary) / <alpha-value>)",
+        "primary-pressed": "rgb(var(--primary-pressed) / <alpha-value>)",
+        "primary-active": "rgb(var(--primary-active) / <alpha-value>)",
         // Text
-        ink: "#23251d",
-        body: "#4d4f46",
-        charcoal: "#33342d",
-        mute: "#6c6e63",
-        ash: "#9b9c92",
-        stone: "#b6b7af",
-        "on-dark": "#ffffff",
+        ink: "rgb(var(--ink) / <alpha-value>)",
+        body: "rgb(var(--body) / <alpha-value>)",
+        charcoal: "rgb(var(--charcoal) / <alpha-value>)",
+        mute: "rgb(var(--mute) / <alpha-value>)",
+        ash: "rgb(var(--ash) / <alpha-value>)",
+        stone: "rgb(var(--stone) / <alpha-value>)",
+        "on-dark": "rgb(var(--on-dark) / <alpha-value>)",
         // Links
-        "link-blue": "#1d4ed8",
-        "link-teal": "#1078a3",
+        "link-blue": "rgb(var(--link-blue) / <alpha-value>)",
+        "link-teal": "rgb(var(--link-teal) / <alpha-value>)",
         // Semantic accents
-        "accent-blue": "#2c84e0",
-        "accent-blue-soft": "#dceaf6",
-        "accent-red": "#cd4239",
-        "accent-red-soft": "#f7d6d3",
-        "accent-green": "#2c8c66",
-        "accent-green-soft": "#d9eddf",
-        "accent-purple": "#7c44a6",
-        "accent-purple-soft": "#e7d8ee",
+        "accent-blue": "rgb(var(--accent-blue) / <alpha-value>)",
+        "accent-blue-soft": "rgb(var(--accent-blue-soft) / <alpha-value>)",
+        "accent-red": "rgb(var(--accent-red) / <alpha-value>)",
+        "accent-red-soft": "rgb(var(--accent-red-soft) / <alpha-value>)",
+        "accent-green": "rgb(var(--accent-green) / <alpha-value>)",
+        "accent-green-soft": "rgb(var(--accent-green-soft) / <alpha-value>)",
+        "accent-purple": "rgb(var(--accent-purple) / <alpha-value>)",
+        "accent-purple-soft": "rgb(var(--accent-purple-soft) / <alpha-value>)",
       },
       fontFamily: {
         sans: ['"IBM Plex Sans"', "-apple-system", "system-ui", "sans-serif"],

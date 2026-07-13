@@ -14,6 +14,7 @@ import apiClient, { getAccessToken } from "../api/client";
 import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
 import CountdownTimer from "../components/exam/CountdownTimer";
+import ThemeToggle from "../components/ThemeToggle";
 import ExamErrorBoundary from "../components/exam/ExamErrorBoundary";
 import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
@@ -739,6 +740,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
             ExamErrorBoundary below — a crash in question rendering cannot
             reach this and stop the timer or auto-submit. */}
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <CountdownTimer
             serverEndTime={endTimeIso}
             onAutoSubmit={handleAutoSubmit}

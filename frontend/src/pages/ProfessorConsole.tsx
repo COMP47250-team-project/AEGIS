@@ -9,6 +9,7 @@ import SessionHistoryView from "../components/professor/SessionHistoryView";
 import GroupsManager from "../components/professor/GroupsManager";
 import TimelineModal from "../components/professor/TimelineModal";
 import type { LiveStudent } from "../components/professor/liveStudents";
+import ThemeToggle from "../components/ThemeToggle";
 
 type Tab = "dashboard" | "exams" | "build" | "schedule" | "groups" | "history";
 
@@ -79,6 +80,7 @@ const ProfessorConsole: React.FC = () => {
           <span className="hidden sm:inline text-sm text-body">
             {user?.name}
           </span>
+          <ThemeToggle />
           <button
             onClick={logout}
             className="text-xs text-mute hover:text-ink transition-colors"

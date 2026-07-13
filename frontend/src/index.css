@@ -1,12 +1,9 @@
 /* frontend/src/index.css */
 /*
-  These three lines are Tailwind CSS "directives". They tell the Tailwind
-  PostCSS plugin to inject:
-    @tailwind base       → normalises browser default styles
-    @tailwind components → any custom component classes (none yet)
-    @tailwind utilities  → all the utility classes (bg-*, text-*, flex, etc.)
-  
-  Without these three lines, Tailwind classes won't work.
+  Tailwind directives. Colours are driven by CSS variables (AEGIS-74) so the
+  whole app supports light/dark without per-component changes: every Tailwind
+  colour token resolves to `rgb(var(--token) / <alpha>)`, and the variables are
+  redefined for dark mode below.
 */
 
 @tailwind base;
@@ -14,9 +11,85 @@
 @tailwind utilities;
 
 @layer base {
+  /* ── Light theme (default) ─────────────────────────────────────────────── */
+  :root {
+    --canvas: 238 239 233;
+    --surface-soft: 229 231 224;
+    --surface-card: 255 255 255;
+    --surface-doc: 252 252 250;
+    --surface-dark: 35 37 29;
+
+    --hairline: 191 193 183;
+    --hairline-soft: 220 223 210;
+
+    --primary: 247 165 1;
+    --primary-pressed: 221 144 1;
+    --primary-active: 177 120 22;
+
+    --ink: 35 37 29;
+    --body: 77 79 70;
+    --charcoal: 51 52 45;
+    --mute: 108 110 99;
+    --ash: 155 156 146;
+    --stone: 182 183 175;
+    --on-dark: 255 255 255;
+
+    --link-blue: 29 78 216;
+    --link-teal: 16 120 163;
+
+    --accent-blue: 44 132 224;
+    --accent-blue-soft: 220 234 246;
+    --accent-red: 205 66 57;
+    --accent-red-soft: 247 214 211;
+    --accent-green: 44 140 102;
+    --accent-green-soft: 217 237 223;
+    --accent-purple: 124 68 166;
+    --accent-purple-soft: 231 216 238;
+  }
+
+  /* ── Dark theme values ─────────────────────────────────────────────────── */
+  /* Light is the default for everyone; dark applies only when the user has
+     explicitly toggled it (persisted as data-theme="dark"). We intentionally
+     do NOT follow prefers-color-scheme so the app opens light regardless of OS
+     setting. */
+  :root[data-theme="dark"] {
+    --canvas: 21 23 15;
+    --surface-soft: 31 33 25;
+    --surface-card: 35 37 29;
+    --surface-doc: 27 29 21;
+    --surface-dark: 43 45 36;
+
+    --hairline: 58 61 51;
+    --hairline-soft: 44 47 37;
+
+    --primary: 247 165 1;
+    --primary-pressed: 221 144 1;
+    --primary-active: 201 138 30;
+
+    --ink: 238 240 232;
+    --body: 199 201 190;
+    --charcoal: 216 218 203;
+    --mute: 154 156 144;
+    --ash: 116 118 108;
+    --stone: 86 88 80;
+    --on-dark: 255 255 255;
+
+    --link-blue: 110 168 255;
+    --link-teal: 75 182 221;
+
+    --accent-blue: 74 155 238;
+    --accent-blue-soft: 22 50 74;
+    --accent-red: 232 99 90;
+    --accent-red-soft: 63 29 26;
+    --accent-green: 70 185 140;
+    --accent-green-soft: 22 53 36;
+    --accent-purple: 176 127 208;
+    --accent-purple-soft: 44 31 56;
+  }
+
   body {
-    background-color: #eeefe9;
-    color: #4d4f46;
+    background-color: rgb(var(--canvas));
+    color: rgb(var(--body));
     font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
   }
 }
