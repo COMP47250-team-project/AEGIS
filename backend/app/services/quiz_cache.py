@@ -15,6 +15,7 @@
 # start when all students load the shell simultaneously.
 
 from threading import Lock
+from typing import Any
 
 from cachetools import TTLCache
 
@@ -23,13 +24,13 @@ _cache: TTLCache = TTLCache(maxsize=200, ttl=300)
 _lock = Lock()
 
 
-def get_cached_quiz(quiz_id: str) -> dict | None:
+def get_cached_quiz(quiz_id: str) -> Any | None:
     """Return cached quiz dict or None on cache miss."""
     with _lock:
         return _cache.get(quiz_id)
 
 
-def set_cached_quiz(quiz_id: str, data: dict) -> None:
+def set_cached_quiz(quiz_id: str, data: Any) -> None:
     """Store a quiz dict in the cache."""
     with _lock:
         _cache[quiz_id] = data

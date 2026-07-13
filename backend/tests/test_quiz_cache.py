@@ -112,9 +112,12 @@ def test_multiple_entries_independent():
     set_cached_quiz("q2", {"id": "q2", "title": "Quiz 2"})
     set_cached_quiz("q3", {"id": "q3", "title": "Quiz 3"})
 
-    assert get_cached_quiz("q1")["title"] == "Quiz 1"
-    assert get_cached_quiz("q2")["title"] == "Quiz 2"
-    assert get_cached_quiz("q3")["title"] == "Quiz 3"
+    r1 = get_cached_quiz("q1")
+    r2 = get_cached_quiz("q2")
+    r3 = get_cached_quiz("q3")
+    assert r1 is not None and r1["title"] == "Quiz 1"
+    assert r2 is not None and r2["title"] == "Quiz 2"
+    assert r3 is not None and r3["title"] == "Quiz 3"
 
 
 # ---------------------------------------------------------------------------
