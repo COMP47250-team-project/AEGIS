@@ -54,7 +54,15 @@ const ScoreBar: React.FC<{ value: number; label: string }> = ({ value, label }) 
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-mute w-28 shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 bg-surface-soft rounded-full overflow-hidden">
+      <div
+        className="flex-1 h-1.5 bg-surface-soft rounded-full overflow-hidden"
+        role="progressbar"
+        aria-label={`${label} score`}
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuetext={`${pct} percent`}
+      >
         <div className={`h-full ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-xs font-semibold text-body w-8 text-right">{pct}%</span>

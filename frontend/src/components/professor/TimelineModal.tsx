@@ -154,7 +154,15 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
               title={`${label}: ${value.toFixed(2)}`}
             >
               <span className="text-xs text-mute w-28 shrink-0">{label}</span>
-              <div className="flex-1 h-2 bg-surface-card rounded-full overflow-hidden border border-hairline">
+              <div
+                className="flex-1 h-2 bg-surface-card rounded-full overflow-hidden border border-hairline"
+                role="progressbar"
+                aria-label={`${label} score`}
+                aria-valuenow={pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuetext={`${pct} percent`}
+              >
                 <div
                   className={`h-full rounded-full ${riskClass(value, "bg")} transition-all duration-500`}
                   style={{ width: `${pct}%` }}

@@ -29,7 +29,8 @@
     --ink: 35 37 29;
     --body: 77 79 70;
     --charcoal: 51 52 45;
-    --mute: 108 110 99;
+    /* AEGIS-74b: darkened from 108 110 99 (~4.48:1) to clear WCAG AA 4.5:1 on canvas */
+    --mute: 96 98 88;
     --ash: 155 156 146;
     --stone: 182 183 175;
     --on-dark: 255 255 255;
@@ -91,5 +92,13 @@
     background-color: rgb(var(--canvas));
     color: rgb(var(--body));
     font-family: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+  }
+
+  /* AEGIS-74b: visible keyboard-focus indicator for all interactive elements.
+     Uses :focus-visible so it only shows for keyboard (not mouse) users. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent-blue));
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 }
