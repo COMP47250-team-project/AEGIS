@@ -150,10 +150,15 @@ jobs:
             --server "$ACR_LOGIN_SERVER" \
             --username "${{ steps.acr-creds.outputs.username }}" \
             --password "${{ steps.acr-creds.outputs.password }}"
+          # Reconstruct the image ref here rather than reading it from
+          # needs.build-backend.outputs.image: that output contains
+          # ACR_LOGIN_SERVER (a secret), and GitHub scrubs secrets from job
+          # outputs passed across jobs, so it arrives empty — making
+          # `--image ""` a silent no-op that never rolls out a new revision.
           az containerapp update \
             --name "${{ secrets.BACKEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-backend.outputs.image }}"
+            --image "$ACR_LOGIN_SERVER/backend:${{ github.sha }}"
 
       - name: Update frontend Container App
         run: |
@@ -163,10 +168,12 @@ jobs:
             --server "$ACR_LOGIN_SERVER" \
             --username "${{ steps.acr-creds.outputs.username }}" \
             --password "${{ steps.acr-creds.outputs.password }}"
+          # See backend note: reconstruct locally so the secret-scrubbed empty
+          # job output can't turn this into a no-op `--image ""`.
           az containerapp update \
             --name "${{ secrets.FRONTEND_APP_NAME }}" \
             --resource-group "$RESOURCE_GROUP" \
-            --image "${{ needs.build-frontend.outputs.image }}"
+            --image "$ACR_LOGIN_SERVER/frontend:${{ github.sha }}"
 
   # ──────────────────────────────────────────────────────────────────────────
   # 4. Smoke test

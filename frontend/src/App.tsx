@@ -12,6 +12,7 @@ import ExamCreate from "./pages/ExamCreate";
 import ExamShell from "./pages/ExamShell";
 import ExamSubmitted from "./pages/ExamSubmitted";
 import StudentResults from "./pages/StudentResults";
+import AdminConsole from "./pages/AdminConsole";
 
 const App: React.FC = () => {
   return (
@@ -39,6 +40,11 @@ const App: React.FC = () => {
             <Route path="/professor/dashboard" element={<ProfessorConsole />} />
             <Route path="/professor/exams/new" element={<ExamCreate />} />
             <Route path="/professor/session/:sessionId" element={<ProfessorSession />} />
+          </Route>
+
+          {/* Protected — super admin only */}
+          <Route element={<ProtectedRoute allowedRole="super_admin" />}>
+            <Route path="/admin" element={<AdminConsole />} />
           </Route>
 
           <Route path="/" element={<Navigate to="/login" replace />} />
