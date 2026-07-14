@@ -10,6 +10,7 @@ import {
   type AdminExam,
   type AdminAuditEntry,
 } from "../api/admin";
+import ThemeToggle from "../components/ThemeToggle";
 
 type Tab = "users" | "exams" | "audit";
 
@@ -56,6 +57,7 @@ const AdminConsole: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-mute hidden sm:inline">{user?.email}</span>
+          <ThemeToggle />
           <button
             onClick={() => logout()}
             className="text-sm font-semibold text-body hover:text-primary transition-colors"

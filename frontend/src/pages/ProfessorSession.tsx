@@ -270,7 +270,15 @@ const ProfessorSession: React.FC = () => {
 
                   {/* Risk bar */}
                   <div className="mb-3">
-                    <div className="h-2 bg-surface-soft rounded-full overflow-hidden">
+                    <div
+                      className="h-2 bg-surface-soft rounded-full overflow-hidden"
+                      role="progressbar"
+                      aria-label="Risk score"
+                      aria-valuenow={Math.round(risk * 100)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuetext={`Risk ${Math.round(risk * 100)} percent`}
+                    >
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${riskColor(
                           risk

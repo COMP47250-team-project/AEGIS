@@ -14,6 +14,7 @@ import apiClient, { getAccessToken } from "../api/client";
 import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
 import CountdownTimer from "../components/exam/CountdownTimer";
+import ThemeToggle from "../components/ThemeToggle";
 import ExamErrorBoundary from "../components/exam/ExamErrorBoundary";
 import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
@@ -726,8 +727,8 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      <header className="flex items-center justify-between px-6 py-3 border-b border-hairline bg-surface-card">
-        <div>
+      <header className="flex items-center justify-between gap-2 px-3 sm:px-6 py-3 border-b border-hairline bg-surface-card">
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">AEGIS Exam</p>
           <p className="text-xs text-mute">
             Question {currentIndex + 1} of {questions.length}
@@ -738,23 +739,33 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
             Positioned as a sibling of the question content, OUTSIDE the
             ExamErrorBoundary below — a crash in question rendering cannot
             reach this and stop the timer or auto-submit. */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <ThemeToggle />
           <CountdownTimer
             serverEndTime={endTimeIso}
             onAutoSubmit={handleAutoSubmit}
           />
-          {isSaving && <span className="text-xs text-mute">Saving…</span>}
+          {isSaving && (
+            <span className="hidden sm:inline text-xs text-mute">Saving…</span>
+          )}
           {saveError && (
-            <span className="text-xs text-accent-red">
+            <span className="hidden sm:inline text-xs text-accent-red">
               Auto-save failed — answers are safe locally
             </span>
           )}
           <button
             onClick={handleFinishClick}
             disabled={isAutoSubmitting}
-            className="px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
+            className="px-3 sm:px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors whitespace-nowrap"
           >
-            {isAutoSubmitting ? "Submitting…" : "Finish Exam"}
+            {isAutoSubmitting ? (
+              "Submitting…"
+            ) : (
+              <>
+                <span className="sm:hidden">Finish</span>
+                <span className="hidden sm:inline">Finish Exam</span>
+              </>
+            )}
           </button>
         </div>
       </header>
@@ -781,7 +792,9 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
 
       <ExamErrorBoundary>
         <div className="flex flex-1 overflow-hidden">
-          <aside className="w-56 flex-shrink-0 border-r border-hairline bg-surface-card overflow-y-auto px-3 py-4">
+          {/* Sidebar hidden on mobile (AEGIS-74c) — the main area's
+              Previous/Next controls provide navigation on small screens. */}
+          <aside className="hidden md:block w-56 flex-shrink-0 border-r border-hairline bg-surface-card overflow-y-auto px-3 py-4">
             <ProgressSidebar
               questions={questions}
               answers={answers}
@@ -790,7 +803,7 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
             />
           </aside>
 
-          <main className="flex-1 overflow-y-auto px-8 py-8">
+          <main className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 sm:py-8">
             <div className="max-w-2xl mx-auto">
               <div className="bg-surface-card border border-hairline rounded-md p-6">
                 <QuestionRenderer
