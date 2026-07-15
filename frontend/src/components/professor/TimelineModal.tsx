@@ -81,8 +81,28 @@ function formatEventLabel(type: string, payload: Record<string, unknown>): strin
 }
 
 // ---------------------------------------------------------------------------
-// ScoreBreakdown — bar chart of 6 signal components
+// ScoreBreakdown — horizontal bar chart of the 6 signal components
 // ---------------------------------------------------------------------------
+
+// Maps the score endpoint's component keys to display labels, in chart order.
+// (The stored keys are legacy; "Focus Loss"/"Copy Sequence" actually hold the
+// first-keypress and resize scores.)
+const SIGNAL_LABELS: [string, string][] = [
+  ["Tab Switch", "Tab Blur"],
+  ["Paste", "Paste"],
+  ["Keystroke", "IKI (Keystroke)"],
+  ["Focus Loss", "First Keypress"],
+  ["Answer Timing", "Answer Timing"],
+  ["Copy Sequence", "Window Resize"],
+];
+
+// green < 0.4, amber 0.4–0.7, red > 0.7
+function riskClass(v: number, prefix: "bg" | "text"): string {
+  if (v > 0.7) return `${prefix}-accent-red`;
+  if (v >= 0.4) return `${prefix}-primary`;
+  return `${prefix}-accent-green`;
+}
+
 const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
   sessionId,
   studentId,
@@ -109,35 +129,25 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
       </p>
     );
 
-  const overall = Math.round((score.integrity_score ?? 0) * 100);
-  const overallColor =
-    overall >= 70
-      ? "text-accent-red"
-      : overall >= 40
-      ? "text-primary"
-      : "text-accent-green";
+  const overall = score.integrity_score ?? 0;
 
   return (
     <div className="px-4 py-3 border-b border-hairline bg-surface-soft">
-      <p className="text-xs font-semibold text-ink mb-2">
-        Integrity Score:{" "}
-        <span className={`text-sm font-bold ${overallColor}`}>{overall}%</span>
-      </p>
+      <p className="text-xs font-semibold text-ink mb-2">Signal breakdown (0.0–1.0)</p>
       <div className="space-y-1.5">
-        {Object.entries(score.components ?? {}).map(([label, value]) => {
+        {SIGNAL_LABELS.map(([apiKey, label]) => {
+          const value = score.components?.[apiKey] ?? 0;
           const pct = Math.round(value * 100);
-          const barColor =
-            pct >= 70
-              ? "bg-accent-red"
-              : pct >= 40
-              ? "bg-primary"
-              : "bg-accent-green";
           return (
-            <div key={label} className="flex items-center gap-2">
-              <span className="text-xs text-mute w-24 shrink-0">{label}</span>
+            <div
+              key={label}
+              className="flex items-center gap-2"
+              title={`${label}: ${value.toFixed(2)}`}
+            >
+              <span className="text-xs text-mute w-28 shrink-0">{label}</span>
               <div className="flex-1 h-2 bg-surface-card rounded-full overflow-hidden border border-hairline">
                 <div
-                  className={`h-full rounded-full ${barColor} transition-all duration-500`}
+                  className={`h-full rounded-full ${riskClass(value, "bg")} transition-all duration-500`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -147,6 +157,13 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
             </div>
           );
         })}
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-hairline text-center">
+        <p className="text-xs text-mute">Composite risk score</p>
+        <p className={`text-3xl font-bold ${riskClass(overall, "text")}`}>
+          {Math.round(overall * 100)}%
+        </p>
       </div>
     </div>
   );

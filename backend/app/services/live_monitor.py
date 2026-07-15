@@ -90,9 +90,9 @@ class StudentAggregate:
             "resize": resize_score(self.signal_events),
         }
 
-    def summarize(self, student_id: str, now: float) -> dict:
+    def summarize(self, student_id: str, now: float, preset: str = "standard") -> dict:
         components = self._components()
-        risk = round(compute_risk_score(components), 3)
+        risk = round(compute_risk_score(components, preset), 3)
         active = self.last_seen is not None and now - self.last_seen <= ACTIVE_WINDOW_S
         return {
             "student_id": student_id,
@@ -152,13 +152,22 @@ class LiveMonitor:
             agg.email = email
         agg.record(event_type, payload, time.monotonic() if now is None else now)
 
-    def snapshot(self, exam_id: str, now: float | None = None) -> dict:
-        """Build the broadcast payload for an exam — pure in-memory read."""
+    def snapshot(
+        self, exam_id: str, now: float | None = None, preset: str = "standard"
+    ) -> dict:
+        """Build the broadcast payload for an exam — pure in-memory read.
+
+        ``preset`` (AEGIS-84) selects the weight set so the live risk matches
+        the final score computed at exam close.
+        """
         ts = time.monotonic() if now is None else now
         students = self._sessions.get(exam_id, {})
         return {
             "exam_id": exam_id,
-            "students": [agg.summarize(sid, ts) for sid, agg in students.items()],
+            "scoring_preset": preset,
+            "students": [
+                agg.summarize(sid, ts, preset) for sid, agg in students.items()
+            ],
         }
 
     def clear(self, exam_id: str) -> None:
