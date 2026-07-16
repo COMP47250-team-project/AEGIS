@@ -202,6 +202,7 @@ A: The schema is in Third Normal Form for the exam and user domain: no transitiv
 **Q: How does the database handle timezone data and what timezone is used throughout?**
 A: All timestamp columns use `DateTime(timezone=True)` in SQLAlchemy, which maps to `TIMESTAMPTZ` in PostgreSQL. PostgreSQL stores `TIMESTAMPTZ` values in UTC internally regardless of the input timezone. All Python code generates timestamps using `datetime.now(timezone.utc)`. The `client_ts` column accepts whatever timezone the browser provides, which PostgreSQL normalises to UTC on storage. This means all timestamps in the database are UTC, and timezone conversion to the professor's local time is handled by the frontend. There is no risk of daylight saving time bugs in the database layer because no local timestamps are stored.
 
+
 ---
 
 *Document prepared for AEGIS team — 6 members. All sections reviewed before June 18.*
