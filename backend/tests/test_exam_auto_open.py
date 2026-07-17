@@ -4,6 +4,7 @@ A draft exam whose scheduled start has passed opens automatically when a student
 reads their sessions — no manual professor action required.
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -77,20 +78,35 @@ def test_is_due_treats_naive_start_as_utc() -> None:
 async def _make_exam(client: AsyncClient, scheduled_start: str) -> str:
     quiz_id = (await client.post("/quizzes", json=QUIZ)).json()["id"]
     await client.post(f"/quizzes/{quiz_id}/questions", json=QUESTION)
-    exam_id = (
-        await client.post(
-            "/exams",
-            json={
-                "course_id": "CS",
-                "scheduled_start": scheduled_start,
-                "duration_minutes": 60,
-                "quiz_id": quiz_id,
-            },
-        )
-    ).json()["id"]
-    await client.post(
-        f"/exams/{exam_id}/enrollments", json={"student_id": STUDENT_ID}
+    await client.post(f"/quizzes/{quiz_id}/publish")
+
+    # If scheduled_start is in the past, use near-future so API accepts it
+    # then sleep briefly so it becomes due
+    parsed = datetime.fromisoformat(scheduled_start)
+    now = datetime.now(timezone.utc)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    if parsed <= now:
+        api_start = (now + timedelta(seconds=1)).isoformat()
+        should_sleep = True
+    else:
+        api_start = scheduled_start
+        should_sleep = False
+
+    res = await client.post(
+        "/exams",
+        json={
+            "course_id": "CS",
+            "scheduled_start": api_start,
+            "duration_minutes": 60,
+            "quiz_id": quiz_id,
+        },
     )
+    exam_id = res.json()["id"]
+    await client.post(f"/exams/{exam_id}/enrollments", json={"student_id": STUDENT_ID})
+    if should_sleep:
+        await asyncio.sleep(2)
     return exam_id
 
 
