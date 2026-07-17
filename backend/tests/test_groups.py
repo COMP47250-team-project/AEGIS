@@ -99,3 +99,91 @@ async def test_empty_group_handled_gracefully(client: AsyncClient) -> None:
     resp = await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     assert resp.status_code == 201
     assert resp.json() == {"enrolled": 0, "group_size": 0}
+
+
+@pytest.mark.asyncio
+async def test_create_group_reports_skipped_emails(client: AsyncClient) -> None:
+    await _register_students(client)
+    resp = await client.post(
+        "/groups",
+        json={
+            "name": "Mixed",
+            "student_emails": [
+                STUDENTS[0][0],       # registered -> added
+                STUDENTS[0][0],       # duplicate -> skipped
+                "ghost@demo.ac.uk",   # not registered -> skipped
+                "not-an-email",       # invalid format -> skipped
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert {m["email"] for m in body["members"]} == {STUDENTS[0][0]}
+    reasons = {s["email"]: s["reason"] for s in body["skipped"]}
+    assert reasons[STUDENTS[0][0]] == "Duplicate entry skipped."
+    assert "not registered" in reasons["ghost@demo.ac.uk"]
+    assert reasons["not-an-email"] == "Please enter a valid email address."
+
+
+@pytest.mark.asyncio
+async def test_validate_reports_without_creating(client: AsyncClient) -> None:
+    await _register_students(client)
+    before = len((await client.get("/groups")).json())
+    resp = await client.post(
+        "/groups/validate",
+        json={"student_emails": [STUDENTS[0][0], "ghost@demo.ac.uk", "bad"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["email"] for m in body["matched"]} == {STUDENTS[0][0]}
+    assert {s["email"] for s in body["skipped"]} == {"ghost@demo.ac.uk", "bad"}
+    # dry run must not create anything
+    assert len((await client.get("/groups")).json()) == before
+
+
+@pytest.mark.asyncio
+async def test_update_members_add_remove_and_skip(client: AsyncClient) -> None:
+    await _register_students(client)
+    gid = (
+        await client.post("/groups", json={"name": "EditMembers", "student_emails": [STUDENTS[0][0]]})
+    ).json()["id"]
+    resp = await client.put(
+        f"/groups/{gid}/members",
+        json={"add": [STUDENTS[1][0], STUDENTS[0][0], "ghost@demo.ac.uk"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["email"] for m in body["members"]} == {STUDENTS[0][0], STUDENTS[1][0]}
+    reasons = {s["email"]: s["reason"] for s in body["skipped"]}
+    assert reasons[STUDENTS[0][0]] == "Already in the group."
+    assert "not registered" in reasons["ghost@demo.ac.uk"]
+
+    removed = await client.put(f"/groups/{gid}/members", json={"remove": [STUDENTS[0][0]]})
+    assert {m["email"] for m in removed.json()["members"]} == {STUDENTS[1][0]}
+
+
+@pytest.mark.asyncio
+async def test_delete_group(client: AsyncClient) -> None:
+    await _register_students(client)
+    gid = (
+        await client.post("/groups", json={"name": "Temp", "student_emails": [STUDENTS[0][0]]})
+    ).json()["id"]
+    resp = await client.delete(f"/groups/{gid}")
+    assert resp.status_code == 204
+    assert (await client.get(f"/groups/{gid}")).status_code == 404
+    assert all(g["id"] != gid for g in (await client.get("/groups")).json())
+
+
+@pytest.mark.asyncio
+async def test_duplicate_group_name_rejected(client: AsyncClient) -> None:
+    await _register_students(client)
+    r1 = await client.post("/groups", json={"name": "Computer Science 123", "student_emails": []})
+    assert r1.status_code == 201
+    # exact and case-insensitive duplicates are both rejected
+    for dup in ("Computer Science 123", "computer science 123", "  Computer Science 123  "):
+        r = await client.post("/groups", json={"name": dup, "student_emails": []})
+        assert r.status_code == 409
+        assert "already exists" in r.json()["detail"]
+    # only the original group exists
+    names = [g["name"] for g in (await client.get("/groups")).json()]
+    assert names.count("Computer Science 123") == 1
