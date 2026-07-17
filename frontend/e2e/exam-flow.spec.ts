@@ -116,10 +116,11 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
     timeout: 15_000,
     waitUntil: "commit",
   });
+// Before (5 seconds — too tight, fails validation timing)
+const startTime = new Date(Date.now() + 5_000);
 
-  // Fill exam details — starts in 5 s so it auto-opens before T2 enters it
-  const startTime = new Date(Date.now() + 5_000);
-  const endTime = new Date(Date.now() + 35 * 60_000);
+// After (2 minutes — enough buffer for validation to pass)
+const startTime = new Date(Date.now() + 2 * 60_000);
 
   await page.fill("#exam-title", EXAM_TITLE);
   await page.fill("#exam-course", "E2E-101");
