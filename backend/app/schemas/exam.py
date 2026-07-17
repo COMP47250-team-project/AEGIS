@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 QuestionType = Literal["mcq", "short"]
 
@@ -21,6 +21,16 @@ class ExamCreate(BaseModel):
     scheduled_start: datetime
     duration_minutes: int = Field(..., gt=0)
     scoring_preset: ScoringPreset = "standard"
+
+    @field_validator("scheduled_start")
+    @classmethod
+    def must_be_future(cls, v: datetime) -> datetime:
+        now = datetime.now(timezone.utc)
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v <= now:
+            raise ValueError("Please select a future date and time for the exam start.")
+        return v
 
 
 class ExamRead(BaseModel):

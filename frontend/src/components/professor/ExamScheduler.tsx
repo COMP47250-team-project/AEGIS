@@ -57,10 +57,10 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     if (!quizId) return "Select a quiz.";
     if (!courseId.trim()) return "Course ID is required.";
     if (!scheduledStart) return "Scheduled start time is required.";
+    if (new Date(scheduledStart) <= new Date()) return "Please select a future date and time for the exam start.";
     if (durationMinutes < 1) return "Duration must be at least 1 minute.";
     return null;
   }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const validationError = validate();
