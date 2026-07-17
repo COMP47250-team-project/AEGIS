@@ -6,6 +6,7 @@ import {
   fetchAdminExams,
   fetchAdminAudit,
   deactivateUser,
+  activateUser,
   type AdminUser,
   type AdminExam,
   type AdminAuditEntry,
@@ -143,6 +144,15 @@ const UsersTab: React.FC = () => {
     }
   }
 
+  async function handleActivate(id: string) {
+    try {
+      const updated = await activateUser(id);
+      setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
+    } catch {
+      setError("Failed to activate user.");
+    }
+  }
+
   const filtered = useMemo(
     () =>
       users.filter((u) =>
@@ -212,13 +222,22 @@ const UsersTab: React.FC = () => {
                   </span>
                 </td>
                 <td className="px-4 py-2.5 text-right">
-                  {u.is_active && u.role !== "super_admin" && (
-                    <button
-                      onClick={() => handleDeactivate(u.id)}
-                      className="text-xs font-semibold text-accent-red hover:underline"
-                    >
-                      Deactivate
-                    </button>
+                  {u.role !== "super_admin" && (
+                    u.is_active ? (
+                      <button
+                        onClick={() => handleDeactivate(u.id)}
+                        className="text-xs font-semibold text-accent-red hover:underline"
+                      >
+                        Deactivate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleActivate(u.id)}
+                        className="text-xs font-semibold text-accent-green hover:underline"
+                      >
+                        Activate
+                      </button>
+                    )
                   )}
                 </td>
               </tr>

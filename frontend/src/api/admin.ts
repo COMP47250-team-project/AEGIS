@@ -71,3 +71,10 @@ export async function deactivateUser(userId: string): Promise<AdminUser> {
   );
   return data;
 }
+
+export async function activateUser(userId: string): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>(
+    `/admin/users/${userId}/activate`
+  );
+  return data;
+}

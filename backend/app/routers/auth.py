@@ -210,6 +210,12 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
 
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated. Please contact the support team for assistance.",
+        )
+
     user.last_login = datetime.now(timezone.utc)
     resp = _build_response(user)  # read attrs before commit expires them
     await db.commit()
