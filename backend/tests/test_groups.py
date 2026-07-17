@@ -99,3 +99,117 @@ async def test_empty_group_handled_gracefully(client: AsyncClient) -> None:
     resp = await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     assert resp.status_code == 201
     assert resp.json() == {"enrolled": 0, "group_size": 0}
+
+
+@pytest.mark.asyncio
+async def test_create_group_reports_skipped_emails(client: AsyncClient) -> None:
+    await _register_students(client)
+    resp = await client.post(
+        "/groups",
+        json={
+            "name": "Mixed",
+            "student_emails": [
+                STUDENTS[0][0],       # registered -> added
+                STUDENTS[0][0],       # duplicate -> skipped
+                "ghost@demo.ac.uk",   # not registered -> skipped
+                "not-an-email",       # invalid format -> skipped
+            ],
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert {m["email"] for m in body["members"]} == {STUDENTS[0][0]}
+    reasons = {s["email"]: s["reason"] for s in body["skipped"]}
+    assert reasons[STUDENTS[0][0]] == "duplicate in list"
+    assert reasons["ghost@demo.ac.uk"] == "no registered student with this email"
+    assert reasons["not-an-email"] == "not a valid email address"
+
+
+@pytest.mark.asyncio
+async def test_validate_reports_without_creating(client: AsyncClient) -> None:
+    await _register_students(client)
+    before = len((await client.get("/groups")).json())
+    resp = await client.post(
+        "/groups/validate",
+        json={"student_emails": [STUDENTS[0][0], "ghost@demo.ac.uk", "bad"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["email"] for m in body["matched"]} == {STUDENTS[0][0]}
+    assert {s["email"] for s in body["skipped"]} == {"ghost@demo.ac.uk", "bad"}
+    # dry run must not create anything
+    assert len((await client.get("/groups")).json()) == before
+
+
+@pytest.mark.asyncio
+async def test_update_members_add_remove_and_skip(client: AsyncClient) -> None:
+    await _register_students(client)
+    gid = (
+        await client.post("/groups", json={"name": "E", "student_emails": [STUDENTS[0][0]]})
+    ).json()["id"]
+    resp = await client.put(
+        f"/groups/{gid}/members",
+        json={"add": [STUDENTS[1][0], STUDENTS[0][0], "ghost@demo.ac.uk"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["email"] for m in body["members"]} == {STUDENTS[0][0], STUDENTS[1][0]}
+    reasons = {s["email"]: s["reason"] for s in body["skipped"]}
+    assert reasons[STUDENTS[0][0]] == "already in the group"
+    assert reasons["ghost@demo.ac.uk"] == "no registered student with this email"
+
+    removed = await client.put(f"/groups/{gid}/members", json={"remove": [STUDENTS[0][0]]})
+    assert {m["email"] for m in removed.json()["members"]} == {STUDENTS[1][0]}
+
+
+@pytest.mark.asyncio
+async def test_delete_group(client: AsyncClient) -> None:
+    await _register_students(client)
+    gid = (
+        await client.post("/groups", json={"name": "Temp", "student_emails": [STUDENTS[0][0]]})
+    ).json()["id"]
+    resp = await client.delete(f"/groups/{gid}")
+    assert resp.status_code == 204
+    assert (await client.get(f"/groups/{gid}")).status_code == 404
+    assert all(g["id"] != gid for g in (await client.get("/groups")).json())
+
+
+@pytest.mark.asyncio
+async def test_invite_creates_student_and_is_addable(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/groups/invite-students",
+        json={"emails": ["newbie@demo.ac.uk", "bad", "newbie@demo.ac.uk"]},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert {m["email"] for m in body["created"]} == {"newbie@demo.ac.uk"}
+    reasons = {s["email"]: s["reason"] for s in body["skipped"]}
+    assert reasons["bad"] == "not a valid email address"
+    assert reasons["newbie@demo.ac.uk"] == "duplicate in list"
+    # invited student is now a real member candidate
+    grp = (
+        await client.post(
+            "/groups", json={"name": "Invited", "student_emails": ["newbie@demo.ac.uk"]}
+        )
+    ).json()
+    assert {m["email"] for m in grp["members"]} == {"newbie@demo.ac.uk"}
+
+
+@pytest.mark.asyncio
+async def test_invited_account_cannot_login_until_claimed(client: AsyncClient) -> None:
+    await client.post("/groups/invite-students", json={"emails": ["claim@demo.ac.uk"]})
+    # no password yet -> login rejected
+    pre = await client.post(
+        "/auth/login", json={"email": "claim@demo.ac.uk", "password": "whatever"}
+    )
+    assert pre.status_code == 401
+    # registering with the same email claims the account
+    reg = await client.post(
+        "/auth/register",
+        json={"email": "claim@demo.ac.uk", "password": "claim1234", "role": "student", "name": "C"},
+    )
+    assert reg.status_code == 201
+    post = await client.post(
+        "/auth/login", json={"email": "claim@demo.ac.uk", "password": "claim1234"}
+    )
+    assert post.status_code == 200

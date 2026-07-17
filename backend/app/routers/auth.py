@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
+from app.models.user import INVITED_PASSWORD, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -164,7 +164,19 @@ async def register(
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
     result = await db.execute(select(User).where(User.email == payload.email))
-    if result.scalar_one_or_none() is not None:
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        # An invited account (created by a professor, no password set yet) is
+        # claimed on first registration: set the password and name, keep its role.
+        if existing.hashed_password == INVITED_PASSWORD:
+            existing.hashed_password = _hash_password(payload.password)
+            if payload.name:
+                existing.full_name = payload.name
+            await db.commit()
+            await db.refresh(existing)
+            resp = _build_response(existing)
+            _set_refresh_cookie(response, resp.refresh_token)
+            return resp
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
         )

@@ -6,6 +6,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
+# Password sentinel for accounts a professor created by email but that the
+# student hasn't claimed yet. A real bcrypt hash is never empty, so this is
+# unambiguous: such accounts can't log in until they register (claim).
+INVITED_PASSWORD = ""
+
 
 class User(Base):
     __tablename__ = "users"

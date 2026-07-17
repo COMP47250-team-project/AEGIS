@@ -20,6 +20,11 @@ class MemberRead(BaseModel):
     name: str | None
 
 
+class SkippedEmail(BaseModel):
+    email: str
+    reason: str
+
+
 class GroupSummary(BaseModel):
     id: uuid.UUID
     name: str
@@ -32,6 +37,26 @@ class GroupDetail(BaseModel):
     name: str
     created_at: datetime
     members: list[MemberRead]
+    skipped: list[SkippedEmail] = Field(default_factory=list)
+
+
+class ValidateEmails(BaseModel):
+    student_emails: list[str] = Field(default_factory=list)
+    group_id: uuid.UUID | None = None
+
+
+class ValidationResult(BaseModel):
+    matched: list[MemberRead]
+    skipped: list[SkippedEmail]
+
+
+class InviteStudents(BaseModel):
+    emails: list[str] = Field(default_factory=list)
+
+
+class InviteResult(BaseModel):
+    created: list[MemberRead]
+    skipped: list[SkippedEmail]
 
 
 class EnrollGroup(BaseModel):
