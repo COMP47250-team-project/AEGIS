@@ -42,7 +42,7 @@ from app.schemas.exam import (
     StudentGradeEntry,
     StudentSessionRead,
 )
-from app.services.exam_scheduling import auto_open_if_due
+from app.services.exam_scheduling import auto_close_if_expired, auto_open_if_due
 from app.services.scoring import dispatch_score_job
 
 logger = logging.getLogger(__name__)
@@ -483,6 +483,7 @@ async def get_student_session(
     exam = await _get_exam_or_404(db, exam_id)
     # Open the exam if its scheduled start has passed (AEGIS-104 auto-open).
     await auto_open_if_due(db, exam)
+    await auto_close_if_expired(db, exam)
 
     result = await db.execute(
         select(StudentSession).where(
@@ -555,6 +556,7 @@ async def get_exam_questions(
     exam = await _get_exam_or_404(db, exam_id)
     # Open on demand if the scheduled start has passed (AEGIS-104 auto-open).
     await auto_open_if_due(db, exam)
+    await auto_close_if_expired(db, exam)
     if exam.state != "open":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
