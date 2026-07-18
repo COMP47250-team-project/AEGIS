@@ -130,6 +130,54 @@ async def get_student_score(
     }
 
 
+async def _resolve_student_names(
+    db: AsyncSession, student_ids: list[str]
+) -> dict[str, str]:
+    """Batch-resolve display names for a list of student_id strings.
+
+    Silently skips any id that isn't a valid UUID rather than failing the
+    whole lookup.
+    """
+    valid_ids = [sid for sid in student_ids if _is_valid_uuid(sid)]
+    if not valid_ids:
+        return {}
+    users_result = await db.execute(
+        select(User).where(User.id.in_([uuid.UUID(sid) for sid in valid_ids]))
+    )
+    return {str(u.id): (u.full_name or u.email) for u in users_result.scalars().all()}
+
+
+def _score_row(sid: str, name: str, score: SessionScore | None) -> dict:
+    """Build one /scores row, defaulting to zeros for an unscored student."""
+    if score is None:
+        return {
+            "student_id": sid,
+            "student_name": name,
+            "integrity_score": 0.0,
+            "tab_switch_score": 0.0,
+            "paste_score": 0.0,
+            "keystroke_score": 0.0,
+            "focus_loss_score": 0.0,
+            "answer_timing_score": 0.0,
+            "copy_sequence_score": 0.0,
+            "flagged": False,
+            "has_telemetry": False,
+        }
+    return {
+        "student_id": sid,
+        "student_name": name,
+        "integrity_score": score.integrity_score,
+        "tab_switch_score": score.tab_switch_score,
+        "paste_score": score.paste_score,
+        "keystroke_score": score.keystroke_score,
+        "focus_loss_score": score.focus_loss_score,
+        "answer_timing_score": score.answer_timing_score,
+        "copy_sequence_score": score.copy_sequence_score,
+        "flagged": score.integrity_score >= FLAGGED_THRESHOLD,
+        "has_telemetry": score.has_telemetry,
+    }
+
+
 @router.get("/{session_id}/scores")
 async def list_session_scores(
     session_id: uuid.UUID,
@@ -160,38 +208,12 @@ async def list_session_scores(
     scores_by_student = {s.student_id: s for s in result.scalars().all()}
 
     student_ids = list(set(enrolled_ids) | set(scores_by_student.keys()))
-    name_map: dict[str, str] = {}
-    if student_ids:
-        try:
-            users_result = await db.execute(
-                select(User).where(
-                    User.id.in_([uuid.UUID(sid) for sid in student_ids if _is_valid_uuid(sid)])
-                )
-            )
-            for u in users_result.scalars().all():
-                name_map[str(u.id)] = u.full_name or u.email
-        except Exception:
-            pass
+    name_map = await _resolve_student_names(db, student_ids)
 
-    items = []
-    for sid in student_ids:
-        s = scores_by_student.get(sid)
-        items.append(
-            {
-                "student_id": sid,
-                "student_name": name_map.get(sid, sid),
-                "integrity_score": s.integrity_score if s else 0.0,
-                "tab_switch_score": s.tab_switch_score if s else 0.0,
-                "paste_score": s.paste_score if s else 0.0,
-                "keystroke_score": s.keystroke_score if s else 0.0,
-                "focus_loss_score": s.focus_loss_score if s else 0.0,
-                "answer_timing_score": s.answer_timing_score if s else 0.0,
-                "copy_sequence_score": s.copy_sequence_score if s else 0.0,
-                "flagged": s.integrity_score >= 0.70 if s else False,
-                "has_telemetry": s.has_telemetry if s else False,
-            }
-        )
-
+    items = [
+        _score_row(sid, name_map.get(sid, sid), scores_by_student.get(sid))
+        for sid in student_ids
+    ]
     return sorted(items, key=lambda x: x["integrity_score"], reverse=True)
 
 
