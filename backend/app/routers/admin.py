@@ -227,3 +227,29 @@ async def deactivate_user(
         created_at=user.created_at,
         last_login=user.last_login,
     )
+
+
+@router.post("/users/{user_id}/activate", response_model=AdminUser)
+async def activate_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: str = Depends(require_role("super_admin")),
+) -> AdminUser:
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    user.is_active = True
+    await db.commit()
+    await db.refresh(user)
+    return AdminUser(
+        id=str(user.id),
+        email=user.email,
+        role=user.role,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        last_login=user.last_login,
+    )
