@@ -26,6 +26,7 @@ interface StudentGradeEntry {
   mcq_correct: number;
   mcq_total: number;
   answers: GradeAnswerItem[];
+  attended: boolean;
 }
 
 interface ExamGradeReport {
@@ -140,6 +141,11 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
     }
   };
 
+  // AEGIS-118: "Absent" (never joined — no StudentSession) is visually
+  // distinct from "No Answer" (joined, but left every question blank).
+  const noAnswer =
+    entry.attended && entry.answers.every((a) => !a.student_answer);
+
   // AEGIS-112: overall points (MCQ + manual short answers), reflecting the
   // live-saved scores so the total updates the moment a grade is saved.
   const totalPossible = entry.answers.reduce((sum, a) => sum + a.max_score, 0);
@@ -157,7 +163,19 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
         className="w-full flex items-center justify-between px-4 py-3 bg-surface-card hover:bg-surface-soft transition-colors text-left"
       >
         <div>
-          <p className="text-sm font-medium text-ink">{displayName}</p>
+          <p className="text-sm font-medium text-ink flex items-center gap-2">
+            {displayName}
+            {!entry.attended && (
+              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-soft text-mute border border-hairline">
+                Absent
+              </span>
+            )}
+            {noAnswer && (
+              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary-active border border-primary/20">
+                No Answer
+              </span>
+            )}
+          </p>
           {entry.student_email && entry.student_name && (
             <p className="text-xs text-mute">{entry.student_email}</p>
           )}
