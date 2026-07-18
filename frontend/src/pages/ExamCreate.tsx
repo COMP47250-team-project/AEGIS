@@ -83,6 +83,8 @@ const ExamCreate: React.FC = () => {
     if (!title.trim()) return "Exam title is required.";
     if (!courseId.trim()) return "Course is required.";
     if (!start || !end) return "Start and end times are required.";
+    if (new Date(start) <= new Date())
+      return "Please select a future date and time for the exam start.";
     if (durationMinutes(start, end) <= 0)
       return "End time must be later than the start time.";
     if (questions.length < 1) return "Add at least 1 question.";

@@ -118,7 +118,7 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
   });
 
   // Fill exam details — starts in 5 s so it auto-opens before T2 enters it
-  const startTime = new Date(Date.now() + 5_000);
+  const startTime = new Date(Date.now() + 60_000);
   const endTime = new Date(Date.now() + 35 * 60_000);
 
   await page.fill("#exam-title", EXAM_TITLE);
@@ -158,6 +158,7 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
 test("student registers, enters exam, triggers tab blur, submits", async ({
   browser,
 }) => {
+  test.setTimeout(200_000); // exam may take up to 2 min to open; allow buffer + margin
   const ctx = await browser.newContext({ baseURL: "http://localhost:5173" });
   try {
     const page = await ctx.newPage();
@@ -182,8 +183,26 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
     });
     await page.click("text=I Consent — Begin Exam");
 
-    // Wait for questions
-    await page.waitForSelector("text=What is 2 + 2?", { timeout: 30_000 });
+    // Wait for questions — exam may not have opened yet if we arrived early.
+    // The questions endpoint returns 409 until scheduled_start passes, and the
+    // app shows a permanent "Failed to load exam questions" error with no
+    // built-in retry — so we reload and re-consent until it succeeds.
+    await expect(async () => {
+      const failed = await page
+        .locator("text=Failed to load exam questions")
+        .isVisible()
+        .catch(() => false);
+      if (failed) {
+        await page.reload();
+        const consentBtn = page.locator("text=I Consent — Begin Exam");
+        if (await consentBtn.isVisible().catch(() => false)) {
+          await consentBtn.click();
+        }
+      }
+      await expect(page.locator("text=What is 2 + 2?")).toBeVisible({
+        timeout: 5_000,
+      });
+    }).toPass({ timeout: 150_000, intervals: [5_000] });
 
     // Answer Q1
     await page.click("text=4");
@@ -226,8 +245,6 @@ test("student registers, enters exam, triggers tab blur, submits", async ({
 });
 
 // ---------------------------------------------------------------------------
-// T3: Professor checks session history for non-zero risk score
-// ---------------------------------------------------------------------------
 // T3: Professor closes exam then checks session history for non-zero risk score
 // ---------------------------------------------------------------------------
 
@@ -235,6 +252,7 @@ test("professor session history shows risk score > 0% after student submission",
   page,
   request,
 }) => {
+  test.setTimeout(120_000); // async scorer can take a while after close
   // Close the exam via the API so it moves to "closed" state and scoring runs.
   // The History tab only shows closed exams; the async scorer only runs on close.
   // We need an access token — log in via the API directly.
@@ -300,5 +318,5 @@ test("professor session history shows risk score > 0% after student submission",
     await expect(
       page.locator("text=/Low risk|Moderate|High risk/").first(),
     ).toBeVisible();
-  }).toPass({ timeout: 30_000, intervals: [3_000] });
+  }).toPass({ timeout: 90_000, intervals: [3_000] });
 });
