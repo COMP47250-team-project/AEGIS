@@ -50,7 +50,7 @@ async def test_enrolled_student_with_no_telemetry_gets_zero_score_not_flagged(
             )
         )
     ).scalar_one()
-    assert score.integrity_score == 0.0
+    assert score.integrity_score == pytest.approx(0.0)
     assert score.has_telemetry is False
 
     flags = (

@@ -230,7 +230,7 @@ async def test_list_session_scores_shows_enrolled_student_with_no_telemetry(
     data = resp.json()
     assert len(data) == 1
     assert data[0]["student_id"] == "student-001"
-    assert data[0]["integrity_score"] == 0.0
+    assert data[0]["integrity_score"] == pytest.approx(0.0)
     assert data[0]["flagged"] is False
     assert data[0]["has_telemetry"] is False
 
