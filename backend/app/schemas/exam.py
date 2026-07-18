@@ -210,6 +210,10 @@ class StudentGradeEntry(BaseModel):
     mcq_correct: int
     mcq_total: int
     answers: list[GradeAnswerItem]
+    # AEGIS-118: True when a StudentSession row exists — the student actually
+    # joined the exam. False distinguishes "Absent" from "attended but left
+    # answers blank" ("No Answer"), which the answers above already show.
+    attended: bool = True
 
 
 class ManualGradeSubmit(BaseModel):

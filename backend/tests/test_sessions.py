@@ -218,11 +218,21 @@ async def test_list_session_scores_returns_sorted_by_risk(
 
 
 @pytest.mark.asyncio
-async def test_list_session_scores_empty_when_none(client: AsyncClient) -> None:
+async def test_list_session_scores_shows_enrolled_student_with_no_telemetry(
+    client: AsyncClient,
+) -> None:
+    """AEGIS-118: an enrolled student with no SessionScore row (never produced
+    telemetry) must still appear — with a real 0 score, unflagged — instead of
+    being omitted."""
     exam_id = await _open_exam_with_student(client)
     resp = await client.get(f"/sessions/{exam_id}/scores")
     assert resp.status_code == 200
-    assert resp.json() == []
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["student_id"] == "student-001"
+    assert data[0]["integrity_score"] == 0.0
+    assert data[0]["flagged"] is False
+    assert data[0]["has_telemetry"] is False
 
 
 @pytest.mark.asyncio

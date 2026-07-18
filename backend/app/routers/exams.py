@@ -646,6 +646,15 @@ async def get_exam_grade(
     )
     all_answers = list(answer_result.scalars().all())
 
+    # AEGIS-118: a StudentSession row (or a saved answer) means the student
+    # actually engaged with the exam — distinguishes "Absent" (neither) from
+    # "attended but left answers blank".
+    session_result = await db.execute(
+        select(StudentSession.student_id).where(StudentSession.exam_id == exam_id)
+    )
+    attended_ids = {row[0] for row in session_result.all()}
+    attended_ids |= {ans.student_id for ans in all_answers}
+
     # Group answers by student
     answers_by_student: dict[str, dict[str, ExamAnswer]] = {}
     for ans in all_answers:
@@ -700,6 +709,7 @@ async def get_exam_grade(
                 mcq_correct=mcq_correct,
                 mcq_total=mcq_total,
                 answers=grade_answers,
+                attended=sid in attended_ids,
             )
         )
 
@@ -820,12 +830,20 @@ async def export_session_csv(
             detail="Exam must be closed before exporting",
         )
 
+    # AEGIS-118: enrolled students with zero telemetry get no SessionScore row
+    # in the old flow — iterate enrollments (not scores) so nobody is silently
+    # omitted from the export.
+    enrollment_result = await db.execute(
+        select(Enrollment.student_id).where(Enrollment.exam_id == exam_id)
+    )
+    enrolled_ids = [row[0] for row in enrollment_result.all()]
+
     scores_result = await db.execute(
         select(SessionScore).where(SessionScore.exam_id == exam_id)
     )
-    scores = scores_result.scalars().all()
+    scores_by_student = {s.student_id: s for s in scores_result.scalars().all()}
 
-    student_ids = [s.student_id for s in scores]
+    student_ids = list(set(enrolled_ids) | set(scores_by_student.keys()))
     name_map: dict[str, str] = {}
     if student_ids:
         valid_uuids = []
@@ -855,21 +873,29 @@ async def export_session_csv(
             "answer_timing_score",
             "copy_sequence_score",
             "flagged",
+            "has_telemetry",
         ]
     )
-    for s in sorted(scores, key=lambda x: x.integrity_score, reverse=True):
+
+    def _sort_key(sid: str) -> float:
+        s = scores_by_student.get(sid)
+        return s.integrity_score if s else 0.0
+
+    for sid in sorted(student_ids, key=_sort_key, reverse=True):
+        s = scores_by_student.get(sid)
         writer.writerow(
             [
-                s.student_id,
-                name_map.get(s.student_id, "Unknown"),
-                round(s.integrity_score, 4),
-                round(s.tab_switch_score, 4),
-                round(s.paste_score, 4),
-                round(s.keystroke_score, 4),
-                round(s.focus_loss_score, 4),
-                round(s.answer_timing_score, 4),
-                round(s.copy_sequence_score, 4),
-                "YES" if s.integrity_score >= 0.70 else "no",
+                sid,
+                name_map.get(sid, "Unknown"),
+                round(s.integrity_score, 4) if s else 0.0,
+                round(s.tab_switch_score, 4) if s else 0.0,
+                round(s.paste_score, 4) if s else 0.0,
+                round(s.keystroke_score, 4) if s else 0.0,
+                round(s.focus_loss_score, 4) if s else 0.0,
+                round(s.answer_timing_score, 4) if s else 0.0,
+                round(s.copy_sequence_score, 4) if s else 0.0,
+                "YES" if s and s.integrity_score >= 0.70 else "no",
+                "YES" if s and s.has_telemetry else "NO",
             ]
         )
 

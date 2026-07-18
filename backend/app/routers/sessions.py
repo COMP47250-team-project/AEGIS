@@ -118,6 +118,7 @@ async def get_student_score(
     return {
         "available": True,
         "integrity_score": score.integrity_score,
+        "has_telemetry": score.has_telemetry,
         "components": {
             "Tab Switch": score.tab_switch_score,
             "Paste": score.paste_score,
@@ -135,9 +136,12 @@ async def list_session_scores(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_role("professor")),
 ) -> list[dict]:
-    """Return integrity scores for all students in a completed session.
+    """Return integrity scores for every enrolled student in a session.
 
-    Only the exam owner may access this endpoint.
+    Enrolled students who produced zero telemetry (e.g. never joined the
+    exam) still appear, with a real 0 score and has_telemetry=False, instead
+    of being silently omitted (AEGIS-118). Only the exam owner may access
+    this endpoint.
     """
     exam = await db.scalar(
         select(ExamSession).where(ExamSession.id == session_id)
@@ -145,12 +149,17 @@ async def list_session_scores(
     if exam is None or str(exam.created_by) != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    enrollment_result = await db.execute(
+        select(Enrollment.student_id).where(Enrollment.exam_id == session_id)
+    )
+    enrolled_ids = [row[0] for row in enrollment_result.all()]
+
     result = await db.execute(
         select(SessionScore).where(SessionScore.exam_id == session_id)
     )
-    scores = result.scalars().all()
+    scores_by_student = {s.student_id: s for s in result.scalars().all()}
 
-    student_ids = [s.student_id for s in scores]
+    student_ids = list(set(enrolled_ids) | set(scores_by_student.keys()))
     name_map: dict[str, str] = {}
     if student_ids:
         try:
@@ -164,21 +173,26 @@ async def list_session_scores(
         except Exception:
             pass
 
-    return [
-        {
-            "student_id": s.student_id,
-            "student_name": name_map.get(s.student_id, s.student_id),
-            "integrity_score": s.integrity_score,
-            "tab_switch_score": s.tab_switch_score,
-            "paste_score": s.paste_score,
-            "keystroke_score": s.keystroke_score,
-            "focus_loss_score": s.focus_loss_score,
-            "answer_timing_score": s.answer_timing_score,
-            "copy_sequence_score": s.copy_sequence_score,
-            "flagged": s.integrity_score >= 0.70,
-        }
-        for s in sorted(scores, key=lambda x: x.integrity_score, reverse=True)
-    ]
+    items = []
+    for sid in student_ids:
+        s = scores_by_student.get(sid)
+        items.append(
+            {
+                "student_id": sid,
+                "student_name": name_map.get(sid, sid),
+                "integrity_score": s.integrity_score if s else 0.0,
+                "tab_switch_score": s.tab_switch_score if s else 0.0,
+                "paste_score": s.paste_score if s else 0.0,
+                "keystroke_score": s.keystroke_score if s else 0.0,
+                "focus_loss_score": s.focus_loss_score if s else 0.0,
+                "answer_timing_score": s.answer_timing_score if s else 0.0,
+                "copy_sequence_score": s.copy_sequence_score if s else 0.0,
+                "flagged": s.integrity_score >= 0.70 if s else False,
+                "has_telemetry": s.has_telemetry if s else False,
+            }
+        )
+
+    return sorted(items, key=lambda x: x["integrity_score"], reverse=True)
 
 
 def _is_valid_uuid(value: str) -> bool:
