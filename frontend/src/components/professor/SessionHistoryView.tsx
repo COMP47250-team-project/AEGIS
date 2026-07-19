@@ -24,6 +24,7 @@ interface StudentScore {
   answer_timing_score: number;
   copy_sequence_score: number;
   flagged: boolean;
+  has_telemetry: boolean;
 }
 
 // Risk badge uses semantic AEGIS accent tokens:
@@ -76,6 +77,28 @@ const StudentScoreCard: React.FC<{
 }> = ({ score, onViewTimeline }) => {
   const { label, cls } = riskBadge(score.integrity_score);
   const overallPct = Math.round(score.integrity_score * 100);
+
+  if (!score.has_telemetry) {
+    return (
+      <div className="rounded-md border border-hairline bg-surface-card p-4">
+        <div className="flex items-start justify-between mb-1">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink truncate">
+              {score.student_name}
+            </p>
+            <p className="text-xs text-ash mt-0.5 truncate">{score.student_id}</p>
+          </div>
+          <div className="flex items-center gap-2 ml-2 shrink-0">
+            <span className="text-lg font-bold text-ink">0%</span>
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-surface-soft text-mute border border-hairline">
+              Absent
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-mute mt-2">No telemetry captured — student never joined the exam.</p>
+      </div>
+    );
+  }
 
   return (
     <div
