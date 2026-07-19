@@ -114,6 +114,25 @@ async def test_get_exam_not_found_returns_404(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_list_exams_reports_short_answer_and_release_flags(
+    client: AsyncClient,
+) -> None:
+    """AEGIS-112b: list_exams surfaces has_short_answers/results_released so
+    the professor UI can label a closed exam 'Evaluate' vs 'View Grades'."""
+    quiz_id = await _create_quiz(client)
+    await client.post(
+        f"/quizzes/{quiz_id}/questions",
+        json={"type": "short", "prompt": "Explain.", "max_score": 5, "position": 0},
+    )
+    exam_id = await _create_exam(client, quiz_id)
+
+    items = (await client.get("/exams")).json()
+    exam = next(e for e in items if e["id"] == exam_id)
+    assert exam["has_short_answers"] is True
+    assert exam["results_released"] is False
+
+
 # ---------------------------------------------------------------------------
 # Enrollment
 # ---------------------------------------------------------------------------
