@@ -94,10 +94,26 @@ async def list_exams(
         .order_by(ExamSession.created_at.desc())
     )
     rows = result.all()
+
+    # AEGIS-112b: which quizzes have short-answer questions? Needed so the
+    # closed-exam action button reads "Evaluate" (grading still needed) vs
+    # "View Grades" (MCQ-only, or already released) — mirrors student.py.
+    quiz_ids = list({exam.quiz_id for exam, _ in rows})
+    quizzes_with_short: set[uuid.UUID] = set()
+    if quiz_ids:
+        short_rows = await db.execute(
+            select(Question.quiz_id)
+            .where(Question.quiz_id.in_(quiz_ids), Question.type == "short")
+            .distinct()
+        )
+        quizzes_with_short = {qid for (qid,) in short_rows.all()}
+
     items: list[ExamRead] = []
     for exam, quiz in rows:
         count = await _enrollment_count(db, exam.id)
-        items.append(ExamRead.from_orm_with_count(exam, count, quiz_title=quiz.title))
+        item = ExamRead.from_orm_with_count(exam, count, quiz_title=quiz.title)
+        item.has_short_answers = exam.quiz_id in quizzes_with_short
+        items.append(item)
     return items
 
 
@@ -733,8 +749,10 @@ async def release_results(
 ) -> ExamGradeReport:
     """AEGIS-112b: release results to students ("Submit Grades").
 
-    Only the owner, on a closed exam. Idempotent — releasing again just returns
-    the current report (so re-editing a grade and re-releasing is safe).
+    Only the owner, on a closed exam, and only once every gradable answer has
+    a score — blocks premature release with an actionable ungraded count.
+    Idempotent — releasing again just returns the current report (so
+    re-editing a grade and re-releasing is safe).
     Returns the refreshed grade report.
     """
     exam = await _get_exam_or_404(db, exam_id)
@@ -745,8 +763,21 @@ async def release_results(
             detail="Results can only be released for a closed exam",
         )
     if exam.results_released_at is None:
+        report = await get_exam_grade(exam_id, db=db, user_id=user_id)
+        if report.ungraded_short > 0:
+            plural = report.ungraded_short != 1
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"{report.ungraded_short} answer{'s' if plural else ''} "
+                    f"still {'need' if plural else 'needs'} grading before "
+                    "results can be released."
+                ),
+            )
         exam.results_released_at = datetime.now(timezone.utc)
         await db.commit()
+        report.results_released = True
+        return report
     return await get_exam_grade(exam_id, db=db, user_id=user_id)
 
 

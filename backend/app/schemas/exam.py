@@ -49,6 +49,12 @@ class ExamRead(BaseModel):
     created_at: datetime
     enrollment_count: int = 0
     quiz_title: str | None = None
+    # AEGIS-112b: whether results have been released (drives the professor
+    # list's "Evaluate" vs "View Grades" label). has_short_answers is only
+    # populated by the exam list endpoint (needs a batch quiz lookup);
+    # elsewhere it defaults False, which is harmless since nothing else reads it.
+    results_released: bool = False
+    has_short_answers: bool = False
 
     @classmethod
     def from_orm_with_count(
@@ -57,6 +63,7 @@ class ExamRead(BaseModel):
         obj = cls.model_validate(exam)
         obj.enrollment_count = count
         obj.quiz_title = quiz_title
+        obj.results_released = getattr(exam, "results_released_at", None) is not None
         return obj
 
 

@@ -466,7 +466,12 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
           {!report.results_released && (
             <button
               onClick={handleRelease}
-              disabled={releasing}
+              disabled={releasing || report.ungraded_short > 0}
+              title={
+                report.ungraded_short > 0
+                  ? "Grade every short answer before releasing results."
+                  : undefined
+              }
               className="flex-shrink-0 px-4 py-2 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
             >
               {releasing ? "Releasing…" : "Submit Grades"}

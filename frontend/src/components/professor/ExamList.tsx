@@ -15,6 +15,8 @@ export interface ExamRow {
   duration_minutes: number;
   state: "draft" | "open" | "closed";
   enrollment_count: number;
+  results_released: boolean;
+  has_short_answers: boolean;
 }
 
 interface StudentOption {
@@ -513,7 +515,11 @@ const ExamList: React.FC = () => {
                         onClick={() => setGradeExamId(exam.id)}
                         className="px-2.5 py-1.5 text-xs font-semibold rounded bg-primary text-ink hover:bg-primary-pressed transition-colors"
                       >
-                        View Grades
+                        {/* AEGIS-112b: "Evaluate" until short answers are graded
+                            and released; MCQ-only exams go straight to View Grades */}
+                        {exam.has_short_answers && !exam.results_released
+                          ? "Evaluate"
+                          : "View Grades"}
                       </button>
                     )}
                   </div>
