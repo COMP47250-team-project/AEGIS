@@ -54,7 +54,7 @@ const ScorePill: React.FC<{ correct: number; total: number }> = ({
   total,
 }) => {
   if (total === 0) return <span className="text-xs text-mute">No MCQ</span>;
-  const pct = Math.round((correct / total) * 100);
+  const pct = (correct / total) * 100;
   const cls =
     pct >= 80
       ? "bg-accent-green-soft text-accent-green border-accent-green/20"
@@ -65,7 +65,7 @@ const ScorePill: React.FC<{ correct: number; total: number }> = ({
     <span
       className={`inline-block px-2 py-0.5 rounded border text-xs font-semibold ${cls}`}
     >
-      {correct}/{total} MCQ ({pct}%)
+      {correct}/{total} MCQ
     </span>
   );
 };
@@ -179,23 +179,45 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
     return sum + (score ?? 0);
   }, 0);
 
-  // AEGIS-119: auto-highlight high-risk ("copy") students — only the collapsed
-  // header, not the expanded answers panel.
+  // AEGIS-119: row state → visual treatment, applied to the collapsed header
+  // ONLY (the expanded answers panel stays neutral). Precedence:
+  //   red   = high integrity risk ("copy")     — most important
+  //   amber = short answers still need grading  — clears once graded
+  //   dim   = absent (never joined the exam)
+  const isAbsent = !entry.attended;
   const highRisk = (entry.integrity_score ?? 0) >= HIGH_RISK_THRESHOLD;
+  const needsGrading =
+    !isAbsent &&
+    shortAnswers.some((a) => {
+      // Prefer the locally-saved score (updates the instant a grade is saved),
+      // fall back to the server's manual_score so there's no first-render flash.
+      const live = savedScores[a.answer_id!];
+      const score = live !== undefined ? live : a.manual_score;
+      return score == null;
+    });
+
+  const borderClass = highRisk
+    ? "border-accent-red/50"
+    : needsGrading
+      ? "border-primary/40"
+      : "border-hairline";
+  const headerClass = highRisk
+    ? "bg-accent-red-soft hover:bg-accent-red-soft/80"
+    : needsGrading
+      ? "bg-primary/10 hover:bg-primary/20"
+      : isAbsent
+        ? "bg-surface-soft"
+        : "bg-surface-card hover:bg-surface-soft";
 
   return (
     <div
-      className={`rounded-md overflow-hidden border ${
-        highRisk ? "border-accent-red/50" : "border-hairline"
+      className={`rounded-md overflow-hidden border ${borderClass} ${
+        isAbsent && !highRisk ? "opacity-70" : ""
       }`}
     >
       <button
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full flex items-center justify-between px-4 py-3 transition-colors text-left ${
-          highRisk
-            ? "bg-accent-red-soft hover:bg-accent-red-soft/80"
-            : "bg-surface-card hover:bg-surface-soft"
-        }`}
+        className={`w-full flex items-center justify-between px-4 py-3 transition-colors text-left ${headerClass}`}
       >
         <div>
           <p className="text-sm font-medium text-ink flex items-center gap-2">
@@ -205,8 +227,13 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
                 ⚠ High Integrity Risk
               </span>
             )}
+            {needsGrading && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-primary/15 text-primary-active border border-primary/30">
+                Needs grading
+              </span>
+            )}
             {!entry.attended && (
-              <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-soft text-mute border border-hairline">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-surface-dark text-on-dark">
                 Absent
               </span>
             )}
