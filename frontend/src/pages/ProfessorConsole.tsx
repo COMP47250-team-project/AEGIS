@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ExamList from "../components/professor/ExamList";
 import QuizBuilder from "../components/professor/QuizBuilder";
@@ -22,9 +22,23 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "history", label: "History" },
 ];
 
+const TAB_IDS = TABS.map((t) => t.id);
+
 const ProfessorConsole: React.FC = () => {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  // AEGIS-119: the active tab lives in the URL (?tab=…) so a hard refresh
+  // reloads the same tab instead of resetting to Dashboard.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: Tab = TAB_IDS.includes(tabParam as Tab)
+    ? (tabParam as Tab)
+    : "dashboard";
+  const setActiveTab = useCallback(
+    (tab: Tab) => {
+      setSearchParams(tab === "dashboard" ? {} : { tab }, { replace: true });
+    },
+    [setSearchParams]
+  );
   const [pendingQuizId, setPendingQuizId] = useState<string | undefined>();
   const [examListKey, setExamListKey] = useState(0);
   const [historyTimeline, setHistoryTimeline] = useState<{
