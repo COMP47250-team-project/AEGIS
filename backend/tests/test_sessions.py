@@ -241,3 +241,55 @@ async def test_list_session_scores_not_owner_returns_404(
 ) -> None:
     resp = await client.get(f"/sessions/{uuid.uuid4()}/scores")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_scores_mixed_cohort_absent_vs_submitted(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Absent is derived from StudentSession, not telemetry (AEGIS-119).
+
+    A mixed cohort — one absent, one submitted with telemetry, one submitted
+    WITHOUT telemetry — must never mark a submitted student Absent, even the
+    one who produced no telemetry.
+    """
+    from app.models.exam import StudentSession
+
+    quiz_id = (await client.post("/quizzes", json=QUIZ)).json()["id"]
+    exam_id = (
+        await client.post("/exams", json={**EXAM, "quiz_id": quiz_id})
+    ).json()["id"]
+    exam_uuid = uuid.UUID(exam_id)
+
+    absent = "stud-absent"
+    subm_tel = "stud-submitted-telemetry"
+    subm_no_tel = "stud-submitted-no-telemetry"
+    for sid in (absent, subm_tel, subm_no_tel):
+        await client.post(f"/exams/{exam_id}/enrollments", json={"student_id": sid})
+
+    # The two "submitted" students created a StudentSession (joined the exam).
+    db_session.add(StudentSession(exam_id=exam_uuid, student_id=subm_tel))
+    db_session.add(StudentSession(exam_id=exam_uuid, student_id=subm_no_tel))
+    # Scored rows: one with telemetry, one without. Absent student has neither.
+    db_session.add(
+        SessionScore(
+            exam_id=exam_uuid, student_id=subm_tel,
+            integrity_score=0.5, has_telemetry=True,
+        )
+    )
+    db_session.add(
+        SessionScore(
+            exam_id=exam_uuid, student_id=subm_no_tel,
+            integrity_score=0.0, has_telemetry=False,
+        )
+    )
+    await db_session.commit()
+
+    rows = (await client.get(f"/sessions/{exam_id}/scores")).json()
+    by_id = {r["student_id"]: r for r in rows}
+
+    assert by_id[absent]["status"] == "absent"
+    # Neither submitted student is Absent — including the no-telemetry one.
+    assert by_id[subm_tel]["status"] == "submitted"
+    assert by_id[subm_no_tel]["status"] == "submitted"
+    assert by_id[subm_no_tel]["has_telemetry"] is False
