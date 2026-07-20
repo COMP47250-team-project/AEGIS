@@ -257,7 +257,6 @@ const ProfessorSession: React.FC = () => {
                       <p className="text-sm font-semibold text-ink truncate flex items-center gap-1">
                         {s.name ?? s.student_id}
                       </p>
-                      <p className="text-xs text-mute truncate">{s.student_id}</p>
                     </div>
                     <span
                       className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded ${

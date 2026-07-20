@@ -140,7 +140,6 @@ const StudentScoreCard: React.FC<{
             {score.flagged && <span title="Flagged student">⚠️</span>}
             {score.student_name}
           </p>
-          <p className="text-xs text-ash mt-0.5 truncate">{score.student_id}</p>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
           <span className="text-lg font-bold text-ink">{overallPct}%</span>
