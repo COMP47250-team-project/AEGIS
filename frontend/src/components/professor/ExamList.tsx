@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import apiClient from "../../api/client";
 import ExamGradeView from "./ExamGradeView";
 
@@ -411,7 +412,24 @@ const ExamList: React.FC = () => {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [expandEnroll, setExpandEnroll] = useState<string | null>(null);
-  const [gradeExamId, setGradeExamId] = useState<string | null>(null);
+  // AEGIS-119: the open grade/evaluate view lives in the URL (?grade=…) so a
+  // hard refresh reopens it instead of dropping back to the exam list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const gradeExamId = searchParams.get("grade");
+  const setGradeExamId = useCallback(
+    (id: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (id) next.set("grade", id);
+          else next.delete("grade");
+          return next;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
 
   const loadExams = useCallback(async () => {
     try {
