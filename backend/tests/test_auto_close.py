@@ -132,3 +132,41 @@ async def test_auto_close_already_closed_exam_is_noop():
 
     assert result is False
     db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_close_dispatches_score_job():
+    """AEGIS-114/118: auto-close must dispatch scoring exactly like the manual
+    close endpoint does — otherwise an auto-closed exam's session_scores stays
+    empty forever and every student reads as Absent regardless of real
+    telemetry (the bug this regression test locks in)."""
+    exam = make_exam(state="open", minutes_ago=70, duration=60)
+    db = AsyncMock()
+
+    with (
+        patch(
+            "app.routers.telemetry.close_exam_sessions",
+            new=AsyncMock(return_value=0),
+        ),
+        patch(
+            "app.services.exam_scheduling.dispatch_score_job", new=AsyncMock()
+        ) as mock_dispatch,
+    ):
+        result = await auto_close_if_expired(db, exam)
+
+    assert result is True
+    mock_dispatch.assert_called_once_with(exam.id)
+
+
+@pytest.mark.asyncio
+async def test_auto_close_not_expired_does_not_dispatch_score_job():
+    exam = make_exam(state="open", minutes_ago=30, duration=60)
+    db = AsyncMock()
+
+    with patch(
+        "app.services.exam_scheduling.dispatch_score_job", new=AsyncMock()
+    ) as mock_dispatch:
+        result = await auto_close_if_expired(db, exam)
+
+    assert result is False
+    mock_dispatch.assert_not_called()

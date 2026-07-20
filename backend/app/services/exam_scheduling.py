@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.exam import ExamSession
+from app.services.scoring import dispatch_score_job
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,13 @@ async def auto_close_if_expired(db: AsyncSession, exam: ExamSession) -> bool:
         logger.exception(
             "Auto-close exam %s — failed to notify students", exam.id
         )
+
+    # AEGIS-114/118: the manual close endpoint dispatches score computation —
+    # this lazy auto-close path must too, or every auto-closed exam's
+    # session_scores stays empty forever and every student reads as "Absent"
+    # regardless of real telemetry. dispatch_score_job already catches its
+    # own exceptions, so a failure here can't break this read path either.
+    await dispatch_score_job(exam.id)
 
     return True
 
