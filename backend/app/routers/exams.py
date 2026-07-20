@@ -252,10 +252,34 @@ async def enroll_group(
         ).scalars().all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
+    skipped_ids = [sid for sid in member_ids if sid in existing]
     for sid in new_ids:
         db.add(Enrollment(exam_id=exam.id, student_id=sid))
     await db.commit()
-    return {"enrolled": len(new_ids), "group_size": len(member_ids)}
+
+    # AEGIS-119: tell the professor which members were skipped because they were
+    # already enrolled — by name/email, not just a count.
+    skipped: list[str] = []
+    if skipped_ids:
+        valid = []
+        for sid in skipped_ids:
+            try:
+                valid.append(uuid.UUID(sid))
+            except (ValueError, TypeError):
+                continue
+        name_map: dict[str, str] = {}
+        if valid:
+            rows = await db.execute(select(User).where(User.id.in_(valid)))
+            name_map = {
+                str(u.id): (u.full_name or u.email) for u in rows.scalars().all()
+            }
+        skipped = [name_map.get(sid, sid) for sid in skipped_ids]
+
+    return {
+        "enrolled": len(new_ids),
+        "group_size": len(member_ids),
+        "skipped": skipped,
+    }
 
 
 @router.delete(
@@ -671,6 +695,15 @@ async def get_exam_grade(
     attended_ids = {row[0] for row in session_result.all()}
     attended_ids |= {ans.student_id for ans in all_answers}
 
+    # AEGIS-119: per-student integrity score, for auto-highlighting high-risk
+    # ("copy") students in the grade view.
+    score_result = await db.execute(
+        select(SessionScore.student_id, SessionScore.integrity_score).where(
+            SessionScore.exam_id == exam_id
+        )
+    )
+    integrity_by_student = {sid: score for sid, score in score_result.all()}
+
     # Group answers by student
     answers_by_student: dict[str, dict[str, ExamAnswer]] = {}
     for ans in all_answers:
@@ -726,6 +759,7 @@ async def get_exam_grade(
                 mcq_total=mcq_total,
                 answers=grade_answers,
                 attended=sid in attended_ids,
+                integrity_score=integrity_by_student.get(sid),
             )
         )
 

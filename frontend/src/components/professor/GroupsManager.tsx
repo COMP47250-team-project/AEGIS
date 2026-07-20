@@ -274,11 +274,27 @@ const GroupsManager: React.FC = () => {
     setBusy(true);
     setMsg(null);
     try {
-      const { data } = await apiClient.post<{ enrolled: number; group_size: number }>(
-        `/exams/${examId}/enroll-group`,
-        { group_id: detail.id }
-      );
-      setMsg({ text: `Enrolled ${data.enrolled} of ${data.group_size} in the exam.`, ok: true });
+      const { data } = await apiClient.post<{
+        enrolled: number;
+        group_size: number;
+        skipped?: string[];
+      }>(`/exams/${examId}/enroll-group`, { group_id: detail.id });
+      const skipped = data.skipped ?? [];
+      const parts: string[] = [];
+      if (data.enrolled > 0) {
+        parts.push(
+          `Successfully enrolled ${data.enrolled} student${data.enrolled !== 1 ? "s" : ""}.`
+        );
+      }
+      if (skipped.length > 0) {
+        parts.push(
+          `Already in the exam (skipped): ${skipped.join(", ")}.`
+        );
+      }
+      if (parts.length === 0) {
+        parts.push("This group has no members to enrol.");
+      }
+      setMsg({ text: parts.join(" "), ok: true });
     } catch (err) {
       setMsg({ text: errorDetail(err) ?? "Enrol failed. The exam must be in draft state.", ok: false });
     } finally {

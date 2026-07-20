@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_role
-from app.models.exam import Enrollment, ExamSession
+from app.models.exam import Enrollment, ExamSession, StudentSession
 from app.models.quiz import Quiz
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.models.user import User
@@ -147,12 +147,23 @@ async def _resolve_student_names(
     return {str(u.id): (u.full_name or u.email) for u in users_result.scalars().all()}
 
 
-def _score_row(sid: str, name: str, score: SessionScore | None) -> dict:
-    """Build one /scores row, defaulting to zeros for an unscored student."""
+def _score_row(
+    sid: str, name: str, score: SessionScore | None, attended: bool
+) -> dict:
+    """Build one /scores row.
+
+    ``attended`` (derived from StudentSession, i.e. the student joined the exam)
+    is the source of truth for "Absent" — NOT telemetry presence. A student can
+    submit answers via REST without producing telemetry, so keying Absent off
+    telemetry wrongly marked submitted students Absent, and could collapse a
+    whole cohort to Absent when telemetry didn't flow (AEGIS-119).
+    """
+    status = "submitted" if attended else "absent"
     if score is None:
         return {
             "student_id": sid,
             "student_name": name,
+            "status": status,
             "integrity_score": 0.0,
             "tab_switch_score": 0.0,
             "paste_score": 0.0,
@@ -166,6 +177,7 @@ def _score_row(sid: str, name: str, score: SessionScore | None) -> dict:
     return {
         "student_id": sid,
         "student_name": name,
+        "status": status,
         "integrity_score": score.integrity_score,
         "tab_switch_score": score.tab_switch_score,
         "paste_score": score.paste_score,
@@ -207,14 +219,32 @@ async def list_session_scores(
     )
     scores_by_student = {s.student_id: s for s in result.scalars().all()}
 
+    # Attendance = the student created a StudentSession (joined/consented). This,
+    # not telemetry, decides "Absent" (AEGIS-119).
+    attended_result = await db.execute(
+        select(StudentSession.student_id).where(
+            StudentSession.exam_id == session_id
+        )
+    )
+    attended_ids = {row[0] for row in attended_result.all()}
+
     student_ids = list(set(enrolled_ids) | set(scores_by_student.keys()))
     name_map = await _resolve_student_names(db, student_ids)
 
     items = [
-        _score_row(sid, name_map.get(sid, sid), scores_by_student.get(sid))
+        _score_row(
+            sid,
+            name_map.get(sid, sid),
+            scores_by_student.get(sid),
+            sid in attended_ids,
+        )
         for sid in student_ids
     ]
-    return sorted(items, key=lambda x: x["integrity_score"], reverse=True)
+    # Absent students last, then by descending integrity score.
+    return sorted(
+        items,
+        key=lambda x: (x["status"] == "absent", -x["integrity_score"]),
+    )
 
 
 def _is_valid_uuid(value: str) -> bool:

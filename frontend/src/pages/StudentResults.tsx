@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import apiClient from "../api/client";
+import ThemeToggle from "../components/ThemeToggle";
 
 // ---------------------------------------------------------------------------
 // Types (mirror backend StudentExamResults schema)
@@ -411,12 +412,15 @@ const StudentResults: React.FC = () => {
               AEGIS
             </span>
           </div>
-          <Link
-            to="/student/dashboard"
-            className="text-sm text-mute hover:text-ink transition-colors"
-          >
-            ← Dashboard
-          </Link>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <Link
+              to="/student/dashboard"
+              className="text-sm text-mute hover:text-ink transition-colors"
+            >
+              ← Dashboard
+            </Link>
+          </div>
         </div>
       </header>
 

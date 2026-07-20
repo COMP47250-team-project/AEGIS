@@ -104,4 +104,10 @@
     outline-offset: 2px;
     border-radius: 2px;
   }
+
+  /* AEGIS-119: the native date/time picker icon is near-black and vanishes on
+     the dark canvas. Invert it in dark mode so it stays visible. */
+  :root[data-theme="dark"] ::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
 }
