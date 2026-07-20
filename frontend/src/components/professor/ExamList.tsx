@@ -79,7 +79,14 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = React.useState<{ valid: ParsedRow[]; invalid: string[] } | null>(null);
   const [working, setWorking] = React.useState(false);
-  const [result, setResult] = React.useState<{ enrolled: number; failed: string[] } | null>(null);
+  // AEGIS-119: distinguish newly enrolled, already-enrolled (skipped), and
+  // unknown-email students by name/email — not just a single count.
+  const [result, setResult] = React.useState<{
+    enrolled: number;
+    skipped: string[];
+    notFound: string[];
+    failed: string[];
+  } | null>(null);
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -96,17 +103,26 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
     if (!parsed || parsed.valid.length === 0) return;
     setWorking(true);
     let enrolled = 0;
+    const skipped: string[] = [];
+    const notFound: string[] = [];
     const failed: string[] = [];
+    const label = (row: ParsedRow) => (row.name ? `${row.name} (${row.email})` : row.email);
     for (const row of parsed.valid) {
       try {
         await apiClient.post(`/exams/${examId}/enroll-by-email`, { email: row.email });
         enrolled++;
       } catch (err: unknown) {
         const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 409) { enrolled++; } else { failed.push(row.email); }
+        if (status === 409) {
+          skipped.push(label(row)); // already enrolled
+        } else if (status === 404) {
+          notFound.push(label(row)); // no student with that email
+        } else {
+          failed.push(label(row));
+        }
       }
     }
-    setResult({ enrolled, failed });
+    setResult({ enrolled, skipped, notFound, failed });
     setWorking(false);
     onUpdated();
   }
@@ -170,11 +186,46 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
       )}
 
       {result && (
-        <div className={`px-3 py-2 rounded border-l-2 ${result.failed.length === 0 ? "bg-accent-green-soft border-accent-green" : "bg-accent-red-soft border-accent-red"}`}>
+        <div
+          className={`px-3 py-2 rounded border-l-2 space-y-1 ${
+            result.failed.length === 0 && result.notFound.length === 0
+              ? "bg-accent-green-soft border-accent-green"
+              : "bg-accent-red-soft border-accent-red"
+          }`}
+        >
           <p className="text-xs font-semibold text-ink">
-            {result.enrolled} enrolled{result.failed.length > 0 ? `, ${result.failed.length} failed` : ""}
+            {result.enrolled} user{result.enrolled !== 1 ? "s" : ""} enrolled successfully.
           </p>
-          {result.failed.map((e, i) => <p key={i} className="text-xs text-body">{e}</p>)}
+          {result.skipped.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-body">
+                {result.skipped.length} user{result.skipped.length !== 1 ? "s" : ""} skipped (already enrolled):
+              </p>
+              {result.skipped.map((e, i) => (
+                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+              ))}
+            </div>
+          )}
+          {result.notFound.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-body">
+                {result.notFound.length} not found (no student with that email):
+              </p>
+              {result.notFound.map((e, i) => (
+                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+              ))}
+            </div>
+          )}
+          {result.failed.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-body">
+                {result.failed.length} failed:
+              </p>
+              {result.failed.map((e, i) => (
+                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
