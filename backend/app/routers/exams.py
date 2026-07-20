@@ -257,8 +257,8 @@ async def enroll_group(
         db.add(Enrollment(exam_id=exam.id, student_id=sid))
     await db.commit()
 
-    # AEGIS-119: tell the professor which members were skipped because they were
-    # already enrolled — by name/email, not just a count.
+    # Tell the professor which members were skipped because they were already
+    # enrolled, by name/email, not just a count.
     skipped: list[str] = []
     if skipped_ids:
         valid = []
