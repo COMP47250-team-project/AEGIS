@@ -30,6 +30,8 @@ def _student_headers(student_id: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 QUIZ_PAYLOAD = {"title": "Absent Student Quiz", "duration_minutes": 30}
+# Sonar: test credential placeholder — not a real secret
+_STUDENT_PW = "StudentPass1"  # noqa: S105
 EXAM_PAYLOAD_TEMPLATE = {
     "course_id": "CS101",
     "scheduled_start": "2026-09-01T09:00:00+00:00",
@@ -157,7 +159,7 @@ async def test_students_who_actually_answer_are_not_marked_absent(
         email = f"real-student-{i}-{uuid.uuid4().hex[:8]}@ucd.ie"
         reg = await client.post(
             "/auth/register",
-            json={"email": email, "password": "StudentPass1", "role": "student"},
+            json={"email": email, "password": _STUDENT_PW, "role": "student"},
         )
         student_id = reg.json()["user"]["id"]
         student_ids.append(student_id)
