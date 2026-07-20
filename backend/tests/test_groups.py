@@ -98,7 +98,8 @@ async def test_empty_group_handled_gracefully(client: AsyncClient) -> None:
     exam_id = await _make_draft_exam(client)
     resp = await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     assert resp.status_code == 201
-    assert resp.json() == {"enrolled": 0, "group_size": 0}
+    # AEGIS-119: response now also reports already-enrolled members (none here).
+    assert resp.json() == {"enrolled": 0, "group_size": 0, "skipped": []}
 
 
 @pytest.mark.asyncio
