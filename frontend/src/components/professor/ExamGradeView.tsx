@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import apiClient from "../../api/client";
 
@@ -69,13 +69,16 @@ interface StudentRowProps {
   entry: StudentGradeEntry;
   totalQuestions: number;
   examId: string;
+  // Called after a successful batch save so the parent can refetch the grade
+  // report — this is what makes "Submit Grades" re-enable without a refresh.
+  onSaved: () => Promise<unknown>;
 }
 
-const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
+const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
   const [expanded, setExpanded] = useState(false);
   const [scores, setScores] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [savingAll, setSavingAll] = useState(false);
+  const [savedAll, setSavedAll] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // The score currently persisted in the DB, so a save is visibly reflected.
   const [savedScores, setSavedScores] = useState<Record<string, number | null>>(
@@ -102,42 +105,57 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
     setSavedScores(initSaved);
   }, [entry.answers]);
 
-  const handleSaveScore = async (answerId: string, maxScore: number) => {
-    const raw = scores[answerId] ?? "";
-    const val = parseFloat(raw);
-    setErrors((e) => ({ ...e, [answerId]: "" }));
+  const shortAnswers = entry.answers.filter(
+    (a) => a.question_type === "short" && a.answer_id
+  );
 
-    // AEGIS-112a: validation failures used to return silently, so the professor
-    // got no feedback and thought the score "wasn't saving". Surface them.
-    if (raw.trim() === "" || isNaN(val)) {
-      setErrors((e) => ({ ...e, [answerId]: "Enter a score." }));
-      return;
+  // AEGIS-119: one "Save all" commits every entered short-answer score in a
+  // single action, replacing the per-answer Save buttons. Validates each input,
+  // saves them together, then triggers a report refetch so the "Submit Grades"
+  // gate re-evaluates immediately (no page refresh).
+  const handleSaveAll = async () => {
+    const newErrors: Record<string, string> = {};
+    const toSave: { answerId: string; score: number }[] = [];
+    for (const ans of shortAnswers) {
+      const raw = scores[ans.answer_id!] ?? "";
+      if (raw.trim() === "") continue; // leave blank answers ungraded
+      const val = parseFloat(raw);
+      if (isNaN(val)) {
+        newErrors[ans.answer_id!] = "Enter a valid number.";
+      } else if (val < 0 || val > ans.max_score) {
+        newErrors[ans.answer_id!] = `Score must be 0–${ans.max_score}.`;
+      } else {
+        toSave.push({ answerId: ans.answer_id!, score: val });
+      }
     }
-    if (val < 0 || val > maxScore) {
-      setErrors((e) => ({ ...e, [answerId]: `Score must be 0–${maxScore}.` }));
-      return;
-    }
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0 || toSave.length === 0) return;
 
-    setSaving((s) => ({ ...s, [answerId]: true }));
+    setSavingAll(true);
     try {
-      await apiClient.patch(`/exams/${examId}/answers/grade`, {
-        answer_id: answerId,
-        score: val,
+      await Promise.all(
+        toSave.map((s) =>
+          apiClient.patch(`/exams/${examId}/answers/grade`, {
+            answer_id: s.answerId,
+            score: s.score,
+          })
+        )
+      );
+      setSavedScores((prev) => {
+        const next = { ...prev };
+        for (const s of toSave) next[s.answerId] = s.score;
+        return next;
       });
-      setSavedScores((s) => ({ ...s, [answerId]: val }));
-      setSaved((s) => ({ ...s, [answerId]: true }));
-      setTimeout(() => setSaved((s) => ({ ...s, [answerId]: false })), 2000);
+      setSavedAll(true);
+      setTimeout(() => setSavedAll(false), 2000);
+      await onSaved(); // refetch report → ungraded_short updates → Submit Grades enables
     } catch (err) {
-      const detail = axios.isAxiosError(err)
-        ? err.response?.data?.detail
-        : null;
-      setErrors((e) => ({
-        ...e,
-        [answerId]:
-          typeof detail === "string" ? detail : "Failed to save score.",
-      }));
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+      setErrors({
+        _all: typeof detail === "string" ? detail : "Failed to save scores.",
+      });
     } finally {
-      setSaving((s) => ({ ...s, [answerId]: false }));
+      setSavingAll(false);
     }
   };
 
@@ -304,19 +322,6 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
                               }
                               className="w-16 px-2 py-1 text-xs border border-hairline rounded-md bg-surface-card text-ink focus:outline-none focus:border-accent-blue"
                             />
-                            <button
-                              onClick={() =>
-                                handleSaveScore(ans.answer_id!, ans.max_score)
-                              }
-                              disabled={saving[ans.answer_id]}
-                              className="px-2 py-1 text-xs bg-primary disabled:bg-surface-soft disabled:text-ash text-ink font-bold rounded-md transition-colors"
-                            >
-                              {saving[ans.answer_id]
-                                ? "Saving…"
-                                : saved[ans.answer_id]
-                                  ? "Saved ✓"
-                                  : "Save"}
-                            </button>
                             {/* Reflect the persisted score so a save is visible */}
                             {savedScores[ans.answer_id] != null && (
                               <span className="text-xs text-accent-green font-semibold">
@@ -336,6 +341,27 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId }) => {
                 </div>
               </div>
             ))
+          )}
+
+          {/* AEGIS-119: one Save action for all this student's short answers. */}
+          {shortAnswers.length > 0 && (
+            <div className="px-4 py-3 flex items-center justify-end gap-3">
+              {errors._all && (
+                <span className="text-xs text-accent-red">{errors._all}</span>
+              )}
+              {savedAll && (
+                <span className="text-xs text-accent-green font-semibold">
+                  All scores saved ✓
+                </span>
+              )}
+              <button
+                onClick={handleSaveAll}
+                disabled={savingAll}
+                className="px-4 py-1.5 text-xs bg-primary disabled:bg-surface-soft disabled:text-ash text-ink font-bold rounded-md transition-colors"
+              >
+                {savingAll ? "Saving…" : "Save all scores"}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -378,13 +404,20 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
     }
   };
 
+  // AEGIS-119: reusable so a save can refetch and re-evaluate the Submit-Grades
+  // gate (ungraded_short) without a page refresh.
+  const loadReport = useCallback(
+    () =>
+      apiClient
+        .get<ExamGradeReport>(`/exams/${examId}/grade`)
+        .then((r) => setReport(r.data))
+        .catch(() => setError("Failed to load grade report.")),
+    [examId]
+  );
+
   useEffect(() => {
-    apiClient
-      .get<ExamGradeReport>(`/exams/${examId}/grade`)
-      .then((r) => setReport(r.data))
-      .catch(() => setError("Failed to load grade report."))
-      .finally(() => setLoading(false));
-  }, [examId]);
+    loadReport().finally(() => setLoading(false));
+  }, [loadReport]);
 
   if (loading) {
     return (
@@ -496,6 +529,7 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
               entry={student}
               examId={examId}
               totalQuestions={report.mcq_total + report.short_total}
+              onSaved={loadReport}
             />
           ))}
         </div>
