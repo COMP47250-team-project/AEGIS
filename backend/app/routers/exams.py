@@ -695,6 +695,15 @@ async def get_exam_grade(
     attended_ids = {row[0] for row in session_result.all()}
     attended_ids |= {ans.student_id for ans in all_answers}
 
+    # AEGIS-119: per-student integrity score, for auto-highlighting high-risk
+    # ("copy") students in the grade view.
+    score_result = await db.execute(
+        select(SessionScore.student_id, SessionScore.integrity_score).where(
+            SessionScore.exam_id == exam_id
+        )
+    )
+    integrity_by_student = {sid: score for sid, score in score_result.all()}
+
     # Group answers by student
     answers_by_student: dict[str, dict[str, ExamAnswer]] = {}
     for ans in all_answers:
@@ -750,6 +759,7 @@ async def get_exam_grade(
                 mcq_total=mcq_total,
                 answers=grade_answers,
                 attended=sid in attended_ids,
+                integrity_score=integrity_by_student.get(sid),
             )
         )
 

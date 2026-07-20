@@ -221,6 +221,9 @@ class StudentGradeEntry(BaseModel):
     # joined the exam. False distinguishes "Absent" from "attended but left
     # answers blank" ("No Answer"), which the answers above already show.
     attended: bool = True
+    # AEGIS-119: integrity/copy score (0–1) so the grade view can auto-highlight
+    # high-risk students. None when scoring hasn't produced a row for them.
+    integrity_score: float | None = None
 
 
 class ManualGradeSubmit(BaseModel):

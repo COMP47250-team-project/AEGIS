@@ -27,7 +27,12 @@ interface StudentGradeEntry {
   mcq_total: number;
   answers: GradeAnswerItem[];
   attended: boolean;
+  integrity_score: number | null;
 }
+
+// AEGIS-119: integrity/copy score at/above which a student is auto-highlighted
+// as high-risk in the grade view (matches the live/history 60% cutoff).
+const HIGH_RISK_THRESHOLD = 0.6;
 
 interface ExamGradeReport {
   exam_id: string;
@@ -174,15 +179,32 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
     return sum + (score ?? 0);
   }, 0);
 
+  // AEGIS-119: auto-highlight high-risk ("copy") students — only the collapsed
+  // header, not the expanded answers panel.
+  const highRisk = (entry.integrity_score ?? 0) >= HIGH_RISK_THRESHOLD;
+
   return (
-    <div className="border border-hairline rounded-md overflow-hidden">
+    <div
+      className={`rounded-md overflow-hidden border ${
+        highRisk ? "border-accent-red/50" : "border-hairline"
+      }`}
+    >
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-surface-card hover:bg-surface-soft transition-colors text-left"
+        className={`w-full flex items-center justify-between px-4 py-3 transition-colors text-left ${
+          highRisk
+            ? "bg-accent-red-soft hover:bg-accent-red-soft/80"
+            : "bg-surface-card hover:bg-surface-soft"
+        }`}
       >
         <div>
           <p className="text-sm font-medium text-ink flex items-center gap-2">
             {displayName}
+            {highRisk && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-accent-red text-on-dark">
+                ⚠ High Integrity Risk
+              </span>
+            )}
             {!entry.attended && (
               <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-surface-soft text-mute border border-hairline">
                 Absent
