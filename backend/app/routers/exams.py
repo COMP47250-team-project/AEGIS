@@ -252,10 +252,34 @@ async def enroll_group(
         ).scalars().all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
+    skipped_ids = [sid for sid in member_ids if sid in existing]
     for sid in new_ids:
         db.add(Enrollment(exam_id=exam.id, student_id=sid))
     await db.commit()
-    return {"enrolled": len(new_ids), "group_size": len(member_ids)}
+
+    # AEGIS-119: tell the professor which members were skipped because they were
+    # already enrolled — by name/email, not just a count.
+    skipped: list[str] = []
+    if skipped_ids:
+        valid = []
+        for sid in skipped_ids:
+            try:
+                valid.append(uuid.UUID(sid))
+            except (ValueError, TypeError):
+                continue
+        name_map: dict[str, str] = {}
+        if valid:
+            rows = await db.execute(select(User).where(User.id.in_(valid)))
+            name_map = {
+                str(u.id): (u.full_name or u.email) for u in rows.scalars().all()
+            }
+        skipped = [name_map.get(sid, sid) for sid in skipped_ids]
+
+    return {
+        "enrolled": len(new_ids),
+        "group_size": len(member_ids),
+        "skipped": skipped,
+    }
 
 
 @router.delete(
