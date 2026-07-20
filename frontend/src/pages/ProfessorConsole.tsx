@@ -93,7 +93,7 @@ const ProfessorConsole: React.FC = () => {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {/* Tab nav */}
         <nav
-          className="flex border-b border-hairline mb-6 overflow-x-auto"
+          className="flex border-b border-hairline mb-6 overflow-x-auto overflow-y-hidden"
           role="tablist"
         >
           {TABS.map((tab) => (
