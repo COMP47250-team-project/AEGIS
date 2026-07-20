@@ -7,13 +7,16 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import apiClient, { getAccessToken } from "../api/client";
 import {
-  isFlagged,
   sortStudents,
   studentRisk,
   type LiveStudent,
   type SortMode,
 } from "../components/professor/liveStudents";
 import TimelineModal from "../components/professor/TimelineModal";
+
+// AEGIS-119: integrity score at/above which a live student is auto-highlighted
+// as high-risk (60%). Lower than the 0.70 "flagged" cutoff for an earlier warning.
+const HIGH_RISK_THRESHOLD = 0.6;
 
 interface ProfessorPayload {
   exam_id: string;
@@ -58,7 +61,6 @@ const ProfessorSession: React.FC = () => {
   const [wsStatus, setWsStatus] = useState<WsStatus>("idle");
   const [ending, setEnding] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("risk");
-  const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<LiveStudent | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -106,10 +108,6 @@ const ProfessorSession: React.FC = () => {
       setEnding(false);
     }
   }, [sessionId, navigate]);
-
-  const acknowledge = useCallback((studentId: string) => {
-    setAcknowledged((prev) => new Set(prev).add(studentId));
-  }, []);
 
   const sorted = sortStudents(students, sortMode);
 
@@ -227,8 +225,10 @@ const ProfessorSession: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {sorted.map((s) => {
               const risk = studentRisk(s);
-              const flagged = isFlagged(s);
-              const showBorder = flagged && !acknowledged.has(s.student_id);
+              // AEGIS-119: high-risk students (>=60%) are auto-highlighted red;
+              // no manual acknowledgement. 0.60 is a lower, earlier-warning
+              // cutoff than the 0.70 "flagged" threshold used elsewhere.
+              const highRisk = risk >= HIGH_RISK_THRESHOLD;
               return (
                 <div
                   key={s.student_id}
@@ -242,15 +242,19 @@ const ProfessorSession: React.FC = () => {
                     }
                   }}
                   className={`bg-surface-card rounded-md p-4 cursor-pointer transition-colors hover:border-surface-dark focus:outline-none focus:ring-2 focus:ring-accent-blue/30 ${
-                    showBorder
+                    highRisk
                       ? "border-2 border-accent-red"
                       : "border border-hairline"
                   }`}
                 >
+                  {highRisk && (
+                    <span className="inline-flex items-center gap-1 mb-2 px-2 py-0.5 rounded-full text-xs font-bold bg-accent-red-soft text-accent-red border border-accent-red/20">
+                      ⚠ High Integrity Risk
+                    </span>
+                  )}
                   <div className="flex items-start justify-between mb-3 gap-2">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-ink truncate flex items-center gap-1">
-                        {flagged && <span title="Flagged">⚠️</span>}
                         {s.name ?? s.student_id}
                       </p>
                       <p className="text-xs text-mute truncate">{s.student_id}</p>
@@ -306,18 +310,6 @@ const ProfessorSession: React.FC = () => {
                     Last: {s.last_event ?? "—"}
                     {updatedAt ? ` · ${fmtTime(updatedAt)}` : ""}
                   </p>
-
-                  {showBorder && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        acknowledge(s.student_id);
-                      }}
-                      className="mt-3 w-full py-1.5 bg-accent-red-soft text-accent-red text-xs font-semibold rounded border border-accent-red/20"
-                    >
-                      Acknowledge flag
-                    </button>
-                  )}
                 </div>
               );
             })}
