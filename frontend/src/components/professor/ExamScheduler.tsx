@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from "react";
 import apiClient from "../../api/client";
 import { SCORING_PRESETS, type ScoringPreset } from "./scoringPresets";
+import ResourceAllowlistEditor, {
+  type DraftUrlResource,
+} from "./ResourceAllowlistEditor";
+import { postUrlResources } from "../../pages/examCreate.helpers";
 
 interface Quiz {
   id: string;
@@ -9,7 +13,6 @@ interface Quiz {
   is_published: boolean;
   questions: { id: string }[];
 }
-
 
 interface ExamSchedulerProps {
   preselectedQuizId?: string;
@@ -26,6 +29,8 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
   const [scheduledStart, setScheduledStart] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
+  const [isOpenBook, setIsOpenBook] = useState(false);
+  const [urlResources, setUrlResources] = useState<DraftUrlResource[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +62,8 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     if (!quizId) return "Select a quiz.";
     if (!courseId.trim()) return "Course ID is required.";
     if (!scheduledStart) return "Scheduled start time is required.";
-    if (new Date(scheduledStart) <= new Date()) return "Please select a future date and time for the exam start.";
+    if (new Date(scheduledStart) <= new Date())
+      return "Please select a future date and time for the exam start.";
     if (durationMinutes < 1) return "Duration must be at least 1 minute.";
     return null;
   }
@@ -71,13 +77,18 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     setError(null);
     setSaving(true);
     try {
-      await apiClient.post("/exams", {
+      const exam = await apiClient.post("/exams", {
         quiz_id: quizId,
         course_id: courseId.trim(),
         scheduled_start: new Date(scheduledStart).toISOString(),
         duration_minutes: durationMinutes,
         scoring_preset: scoringPreset,
+        mode: isOpenBook ? "open_book" : "closed_book",
       });
+      // AEGIS-121: attach the open-book URL allowlist (needs the exam id).
+      if (isOpenBook) {
+        await postUrlResources(exam.data.id, urlResources);
+      }
       setSuccess(true);
       onScheduled();
     } catch {
@@ -95,13 +106,24 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
     return (
       <div className="text-center py-12">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent-green-soft mb-4">
-          <svg className="w-6 h-6 text-accent-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          <svg
+            className="w-6 h-6 text-accent-green"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
           </svg>
         </div>
         <p className="text-ink font-semibold mb-1">Exam scheduled</p>
         <p className="text-mute text-sm">
-          The exam is in draft state. Open it when you're ready to let students in.
+          The exam is in draft state. Open it when you're ready to let students
+          in.
         </p>
       </div>
     );
@@ -212,6 +234,15 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
           {SCORING_PRESETS.find((p) => p.value === scoringPreset)?.hint}
         </p>
       </div>
+
+      {/* AEGIS-121: open-book toggle + resource allowlist */}
+      <ResourceAllowlistEditor
+        isOpenBook={isOpenBook}
+        onToggle={setIsOpenBook}
+        resources={urlResources}
+        onChange={setUrlResources}
+        inputClass="w-full border border-hairline rounded px-3 py-2 text-sm text-ink bg-surface-doc focus:outline-none focus:ring-1 focus:ring-surface-dark"
+      />
 
       {error && (
         <p className="text-sm text-accent-red" role="alert">

@@ -18,6 +18,8 @@ export interface ExamRow {
   enrollment_count: number;
   results_released: boolean;
   has_short_answers: boolean;
+  // AEGIS-121: closed_book | open_book — drives the "Manage resources" action.
+  mode: "closed_book" | "open_book";
 }
 
 interface StudentOption {
@@ -38,8 +40,15 @@ interface EnrollmentEntry {
 
 const STATE_BADGE: Record<string, { label: string; classes: string }> = {
   draft: { label: "Draft", classes: "bg-surface-soft text-mute" },
-  open: { label: "Open", classes: "bg-accent-green-soft text-accent-green border border-accent-green/20" },
-  closed: { label: "Closed", classes: "bg-accent-red-soft text-accent-red border border-accent-red/20" },
+  open: {
+    label: "Open",
+    classes:
+      "bg-accent-green-soft text-accent-green border border-accent-green/20",
+  },
+  closed: {
+    label: "Closed",
+    classes: "bg-accent-red-soft text-accent-red border border-accent-red/20",
+  },
 };
 
 function formatDate(iso: string): string {
@@ -53,10 +62,16 @@ function formatDate(iso: string): string {
 // CSV bulk enroll section
 // ---------------------------------------------------------------------------
 
-interface ParsedRow { email: string; name: string; }
+interface ParsedRow {
+  email: string;
+  name: string;
+}
 
 function parseCSV(raw: string): { valid: ParsedRow[]; invalid: string[] } {
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const valid: ParsedRow[] = [];
   const invalid: string[] = [];
   const seen = new Set<string>();
@@ -65,7 +80,10 @@ function parseCSV(raw: string): { valid: ParsedRow[]; invalid: string[] } {
     const email = cols[0] ?? "";
     const name = cols[1] ?? "";
     if (email.toLowerCase() === "email") continue;
-    if (!email.includes("@")) { invalid.push(line); continue; }
+    if (!email.includes("@")) {
+      invalid.push(line);
+      continue;
+    }
     if (seen.has(email.toLowerCase())) continue;
     seen.add(email.toLowerCase());
     valid.push({ email, name });
@@ -78,7 +96,10 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
   onUpdated,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-  const [parsed, setParsed] = React.useState<{ valid: ParsedRow[]; invalid: string[] } | null>(null);
+  const [parsed, setParsed] = React.useState<{
+    valid: ParsedRow[];
+    invalid: string[];
+  } | null>(null);
   const [working, setWorking] = React.useState(false);
   // AEGIS-119: distinguish newly enrolled, already-enrolled (skipped), and
   // unknown-email students by name/email — not just a single count.
@@ -107,13 +128,17 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
     const skipped: string[] = [];
     const notFound: string[] = [];
     const failed: string[] = [];
-    const label = (row: ParsedRow) => (row.name ? `${row.name} (${row.email})` : row.email);
+    const label = (row: ParsedRow) =>
+      row.name ? `${row.name} (${row.email})` : row.email;
     for (const row of parsed.valid) {
       try {
-        await apiClient.post(`/exams/${examId}/enroll-by-email`, { email: row.email });
+        await apiClient.post(`/exams/${examId}/enroll-by-email`, {
+          email: row.email,
+        });
         enrolled++;
       } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
+        const status = (err as { response?: { status?: number } })?.response
+          ?.status;
         if (status === 409) {
           skipped.push(label(row)); // already enrolled
         } else if (status === 404) {
@@ -131,7 +156,13 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
   return (
     <div className="border-t border-hairline pt-3 space-y-2">
       <p className="text-xs font-medium text-mute">Bulk enroll via CSV</p>
-      <input ref={fileInputRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        onChange={handleFile}
+        className="hidden"
+      />
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
@@ -139,14 +170,17 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
       >
         Choose CSV file
       </button>
-      <p className="text-xs text-ash">Format: <code>email,name</code> — one student per row</p>
+      <p className="text-xs text-ash">
+        Format: <code>email,name</code> — one student per row
+      </p>
 
       {parsed && (
         <div className="space-y-2">
           {parsed.valid.length > 0 && (
             <div>
               <p className="text-xs text-mute mb-1">
-                {parsed.valid.length} student{parsed.valid.length !== 1 ? "s" : ""} parsed
+                {parsed.valid.length} student
+                {parsed.valid.length !== 1 ? "s" : ""} parsed
                 {parsed.valid.length > 5 ? " (showing first 5)" : ""}
               </p>
               <table className="w-full text-xs border border-hairline rounded overflow-hidden">
@@ -171,15 +205,22 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
                 disabled={working}
                 className="mt-2 w-full py-1.5 bg-primary text-ink text-xs font-semibold rounded disabled:opacity-50"
               >
-                {working ? "Enrolling…" : `Enroll ${parsed.valid.length} student${parsed.valid.length !== 1 ? "s" : ""}`}
+                {working
+                  ? "Enrolling…"
+                  : `Enroll ${parsed.valid.length} student${parsed.valid.length !== 1 ? "s" : ""}`}
               </button>
             </div>
           )}
           {parsed.invalid.length > 0 && (
             <div className="px-3 py-2 bg-accent-red-soft border-l-2 border-accent-red rounded">
-              <p className="text-xs font-semibold text-ink mb-1">{parsed.invalid.length} invalid row{parsed.invalid.length !== 1 ? "s" : ""} skipped:</p>
+              <p className="text-xs font-semibold text-ink mb-1">
+                {parsed.invalid.length} invalid row
+                {parsed.invalid.length !== 1 ? "s" : ""} skipped:
+              </p>
               {parsed.invalid.slice(0, 3).map((l, i) => (
-                <p key={i} className="text-xs font-mono text-body">{l}</p>
+                <p key={i} className="text-xs font-mono text-body">
+                  {l}
+                </p>
               ))}
             </div>
           )}
@@ -195,15 +236,20 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
           }`}
         >
           <p className="text-xs font-semibold text-ink">
-            {result.enrolled} user{result.enrolled !== 1 ? "s" : ""} enrolled successfully.
+            {result.enrolled} user{result.enrolled !== 1 ? "s" : ""} enrolled
+            successfully.
           </p>
           {result.skipped.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-body">
-                {result.skipped.length} user{result.skipped.length !== 1 ? "s" : ""} skipped (already enrolled):
+                {result.skipped.length} user
+                {result.skipped.length !== 1 ? "s" : ""} skipped (already
+                enrolled):
               </p>
               {result.skipped.map((e, i) => (
-                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+                <p key={i} className="text-xs text-body pl-2">
+                  • {e}
+                </p>
               ))}
             </div>
           )}
@@ -213,7 +259,9 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
                 {result.notFound.length} not found (no student with that email):
               </p>
               {result.notFound.map((e, i) => (
-                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+                <p key={i} className="text-xs text-body pl-2">
+                  • {e}
+                </p>
               ))}
             </div>
           )}
@@ -223,7 +271,9 @@ const CsvEnrollSection: React.FC<{ examId: string; onUpdated: () => void }> = ({
                 {result.failed.length} failed:
               </p>
               {result.failed.map((e, i) => (
-                <p key={i} className="text-xs text-body pl-2">• {e}</p>
+                <p key={i} className="text-xs text-body pl-2">
+                  • {e}
+                </p>
               ))}
             </div>
           )}
@@ -243,7 +293,11 @@ interface EnrollPanelProps {
   onUpdated: () => void;
 }
 
-const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated }) => {
+const EnrollPanel: React.FC<EnrollPanelProps> = ({
+  examId,
+  onClose,
+  onUpdated,
+}) => {
   const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
   const [enrollments, setEnrollments] = useState<EnrollmentEntry[]>([]);
   const [emailInput, setEmailInput] = useState("");
@@ -260,7 +314,9 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
   }, [examId]);
 
   useEffect(() => {
-    reload().catch(() => setMsg({ text: "Failed to load students.", ok: false }));
+    reload().catch(() =>
+      setMsg({ text: "Failed to load students.", ok: false }),
+    );
   }, [reload]);
 
   const enrolledIds = new Set(enrollments.map((e) => e.student_id));
@@ -272,13 +328,16 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
     setWorking(true);
     setMsg(null);
     try {
-      await apiClient.post(`/exams/${examId}/enroll-by-email`, { email: emailInput.trim() });
+      await apiClient.post(`/exams/${examId}/enroll-by-email`, {
+        email: emailInput.trim(),
+      });
       setEmailInput("");
       setMsg({ text: "Student enrolled.", ok: true });
       await reload();
       onUpdated();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       setMsg({ text: detail ?? "Enrollment failed.", ok: false });
     } finally {
       setWorking(false);
@@ -289,12 +348,15 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
     setWorking(true);
     setMsg(null);
     try {
-      await apiClient.post(`/exams/${examId}/enrollments`, { student_id: studentId });
+      await apiClient.post(`/exams/${examId}/enrollments`, {
+        student_id: studentId,
+      });
       setMsg({ text: "Student enrolled.", ok: true });
       await reload();
       onUpdated();
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       setMsg({ text: detail ?? "Enrollment failed.", ok: false });
     } finally {
       setWorking(false);
@@ -319,7 +381,9 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
     <div className="bg-surface-doc border border-hairline rounded-md p-4 mt-1 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-ink">Manage Enrollment</h3>
-        <button onClick={onClose} className="text-xs text-mute hover:text-ink">✕ Close</button>
+        <button onClick={onClose} className="text-xs text-mute hover:text-ink">
+          ✕ Close
+        </button>
       </div>
 
       {/* Enroll by email */}
@@ -341,24 +405,41 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
       </form>
 
       {msg && (
-        <p className={`text-xs ${msg.ok ? "text-accent-green" : "text-accent-red"}`}>
+        <p
+          className={`text-xs ${msg.ok ? "text-accent-green" : "text-accent-red"}`}
+        >
           {msg.text}
         </p>
       )}
 
       {/* Bulk enroll via CSV */}
-      <CsvEnrollSection examId={examId} onUpdated={() => { reload(); onUpdated(); }} />
+      <CsvEnrollSection
+        examId={examId}
+        onUpdated={() => {
+          reload();
+          onUpdated();
+        }}
+      />
 
       {/* Currently enrolled */}
       {enrollments.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-mute mb-2">Enrolled ({enrollments.length})</p>
+          <p className="text-xs font-medium text-mute mb-2">
+            Enrolled ({enrollments.length})
+          </p>
           <ul className="space-y-1 max-h-40 overflow-y-auto">
             {enrollments.map((e) => {
               const student = allStudents.find((s) => s.id === e.student_id);
               return (
-                <li key={e.id} className="flex items-center justify-between text-xs text-body py-1 border-b border-hairline-soft">
-                  <span>{student ? `${student.name ?? student.email} (${student.email})` : e.student_id}</span>
+                <li
+                  key={e.id}
+                  className="flex items-center justify-between text-xs text-body py-1 border-b border-hairline-soft"
+                >
+                  <span>
+                    {student
+                      ? `${student.name ?? student.email} (${student.email})`
+                      : e.student_id}
+                  </span>
                   <button
                     onClick={() => handleUnenroll(e.student_id)}
                     disabled={working}
@@ -376,11 +457,19 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
       {/* Quick-add from list */}
       {unenrolledStudents.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-mute mb-2">Available students</p>
+          <p className="text-xs font-medium text-mute mb-2">
+            Available students
+          </p>
           <ul className="space-y-1 max-h-40 overflow-y-auto">
             {unenrolledStudents.map((s) => (
-              <li key={s.id} className="flex items-center justify-between text-xs text-body py-1 border-b border-hairline-soft">
-                <span>{s.name ?? s.email} <span className="text-mute">({s.email})</span></span>
+              <li
+                key={s.id}
+                className="flex items-center justify-between text-xs text-body py-1 border-b border-hairline-soft"
+              >
+                <span>
+                  {s.name ?? s.email}{" "}
+                  <span className="text-mute">({s.email})</span>
+                </span>
                 <button
                   onClick={() => handleEnrollById(s.id)}
                   disabled={working}
@@ -395,7 +484,210 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
       )}
 
       {allStudents.length === 0 && enrollments.length === 0 && (
-        <p className="text-xs text-mute">No students are registered yet. Ask students to sign up first.</p>
+        <p className="text-xs text-mute">
+          No students are registered yet. Ask students to sign up first.
+        </p>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Manage resources panel — open-book allowlist for a draft exam (AEGIS-121)
+// ---------------------------------------------------------------------------
+
+interface ResourceEntry {
+  id: string;
+  label: string;
+  type: "url" | "file";
+  url: string | null;
+  embed: boolean;
+}
+
+const ManageResourcesPanel: React.FC<{
+  examId: string;
+  onClose: () => void;
+}> = ({ examId, onClose }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [resources, setResources] = useState<ResourceEntry[]>([]);
+  const [label, setLabel] = useState("");
+  const [url, setUrl] = useState("");
+  const [embed, setEmbed] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const reload = useCallback(async () => {
+    const { data } = await apiClient.get<ResourceEntry[]>(
+      `/exams/${examId}/resources`,
+    );
+    setResources(data);
+  }, [examId]);
+
+  useEffect(() => {
+    reload().catch(() =>
+      setMsg({ text: "Failed to load resources.", ok: false }),
+    );
+  }, [reload]);
+
+  async function addUrl(e: React.FormEvent) {
+    e.preventDefault();
+    if (!label.trim() || !url.trim()) return;
+    setWorking(true);
+    setMsg(null);
+    try {
+      await apiClient.post(`/exams/${examId}/resources`, {
+        label: label.trim(),
+        url: url.trim(),
+        embed,
+      });
+      setLabel("");
+      setUrl("");
+      setEmbed(false);
+      await reload();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
+      setMsg({ text: detail ?? "Failed to add link.", ok: false });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function uploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setWorking(true);
+    setMsg(null);
+    const form = new FormData();
+    form.append("file", file);
+    form.append("label", file.name);
+    try {
+      await apiClient.post(`/exams/${examId}/resources/file`, form);
+      await reload();
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
+      setMsg({ text: detail ?? "Failed to upload file.", ok: false });
+    } finally {
+      setWorking(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function remove(resourceId: string) {
+    setWorking(true);
+    try {
+      await apiClient.delete(`/exams/${examId}/resources/${resourceId}`);
+      await reload();
+    } catch {
+      setMsg({ text: "Could not remove resource.", ok: false });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  const inputClass =
+    "flex-1 border border-hairline rounded px-2 py-1.5 text-sm text-ink bg-surface-card focus:outline-none focus:ring-1 focus:ring-surface-dark";
+
+  return (
+    <div className="bg-surface-doc border border-hairline rounded-md p-4 mt-1 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-ink">Manage Resources</h3>
+        <button onClick={onClose} className="text-xs text-mute hover:text-ink">
+          ✕ Close
+        </button>
+      </div>
+
+      {/* Add a URL */}
+      <form onSubmit={addUrl} className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            className={inputClass}
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label"
+            aria-label="Resource label"
+          />
+          <input
+            className={inputClass}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://…"
+            aria-label="Resource URL"
+          />
+          <button
+            type="submit"
+            disabled={working || !label.trim() || !url.trim()}
+            className="px-3 py-1.5 bg-primary text-ink text-xs font-semibold rounded disabled:opacity-50 shrink-0"
+          >
+            Add link
+          </button>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-mute">
+          <input
+            type="checkbox"
+            checked={embed}
+            onChange={(e) => setEmbed(e.target.checked)}
+          />
+          Show inside the exam (embeddable sites only)
+        </label>
+      </form>
+
+      {/* Upload a PDF */}
+      <div className="border-t border-hairline pt-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf"
+          onChange={uploadFile}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={working}
+          className="px-3 py-1.5 bg-surface-soft text-ink text-xs font-semibold rounded border border-hairline disabled:opacity-50"
+        >
+          Upload PDF
+        </button>
+        <span className="text-xs text-ash ml-2">PDF only, up to 20 MB</span>
+      </div>
+
+      {msg && (
+        <p
+          className={`text-xs ${msg.ok ? "text-accent-green" : "text-accent-red"}`}
+        >
+          {msg.text}
+        </p>
+      )}
+
+      {/* Current resources */}
+      {resources.length > 0 ? (
+        <ul className="space-y-1">
+          {resources.map((r) => (
+            <li
+              key={r.id}
+              className="flex items-center justify-between text-xs text-body py-1 border-b border-hairline-soft"
+            >
+              <span className="min-w-0 truncate">
+                <span className="mr-1.5">
+                  {r.type === "file" ? "📄" : "🔗"}
+                </span>
+                {r.label}
+                {r.url && <span className="text-mute"> — {r.url}</span>}
+              </span>
+              <button
+                onClick={() => remove(r.id)}
+                disabled={working}
+                className="text-accent-red hover:opacity-70 ml-2 disabled:opacity-40 shrink-0"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-mute">No resources added yet.</p>
       )}
     </div>
   );
@@ -404,7 +696,6 @@ const EnrollPanel: React.FC<EnrollPanelProps> = ({ examId, onClose, onUpdated })
 // ---------------------------------------------------------------------------
 // Main ExamList
 // ---------------------------------------------------------------------------
-
 const ExamList: React.FC = () => {
   const [exams, setExams] = useState<ExamRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -412,6 +703,8 @@ const ExamList: React.FC = () => {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [expandEnroll, setExpandEnroll] = useState<string | null>(null);
+  // AEGIS-121: which draft open-book exam's resource manager is open.
+  const [expandResources, setExpandResources] = useState<string | null>(null);
   // AEGIS-119: the open grade/evaluate view lives in the URL (?grade=…) so a
   // hard refresh reopens it instead of dropping back to the exam list.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -425,10 +718,10 @@ const ExamList: React.FC = () => {
           else next.delete("grade");
           return next;
         },
-        { replace: true }
+        { replace: true },
       );
     },
-    [setSearchParams]
+    [setSearchParams],
   );
 
   const loadExams = useCallback(async () => {
@@ -454,7 +747,8 @@ const ExamList: React.FC = () => {
       await loadExams();
       setActionMsg("Exam opened — students can now join.");
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       setActionMsg(detail ?? "Failed to open exam.");
     } finally {
       setWorking(null);
@@ -469,7 +763,8 @@ const ExamList: React.FC = () => {
       await loadExams();
       setActionMsg("Exam closed. Results are now available to students.");
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const detail = (err as { response?: { data?: { detail?: string } } })
+        ?.response?.data?.detail;
       setActionMsg(detail ?? "Failed to close exam.");
     } finally {
       setWorking(null);
@@ -477,7 +772,9 @@ const ExamList: React.FC = () => {
   }
 
   if (loading) {
-    return <p className="text-mute text-sm text-center py-10">Loading exams…</p>;
+    return (
+      <p className="text-mute text-sm text-center py-10">Loading exams…</p>
+    );
   }
 
   if (error) {
@@ -506,7 +803,9 @@ const ExamList: React.FC = () => {
     return (
       <div className="text-center py-16">
         <p className="text-mute text-sm">No exams yet.</p>
-        <p className="text-ash text-xs mt-1">Build a quiz and schedule an exam to get started.</p>
+        <p className="text-ash text-xs mt-1">
+          Build a quiz and schedule an exam to get started.
+        </p>
       </div>
     );
   }
@@ -524,24 +823,36 @@ const ExamList: React.FC = () => {
           const badge = STATE_BADGE[exam.state] ?? STATE_BADGE.closed;
           const isWorking = working === exam.id;
           const enrollOpen = expandEnroll === exam.id;
+          const resourcesOpen = expandResources === exam.id;
 
           return (
-            <div key={exam.id} className="bg-surface-card border border-hairline rounded-md overflow-hidden">
+            <div
+              key={exam.id}
+              className="bg-surface-card border border-hairline rounded-md overflow-hidden"
+            >
               <div className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge.classes}`}>
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${badge.classes}`}
+                      >
                         {badge.label}
                       </span>
-                      <span className="text-xs text-mute">{exam.enrollment_count} student{exam.enrollment_count !== 1 ? "s" : ""}</span>
+                      <span className="text-xs text-mute">
+                        {exam.enrollment_count} student
+                        {exam.enrollment_count !== 1 ? "s" : ""}
+                      </span>
                     </div>
                     <h3 className="text-sm font-semibold text-ink truncate">
                       {exam.quiz_title ?? "—"}{" "}
-                      <span className="font-normal text-mute">· {exam.course_id}</span>
+                      <span className="font-normal text-mute">
+                        · {exam.course_id}
+                      </span>
                     </h3>
                     <p className="text-xs text-mute mt-0.5">
-                      {formatDate(exam.scheduled_start)} · {exam.duration_minutes} min
+                      {formatDate(exam.scheduled_start)} ·{" "}
+                      {exam.duration_minutes} min
                     </p>
                   </div>
 
@@ -549,7 +860,9 @@ const ExamList: React.FC = () => {
                     {exam.state === "draft" && (
                       <>
                         <button
-                          onClick={() => setExpandEnroll(enrollOpen ? null : exam.id)}
+                          onClick={() =>
+                            setExpandEnroll(enrollOpen ? null : exam.id)
+                          }
                           className={`px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors ${
                             enrollOpen
                               ? "bg-surface-dark text-on-dark border-surface-dark"
@@ -558,10 +871,28 @@ const ExamList: React.FC = () => {
                         >
                           Enroll Students
                         </button>
+                        {exam.mode === "open_book" && (
+                          <button
+                            onClick={() =>
+                              setExpandResources(resourcesOpen ? null : exam.id)
+                            }
+                            className={`px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors ${
+                              resourcesOpen
+                                ? "bg-surface-dark text-on-dark border-surface-dark"
+                                : "bg-surface-soft text-body border-hairline hover:bg-surface-card"
+                            }`}
+                          >
+                            Manage Resources
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpen(exam.id)}
                           disabled={isWorking || exam.enrollment_count === 0}
-                          title={exam.enrollment_count === 0 ? "Enroll at least one student first" : "Open this exam"}
+                          title={
+                            exam.enrollment_count === 0
+                              ? "Enroll at least one student first"
+                              : "Open this exam"
+                          }
                           className="px-2.5 py-1.5 text-xs font-semibold rounded bg-accent-green text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
                         >
                           {isWorking ? "Opening…" : "Open Exam"}
@@ -601,6 +932,15 @@ const ExamList: React.FC = () => {
                     examId={exam.id}
                     onClose={() => setExpandEnroll(null)}
                     onUpdated={loadExams}
+                  />
+                </div>
+              )}
+
+              {resourcesOpen && (
+                <div className="border-t border-hairline px-4 pb-4 pt-0">
+                  <ManageResourcesPanel
+                    examId={exam.id}
+                    onClose={() => setExpandResources(null)}
                   />
                 </div>
               )}

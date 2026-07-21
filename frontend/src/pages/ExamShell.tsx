@@ -14,6 +14,8 @@ import apiClient, { getAccessToken } from "../api/client";
 import QuestionRenderer from "../components/exam/QuestionRenderer";
 import ProgressSidebar from "../components/exam/ProgressSidebar";
 import CountdownTimer from "../components/exam/CountdownTimer";
+import ResourcePanel from "../components/exam/ResourcePanel";
+import type { ExamResource } from "../components/exam/ResourcePanel";
 import ThemeToggle from "../components/ThemeToggle";
 import ExamErrorBoundary from "../components/exam/ExamErrorBoundary";
 import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
@@ -40,6 +42,8 @@ interface StudentSession {
   consent_at: string | null;
   submitted_at: string | null;
   exam_state: string;
+  // AEGIS-121: "closed_book" | "open_book" — drives the resource panel.
+  mode?: string;
 }
 
 // AEGIS-40: shape returned by GET /exams/{exam_id} — used to derive the
@@ -185,7 +189,8 @@ function useServerEndTime(examId: string): {
 
   const fetchEndTime = useCallback(async () => {
     try {
-      const { data } = await apiClient.get<StudentSessionItem[]>('/student/sessions');
+      const { data } =
+        await apiClient.get<StudentSessionItem[]>("/student/sessions");
       const session = data.find((s) => s.exam_id === examId);
       if (!session) return;
       const endMs = new Date(session.ends_at).getTime();
@@ -214,9 +219,14 @@ function useServerEndTime(examId: string): {
 interface ExamContentProps {
   examId: string;
   sessionId: string;
+  mode: string;
 }
 
-const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
+const ExamContent: React.FC<ExamContentProps> = ({
+  examId,
+  sessionId,
+  mode,
+}) => {
   const navigate = useNavigate();
   const [contentState, setContentState] = useState<ContentState>({
     kind: "loading",
@@ -228,6 +238,11 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
   const [isAutoSubmitting, setIsAutoSubmitting] = useState(false);
   // Set when the professor closes the exam (pushed over the telemetry socket).
   const [closedByProfessor, setClosedByProfessor] = useState(false);
+
+  // AEGIS-121: open-book resource panel state. Only populated for open_book exams.
+  const isOpenBook = mode === "open_book";
+  const [resources, setResources] = useState<ExamResource[]>([]);
+  const [showResources, setShowResources] = useState(true);
 
   // Warning banner (AEGIS-85): shown briefly after monitored events fire.
   const [warningMsg, setWarningMsg] = useState<string | null>(null);
@@ -466,6 +481,23 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
     const id = setInterval(tick, 5000);
     return () => clearInterval(id);
   }, [examId, contentState]);
+
+  // AEGIS-121: fetch the open-book resource allowlist once (open_book only).
+  useEffect(() => {
+    if (!isOpenBook) return;
+    let cancelled = false;
+    apiClient
+      .get<ExamResource[]>(`/exams/${examId}/resources`)
+      .then(({ data }) => {
+        if (!cancelled) setResources(data);
+      })
+      .catch(() => {
+        /* no resources / fetch failed — panel simply shows an empty state */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [examId, isOpenBook]);
 
   const handleAnswerChange = useCallback(
     (questionId: string, value: string) => {
@@ -839,6 +871,30 @@ const ExamContent: React.FC<ExamContentProps> = ({ examId, sessionId }) => {
               </div>
             </div>
           </main>
+
+          {/* AEGIS-121: open-book resource panel — a collapsible right pane,
+              rendered only for open-book exams. When collapsed it leaves a
+              slim "Resources" tab so the student can reopen it. */}
+          {isOpenBook &&
+            (showResources ? (
+              <aside className="w-full max-w-md flex-shrink-0 border-l border-hairline bg-surface-card overflow-hidden flex flex-col">
+                <ResourcePanel
+                  examId={examId}
+                  sessionId={sessionId}
+                  resources={resources}
+                  enqueue={(event) => telemetryRef.current?.enqueue(event)}
+                  onCollapse={() => setShowResources(false)}
+                />
+              </aside>
+            ) : (
+              <button
+                onClick={() => setShowResources(true)}
+                className="flex-shrink-0 border-l border-hairline bg-surface-card px-2 py-4 text-xs font-semibold text-primary-active hover:bg-surface-soft transition-colors [writing-mode:vertical-rl]"
+                aria-label="Show resources panel"
+              >
+                📚 Resources
+              </button>
+            ))}
         </div>
       </ExamErrorBoundary>
     </div>
@@ -953,7 +1009,11 @@ const ExamShell: React.FC = () => {
 
   // state.kind === "exam-active"
   return (
-    <ExamContent examId={state.session.exam_id} sessionId={state.session.id} />
+    <ExamContent
+      examId={state.session.exam_id}
+      sessionId={state.session.id}
+      mode={state.session.mode ?? "closed_book"}
+    />
   );
 };
 

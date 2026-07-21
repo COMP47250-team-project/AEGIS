@@ -237,19 +237,29 @@ async def enroll_group(
         await db.execute(select(StudentGroup).where(StudentGroup.id == body.group_id))
     ).scalar_one_or_none()
     if group is None or group.professor_id != professor_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     member_ids = (
-        await db.execute(
-            select(GroupMember.student_id).where(GroupMember.group_id == body.group_id)
+        (
+            await db.execute(
+                select(GroupMember.student_id).where(
+                    GroupMember.group_id == body.group_id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing = set(
         (
             await db.execute(
                 select(Enrollment.student_id).where(Enrollment.exam_id == exam.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
     skipped_ids = [sid for sid in member_ids if sid in existing]
@@ -343,9 +353,7 @@ async def open_exam(
 
     exam.state = "open"
     exam.opened_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
     return ExamRead.from_orm_with_count(exam, count)
@@ -370,9 +378,7 @@ async def close_exam(
 
     exam.state = "closed"
     exam.closed_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
 
@@ -540,6 +546,7 @@ async def get_student_session(
 
     read = StudentSessionRead.model_validate(session)
     read.exam_state = exam.state
+    read.mode = exam.mode
     return read
 
 
@@ -575,6 +582,7 @@ async def record_consent(
     exam = await _get_exam_or_404(db, exam_id)
     read = StudentSessionRead.model_validate(session)
     read.exam_state = exam.state
+    read.mode = exam.mode
     return read
 
 
@@ -772,6 +780,7 @@ async def get_exam_grade(
         students=student_entries,
         results_released=exam.results_released_at is not None,
         ungraded_short=ungraded_short,
+        mode=exam.mode,
     )
 
 

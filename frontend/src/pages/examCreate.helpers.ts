@@ -1,5 +1,8 @@
 // Pure helpers for the create-exam form (AEGIS-62), split out so they're unit-testable.
 
+import apiClient from "../api/client";
+import type { DraftUrlResource } from "../components/professor/ResourceAllowlistEditor";
+
 /**
  * Parse student emails typed or pasted/CSV-uploaded. Splits on whitespace,
  * commas and semicolons, keeps only email-like tokens (so CSV headers/extra
@@ -22,4 +25,45 @@ export function durationMinutes(startLocal: string, endLocal: string): number {
   return Math.round(
     (new Date(endLocal).getTime() - new Date(startLocal).getTime()) / 60000,
   );
+}
+
+/**
+ * AEGIS-121: keep only resource rows the professor actually filled in — both a
+ * label and an http(s) URL. Used before POSTing to the backend (which also
+ * validates the scheme) so we don't send blank rows.
+ */
+export function validUrlResources(
+  resources: DraftUrlResource[],
+): DraftUrlResource[] {
+  return resources
+    .map((r) => ({ ...r, label: r.label.trim(), url: r.url.trim() }))
+    .filter(
+      (r) =>
+        r.label !== "" &&
+        (r.url.toLowerCase().startsWith("http://") ||
+          r.url.toLowerCase().startsWith("https://")),
+    );
+}
+
+/**
+ * POST each URL resource to a freshly-created exam. Returns how many succeeded
+ * and failed so the caller can surface a partial failure (the exam already
+ * exists at this point — resources are a second phase).
+ */
+export async function postUrlResources(
+  examId: string,
+  resources: DraftUrlResource[],
+): Promise<{ added: number; failed: number }> {
+  const valid = validUrlResources(resources);
+  const results = await Promise.allSettled(
+    valid.map((r) =>
+      apiClient.post(`/exams/${examId}/resources`, {
+        label: r.label,
+        url: r.url,
+        embed: r.embed,
+      }),
+    ),
+  );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  return { added: results.length - failed, failed };
 }

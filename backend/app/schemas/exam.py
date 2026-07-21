@@ -13,6 +13,8 @@ QuestionType = Literal["mcq", "short"]
 
 ExamState = Literal["draft", "open", "closed"]
 ScoringPreset = Literal["strict", "standard", "lenient"]
+# AEGIS-121: closed_book (default, unchanged flow) | open_book (resource panel).
+ExamMode = Literal["closed_book", "open_book"]
 
 
 class ExamCreate(BaseModel):
@@ -21,6 +23,7 @@ class ExamCreate(BaseModel):
     scheduled_start: datetime
     duration_minutes: int = Field(..., gt=0)
     scoring_preset: ScoringPreset = "standard"
+    mode: ExamMode = "closed_book"
 
     @field_validator("scheduled_start")
     @classmethod
@@ -43,6 +46,7 @@ class ExamRead(BaseModel):
     duration_minutes: int
     state: ExamState
     scoring_preset: ScoringPreset = "standard"
+    mode: ExamMode = "closed_book"
     created_by: str
     opened_at: datetime | None
     closed_at: datetime | None
@@ -118,6 +122,8 @@ class StudentSessionRead(BaseModel):
     # AEGIS-111: when set, the exam is complete and the student can't re-enter.
     submitted_at: datetime | None = None
     exam_state: str = "open"
+    # AEGIS-121: exam mode drives whether the student sees the resource panel.
+    mode: ExamMode = "closed_book"
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +248,8 @@ class ExamGradeReport(BaseModel):
     # answers still need a manual grade before release.
     results_released: bool = False
     ungraded_short: int = 0
+    # AEGIS-121: open_book exams show a "Resources accessed" section per student.
+    mode: ExamMode = "closed_book"
 
 
 # ---------------------------------------------------------------------------
@@ -264,3 +272,102 @@ class EnrollmentRead(BaseModel):
     exam_id: uuid.UUID
     student_id: str
     enrolled_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Open-book resources (AEGIS-121)
+# ---------------------------------------------------------------------------
+
+ResourceType = Literal["url", "file"]
+
+
+class ResourceCreate(BaseModel):
+    """Professor adds a URL resource to an open-book exam's allowlist.
+
+    File resources are created via the multipart upload endpoint, not this
+    schema. The URL scheme is restricted to http/https — a ``javascript:`` or
+    ``data:`` URL rendered into the student's browser would be a stored-XSS
+    vector, since the URL is placed in an <a href>/<iframe src>.
+    """
+
+    label: str = Field(..., min_length=1, max_length=255)
+    url: str = Field(..., min_length=1)
+    # True only when the professor has confirmed the site allows framing;
+    # otherwise the student opens it in a new tab (still tracked).
+    embed: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def must_be_http_url(cls, v: str) -> str:
+        candidate = v.strip()
+        lowered = candidate.lower()
+        if not (lowered.startswith("http://") or lowered.startswith("https://")):
+            raise ValueError("Resource URL must start with http:// or https://")
+        return candidate
+
+
+class ResourceRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    label: str
+    type: ResourceType
+    url: str | None = None
+    embed: bool = False
+    created_at: datetime
+
+
+class ResourceAccessCreate(BaseModel):
+    """Student records opening a resource (durable, via REST).
+
+    ``duration_ms`` is optional: it's absent on the initial open event and
+    supplied later (via the duration update) when the student switches away /
+    collapses the panel / submits.
+    """
+
+    resource_id: uuid.UUID
+    duration_ms: int | None = Field(default=None, ge=0)
+
+
+class ResourceAccessDurationUpdate(BaseModel):
+    """Fill in how long a previously-opened resource stayed open."""
+
+    duration_ms: int = Field(..., ge=0)
+
+
+class ResourceAccessRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    resource_id: uuid.UUID
+    opened_at: datetime
+    duration_ms: int | None = None
+
+
+class StudentResourceUsage(BaseModel):
+    """Per-student, per-resource aggregate for the professor's grade report."""
+
+    resource_id: uuid.UUID
+    label: str
+    url: str | None = None
+    type: ResourceType
+    first_access: datetime
+    total_duration_ms: int
+    open_count: int
+
+
+class StudentResourceAccess(BaseModel):
+    """All resource usage for one student in an exam, ordered by first access."""
+
+    student_id: str
+    student_name: str | None = None
+    student_email: str | None = None
+    resources: list[StudentResourceUsage]
+
+
+class ResourceAccessReport(BaseModel):
+    """Whole-exam resource-access report (all students)."""
+
+    exam_id: uuid.UUID
+    students: list[StudentResourceAccess]

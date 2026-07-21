@@ -37,6 +37,10 @@ class ExamSession(Base):
         String(20), nullable=False, default="standard", server_default="standard"
     )
 
+    mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="closed_book", server_default="closed_book"
+    )
+
     created_by: Mapped[str] = mapped_column(String(255), nullable=False)
     opened_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

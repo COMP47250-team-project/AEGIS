@@ -43,6 +43,32 @@ interface ExamGradeReport {
   students: StudentGradeEntry[];
   results_released: boolean;
   ungraded_short: number;
+  // AEGIS-121: "open_book" exams show a per-student "Resources accessed" section.
+  mode: "closed_book" | "open_book";
+}
+
+// AEGIS-121: per-student resource usage, keyed by student_id for the grade rows.
+interface StudentResourceUsage {
+  resource_id: string;
+  label: string;
+  url: string | null;
+  type: "url" | "file";
+  first_access: string;
+  total_duration_ms: number;
+  open_count: number;
+}
+
+interface StudentResourceAccess {
+  student_id: string;
+  resources: StudentResourceUsage[];
+}
+
+// Format a duration in ms as a compact "5m 3s" / "42s" for the grade view.
+function formatDuration(ms: number): string {
+  const totalSec = Math.round(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,9 +103,17 @@ interface StudentRowProps {
   // Called after a successful batch save so the parent can refetch the grade
   // report — this is what makes "Submit Grades" re-enable without a refresh.
   onSaved: () => Promise<unknown>;
+  // AEGIS-121: open-book resource usage for this student (undefined = closed-book
+  // exam or no access recorded).
+  resourceUsage?: StudentResourceUsage[];
 }
 
-const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
+const StudentRow: React.FC<StudentRowProps> = ({
+  entry,
+  examId,
+  onSaved,
+  resourceUsage,
+}) => {
   const [expanded, setExpanded] = useState(false);
   const [scores, setScores] = useState<Record<string, string>>({});
   const [savingAll, setSavingAll] = useState(false);
@@ -87,7 +121,7 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   // The score currently persisted in the DB, so a save is visibly reflected.
   const [savedScores, setSavedScores] = useState<Record<string, number | null>>(
-    {}
+    {},
   );
   const displayName =
     entry.student_name ?? entry.student_email ?? entry.student_id;
@@ -111,7 +145,7 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
   }, [entry.answers]);
 
   const shortAnswers = entry.answers.filter(
-    (a) => a.question_type === "short" && a.answer_id
+    (a) => a.question_type === "short" && a.answer_id,
   );
 
   // AEGIS-119: one "Save all" commits every entered short-answer score in a
@@ -143,8 +177,8 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
           apiClient.patch(`/exams/${examId}/answers/grade`, {
             answer_id: s.answerId,
             score: s.score,
-          })
-        )
+          }),
+        ),
       );
       setSavedScores((prev) => {
         const next = { ...prev };
@@ -155,7 +189,9 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
       setTimeout(() => setSavedAll(false), 2000);
       await onSaved(); // refetch report → ungraded_short updates → Submit Grades enables
     } catch (err) {
-      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+      const detail = axios.isAxiosError(err)
+        ? err.response?.data?.detail
+        : null;
       setErrors({
         _all: typeof detail === "string" ? detail : "Failed to save scores.",
       });
@@ -173,7 +209,8 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
   // live-saved scores so the total updates the moment a grade is saved.
   const totalPossible = entry.answers.reduce((sum, a) => sum + a.max_score, 0);
   const totalEarned = entry.answers.reduce((sum, a) => {
-    if (a.question_type === "mcq") return sum + (a.is_correct ? a.max_score : 0);
+    if (a.question_type === "mcq")
+      return sum + (a.is_correct ? a.max_score : 0);
     const live = a.answer_id ? savedScores[a.answer_id] : undefined;
     const score = live !== undefined && live !== null ? live : a.manual_score;
     return sum + (score ?? 0);
@@ -374,7 +411,8 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
                             {/* Reflect the persisted score so a save is visible */}
                             {savedScores[ans.answer_id] != null && (
                               <span className="text-xs text-accent-green font-semibold">
-                                {savedScores[ans.answer_id]}/{ans.max_score} saved
+                                {savedScores[ans.answer_id]}/{ans.max_score}{" "}
+                                saved
                               </span>
                             )}
                           </div>
@@ -390,6 +428,44 @@ const StudentRow: React.FC<StudentRowProps> = ({ entry, examId, onSaved }) => {
                 </div>
               </div>
             ))
+          )}
+
+          {/* AEGIS-121: resources this student opened during the open-book exam.
+              Evidence for the professor — access time, duration, order. */}
+          {resourceUsage !== undefined && (
+            <div className="px-4 py-3">
+              <h4 className="text-xs font-semibold text-ink mb-2">
+                Resources accessed
+              </h4>
+              {resourceUsage.length === 0 ? (
+                <p className="text-xs text-mute">No resources opened.</p>
+              ) : (
+                <ol className="space-y-1">
+                  {resourceUsage.map((r, i) => (
+                    <li
+                      key={r.resource_id}
+                      className="text-xs text-body flex items-baseline gap-2"
+                    >
+                      <span className="text-mute shrink-0">{i + 1}.</span>
+                      <span className="font-medium text-ink break-words">
+                        {r.label}
+                        {r.url && (
+                          <span className="text-mute font-normal">
+                            {" "}
+                            — {r.url}
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-mute shrink-0 ml-auto">
+                        {new Date(r.first_access).toLocaleTimeString()} ·{" "}
+                        {formatDuration(r.total_duration_ms)}
+                        {r.open_count > 1 ? ` · ${r.open_count}×` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           )}
 
           {/* AEGIS-119: one Save action for all this student's short answers. */}
@@ -433,6 +509,10 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
   const [error, setError] = useState<string | null>(null);
   const [releasing, setReleasing] = useState(false);
   const [releaseError, setReleaseError] = useState<string | null>(null);
+  // AEGIS-121: per-student resource usage, keyed by student_id (open-book only).
+  const [resourcesByStudent, setResourcesByStudent] = useState<
+    Record<string, StudentResourceUsage[]>
+  >({});
 
   // AEGIS-112b: release results to students ("Submit Grades").
   const handleRelease = async () => {
@@ -440,13 +520,15 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
     setReleaseError(null);
     try {
       const { data } = await apiClient.post<ExamGradeReport>(
-        `/exams/${examId}/release-results`
+        `/exams/${examId}/release-results`,
       );
       setReport(data);
     } catch (err) {
-      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : null;
+      const detail = axios.isAxiosError(err)
+        ? err.response?.data?.detail
+        : null;
       setReleaseError(
-        typeof detail === "string" ? detail : "Failed to release results."
+        typeof detail === "string" ? detail : "Failed to release results.",
       );
     } finally {
       setReleasing(false);
@@ -461,12 +543,35 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
         .get<ExamGradeReport>(`/exams/${examId}/grade`)
         .then((r) => setReport(r.data))
         .catch(() => setError("Failed to load grade report.")),
-    [examId]
+    [examId],
   );
 
   useEffect(() => {
     loadReport().finally(() => setLoading(false));
   }, [loadReport]);
+
+  // AEGIS-121: once we know the exam is open-book, fetch the resource-access
+  // report and index it by student for the per-row "Resources accessed" list.
+  useEffect(() => {
+    if (report?.mode !== "open_book") return;
+    let cancelled = false;
+    apiClient
+      .get<{ students: StudentResourceAccess[] }>(
+        `/exams/${examId}/resource-access`,
+      )
+      .then(({ data }) => {
+        if (cancelled) return;
+        const map: Record<string, StudentResourceUsage[]> = {};
+        for (const s of data.students) map[s.student_id] = s.resources;
+        setResourcesByStudent(map);
+      })
+      .catch(() => {
+        /* leave empty — rows fall back to "No resources opened." */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [examId, report?.mode]);
 
   if (loading) {
     return (
@@ -579,6 +684,11 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
               examId={examId}
               totalQuestions={report.mcq_total + report.short_total}
               onSaved={loadReport}
+              resourceUsage={
+                report.mode === "open_book"
+                  ? (resourcesByStudent[student.student_id] ?? [])
+                  : undefined
+              }
             />
           ))}
         </div>
