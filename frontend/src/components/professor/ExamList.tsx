@@ -512,7 +512,6 @@ const ManageResourcesPanel: React.FC<{
   const [resources, setResources] = useState<ResourceEntry[]>([]);
   const [label, setLabel] = useState("");
   const [url, setUrl] = useState("");
-  const [embed, setEmbed] = useState(false);
   const [working, setWorking] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
@@ -535,14 +534,14 @@ const ManageResourcesPanel: React.FC<{
     setWorking(true);
     setMsg(null);
     try {
+      // Resources always display in-panel (no new-tab option) — embed=true.
       await apiClient.post(`/exams/${examId}/resources`, {
         label: label.trim(),
         url: url.trim(),
-        embed,
+        embed: true,
       });
       setLabel("");
       setUrl("");
-      setEmbed(false);
       await reload();
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })
@@ -623,14 +622,6 @@ const ManageResourcesPanel: React.FC<{
             Add link
           </button>
         </div>
-        <label className="flex items-center gap-2 text-xs text-mute">
-          <input
-            type="checkbox"
-            checked={embed}
-            onChange={(e) => setEmbed(e.target.checked)}
-          />
-          Show inside the exam (embeddable sites only)
-        </label>
       </form>
 
       {/* Upload a PDF */}
@@ -901,13 +892,29 @@ const ExamList: React.FC = () => {
                     )}
 
                     {exam.state === "open" && (
-                      <button
-                        onClick={() => handleClose(exam.id)}
-                        disabled={isWorking}
-                        className="px-2.5 py-1.5 text-xs font-semibold rounded bg-accent-red text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
-                      >
-                        {isWorking ? "Closing…" : "Close Exam"}
-                      </button>
+                      <>
+                        {exam.mode === "open_book" && (
+                          <button
+                            onClick={() =>
+                              setExpandResources(resourcesOpen ? null : exam.id)
+                            }
+                            className={`px-2.5 py-1.5 text-xs font-semibold rounded border transition-colors ${
+                              resourcesOpen
+                                ? "bg-surface-dark text-on-dark border-surface-dark"
+                                : "bg-surface-soft text-body border-hairline hover:bg-surface-card"
+                            }`}
+                          >
+                            Manage Resources
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleClose(exam.id)}
+                          disabled={isWorking}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded bg-accent-red text-white hover:opacity-90 disabled:opacity-40 transition-opacity"
+                        >
+                          {isWorking ? "Closing…" : "Close Exam"}
+                        </button>
+                      </>
                     )}
 
                     {exam.state === "closed" && (

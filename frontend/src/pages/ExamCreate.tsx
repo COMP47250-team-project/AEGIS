@@ -8,6 +8,7 @@ import {
   durationMinutes,
   parseStudentEmails,
   postUrlResources,
+  postFileResources,
 } from "./examCreate.helpers";
 import {
   SCORING_PRESETS,
@@ -54,6 +55,7 @@ const ExamCreate: React.FC = () => {
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
   const [isOpenBook, setIsOpenBook] = useState(false);
   const [urlResources, setUrlResources] = useState<DraftUrlResource[]>([]);
+  const [resourceFiles, setResourceFiles] = useState<File[]>([]);
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,10 +161,11 @@ const ExamCreate: React.FC = () => {
       });
       const examId = exam.data.id;
 
-      // AEGIS-121: attach the open-book URL allowlist (second phase — needs the
-      // exam id). Files are added later via the draft exam's Manage resources.
+      // AEGIS-121: attach the open-book URL allowlist + PDF uploads (second
+      // phase — both need the exam id).
       if (isOpenBook) {
         await postUrlResources(examId, urlResources);
+        await postFileResources(examId, resourceFiles);
       }
 
       const emails = parseStudentEmails(enrolText);
@@ -286,6 +289,8 @@ const ExamCreate: React.FC = () => {
           onToggle={setIsOpenBook}
           resources={urlResources}
           onChange={setUrlResources}
+          files={resourceFiles}
+          onFilesChange={setResourceFiles}
           inputClass={inputClass}
         />
 

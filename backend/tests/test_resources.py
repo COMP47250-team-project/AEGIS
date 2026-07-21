@@ -184,14 +184,28 @@ async def test_add_resource_requires_professor_role(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
-async def test_cannot_mutate_resources_after_open(client: AsyncClient) -> None:
-    """Resources are draft-only — no changes once the exam is open."""
+async def test_can_mutate_resources_after_open(client: AsyncClient) -> None:
+    """Resources stay editable while the exam is open (curate mid-exam)."""
     exam_id = await _create_open_book_draft(client)
     await client.post(f"/exams/{exam_id}/open")
 
     resp = await client.post(
         f"/exams/{exam_id}/resources",
-        json={"label": "late", "url": "https://example.com"},
+        json={"label": "added while open", "url": "https://example.com"},
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_cannot_mutate_resources_after_close(client: AsyncClient) -> None:
+    """A closed exam locks its resources (grades/telemetry are final)."""
+    exam_id = await _create_open_book_draft(client)
+    await client.post(f"/exams/{exam_id}/open")
+    await client.post(f"/exams/{exam_id}/close")
+
+    resp = await client.post(
+        f"/exams/{exam_id}/resources",
+        json={"label": "too late", "url": "https://example.com"},
     )
     assert resp.status_code == 409
 

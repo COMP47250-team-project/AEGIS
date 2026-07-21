@@ -1,5 +1,4 @@
 services:
-
   # ─────────────────────────────────────────
   # PostgreSQL 16
   # ─────────────────────────────────────────
@@ -15,7 +14,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dev} -d ${POSTGRES_DB:-appdb}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-dev} -d ${POSTGRES_DB:-appdb}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -43,11 +46,11 @@ services:
       JWT_EXPIRE_MINUTES: 480
       APP_ENV: development
       LOG_LEVEL: DEBUG
-      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tiq1/DummyKey==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app                  # hot-reload: mount source into container
+      - ./backend:/app # hot-reload: mount source into container
     depends_on:
       db:
         condition: service_healthy
@@ -74,13 +77,19 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      - ./frontend:/app                 # hot-reload: mount source into container
-      - frontend_node_modules:/app/node_modules   # keep container modules isolated
+      - ./frontend:/app # hot-reload: mount source into container
+      - frontend_node_modules:/app/node_modules # keep container modules isolated
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('net').connect(5173,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(5173,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -99,13 +108,19 @@ services:
         --tableHost 0.0.0.0
         --loose
     ports:
-      - "10000:10000"   # Blob
-      - "10001:10001"   # Queue
-      - "10002:10002"   # Table
+      - "10000:10000" # Blob
+      - "10001:10001" # Queue
+      - "10002:10002" # Table
     volumes:
       - azurite_data:/data
     healthcheck:
-      test: ["CMD", "node", "-e", "require('net').connect(10000,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('net').connect(10000,'127.0.0.1',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5

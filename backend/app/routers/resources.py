@@ -54,13 +54,15 @@ router = APIRouter(prefix="/exams", tags=["resources"])
 # ---------------------------------------------------------------------------
 
 
-async def _assert_draft(exam: ExamSession) -> None:
-    """Resources can only be edited while the exam is a draft (matches the
-    enrollment immutability rule)."""
-    if exam.state != "draft":
+async def _assert_editable(exam: ExamSession) -> None:
+    """Resources can be edited while the exam is draft or open — only a closed
+    exam locks them (its grades/telemetry are final). Open is allowed because a
+    professor may curate resources after the exam auto-opens at its scheduled
+    start, and adding a reference mid-exam is legitimate (evidence, not lockdown)."""
+    if exam.state == "closed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Resources can only be changed while the exam is in draft state",
+            detail="Resources can't be changed once the exam is closed",
         )
 
 
@@ -145,7 +147,7 @@ async def add_url_resource(
 ) -> ExamResource:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
-    await _assert_draft(exam)
+    await _assert_editable(exam)
     resource = ExamResource(
         exam_id=exam_id,
         label=body.label,
@@ -173,7 +175,7 @@ async def add_file_resource(
 ) -> ExamResource:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
-    await _assert_draft(exam)
+    await _assert_editable(exam)
 
     if file.content_type not in resource_storage.ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -251,7 +253,7 @@ async def delete_resource(
 ) -> None:
     exam = await _get_exam_or_404(db, exam_id)
     _assert_owner(exam, user_id)
-    await _assert_draft(exam)
+    await _assert_editable(exam)
     resource = await _get_resource_or_404(db, exam_id, resource_id)
     await db.delete(resource)
     await db.commit()

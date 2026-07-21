@@ -1,9 +1,10 @@
 // frontend/src/components/professor/ResourceAllowlistEditor.tsx
-// AEGIS-121: open-book toggle + URL allowlist editor, shared by the two
-// exam-create paths (ExamCreate page and ExamScheduler tab). Controlled: the
-// parent owns the state and sends `mode` on POST /exams, then POSTs each URL
-// resource with the returned exam id. File uploads are handled separately in a
-// draft-exam "Manage resources" panel (they need the exam id first).
+// AEGIS-121: open-book toggle + resource editor, shared by the two exam-create
+// paths (ExamCreate page and ExamScheduler tab). Controlled: the parent owns
+// the state and sends `mode` on POST /exams, then POSTs each URL resource and
+// uploads each PDF with the returned exam id (two-phase — resources need the
+// exam id first). More resources can also be managed later via the draft/open
+// exam's "Manage resources" panel.
 import React from "react";
 
 export interface DraftUrlResource {
@@ -15,7 +16,9 @@ export interface DraftUrlResource {
 export const newUrlResource = (): DraftUrlResource => ({
   label: "",
   url: "",
-  embed: false,
+  // Resources are always shown inside the exam panel (no new-tab option), so
+  // every URL is "embedded" from the student's perspective (AEGIS-121).
+  embed: true,
 });
 
 interface ResourceAllowlistEditorProps {
@@ -23,6 +26,8 @@ interface ResourceAllowlistEditorProps {
   onToggle: (value: boolean) => void;
   resources: DraftUrlResource[];
   onChange: (resources: DraftUrlResource[]) => void;
+  files: File[];
+  onFilesChange: (files: File[]) => void;
   inputClass: string;
 }
 
@@ -31,10 +36,20 @@ const ResourceAllowlistEditor: React.FC<ResourceAllowlistEditorProps> = ({
   onToggle,
   resources,
   onChange,
+  files,
+  onFilesChange,
   inputClass,
 }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   function patch(i: number, p: Partial<DraftUrlResource>) {
     onChange(resources.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
+  }
+
+  function addFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    onFilesChange([...files, ...Array.from(list)]);
+    if (fileInputRef.current) fileInputRef.current.value = ""; // allow re-add
   }
 
   return (
@@ -50,7 +65,8 @@ const ResourceAllowlistEditor: React.FC<ResourceAllowlistEditorProps> = ({
       </label>
       <p className="text-xs text-ash mt-1">
         Resource access is recorded for your review — it is evidence, not a
-        lockdown. Uploaded files can be added after the exam is created.
+        lockdown. Add reference links and/or upload PDFs; more can be added
+        later from the exam's Manage resources panel.
       </p>
 
       {isOpenBook && (
@@ -105,17 +121,61 @@ const ResourceAllowlistEditor: React.FC<ResourceAllowlistEditorProps> = ({
                 placeholder="https://…"
                 aria-label={`Resource ${i + 1} URL`}
               />
-              <label className="flex items-center gap-2 text-xs text-mute">
-                <input
-                  type="checkbox"
-                  checked={r.embed}
-                  onChange={(e) => patch(i, { embed: e.target.checked })}
-                />
-                Show inside the exam (only for sites that allow embedding;
-                otherwise it opens in a new tab)
-              </label>
             </div>
           ))}
+
+          {/* PDF uploads (AEGIS-121) — collected here, uploaded after the exam
+              is created since the upload endpoint needs the exam id. */}
+          <div className="border-t border-hairline-soft pt-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-ink">
+                Uploaded PDFs
+              </span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs text-primary-active hover:underline"
+              >
+                + Upload PDF
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              multiple
+              onChange={(e) => addFiles(e.target.files)}
+              className="hidden"
+              aria-label="Upload PDF resources"
+            />
+            {files.length === 0 ? (
+              <p className="text-xs text-mute mt-1">
+                No PDFs yet. Upload reference documents students can read
+                in-exam.
+              </p>
+            ) : (
+              <ul className="mt-1 space-y-1">
+                {files.map((f, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center justify-between text-xs text-body"
+                  >
+                    <span className="truncate">📄 {f.name}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onFilesChange(files.filter((_, idx) => idx !== i))
+                      }
+                      className="text-accent-red hover:underline shrink-0 ml-2"
+                      aria-label={`Remove file ${i + 1}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
     </div>

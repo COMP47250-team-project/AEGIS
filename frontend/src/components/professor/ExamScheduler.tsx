@@ -4,7 +4,10 @@ import { SCORING_PRESETS, type ScoringPreset } from "./scoringPresets";
 import ResourceAllowlistEditor, {
   type DraftUrlResource,
 } from "./ResourceAllowlistEditor";
-import { postUrlResources } from "../../pages/examCreate.helpers";
+import {
+  postUrlResources,
+  postFileResources,
+} from "../../pages/examCreate.helpers";
 
 interface Quiz {
   id: string;
@@ -31,6 +34,7 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
   const [isOpenBook, setIsOpenBook] = useState(false);
   const [urlResources, setUrlResources] = useState<DraftUrlResource[]>([]);
+  const [resourceFiles, setResourceFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,9 +89,10 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
         scoring_preset: scoringPreset,
         mode: isOpenBook ? "open_book" : "closed_book",
       });
-      // AEGIS-121: attach the open-book URL allowlist (needs the exam id).
+      // AEGIS-121: attach the open-book URL allowlist + PDF uploads (need id).
       if (isOpenBook) {
         await postUrlResources(exam.data.id, urlResources);
+        await postFileResources(exam.data.id, resourceFiles);
       }
       setSuccess(true);
       onScheduled();
@@ -241,6 +246,8 @@ const ExamScheduler: React.FC<ExamSchedulerProps> = ({
         onToggle={setIsOpenBook}
         resources={urlResources}
         onChange={setUrlResources}
+        files={resourceFiles}
+        onFilesChange={setResourceFiles}
         inputClass="w-full border border-hairline rounded px-3 py-2 text-sm text-ink bg-surface-doc focus:outline-none focus:ring-1 focus:ring-surface-dark"
       />
 

@@ -236,27 +236,22 @@ const ResourcePanel: React.FC<ResourcePanelProps> = ({
               className="w-full h-full border-0 min-h-[24rem]"
             />
           ) : null
-        ) : selected.embed && selected.url ? (
-          <iframe
-            title={selected.label}
-            src={selected.url}
-            className="w-full h-full border-0 min-h-[24rem]"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
-          />
         ) : (
-          <div className="p-4 text-sm text-body">
-            <p className="mb-3">
-              This resource opens in a new tab. Your access is recorded for the
-              professor's review.
+          // URLs always render in-panel (no new-tab escape hatch — resources
+          // are panel-only). A site that refuses framing (X-Frame-Options/CSP)
+          // will show the browser's own refusal inside the frame; the note
+          // below tells the student what to do since we can't detect that.
+          <div className="flex flex-col h-full">
+            <iframe
+              title={selected.label}
+              src={selected.url ?? ""}
+              className="w-full flex-1 border-0 min-h-[24rem]"
+              sandbox="allow-scripts allow-same-origin allow-forms"
+            />
+            <p className="px-3 py-1.5 text-[11px] text-mute border-t border-hairline-soft">
+              If this page doesn't load, it may not allow embedding — ask your
+              professor for a PDF copy.
             </p>
-            <a
-              href={selected.url ?? "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-3 py-1.5 bg-primary text-ink text-xs font-bold rounded-md"
-            >
-              Open “{selected.label}” ↗
-            </a>
           </div>
         )}
       </div>

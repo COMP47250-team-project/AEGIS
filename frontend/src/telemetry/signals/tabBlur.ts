@@ -47,7 +47,10 @@ export function createTabVisibilityTracker({
 
   const isAway = () => !isVisible || !hasFocus;
 
-  function emit(type: "tab_blur" | "tab_return", payload: Record<string, unknown>) {
+  function emit(
+    type: "tab_blur" | "tab_return",
+    payload: Record<string, unknown>,
+  ) {
     enqueue({ type, sessionId, clientTs: Date.now(), payload });
   }
 
@@ -63,9 +66,18 @@ export function createTabVisibilityTracker({
     } else {
       const durationAwayMs = now() - blurAt;
       count += 1;
-      minAwayMs = minAwayMs === null ? durationAwayMs : Math.min(minAwayMs, durationAwayMs);
-      maxAwayMs = maxAwayMs === null ? durationAwayMs : Math.max(maxAwayMs, durationAwayMs);
-      emit("tab_return", { duration_away_ms: durationAwayMs, reason: blurReason });
+      minAwayMs =
+        minAwayMs === null
+          ? durationAwayMs
+          : Math.min(minAwayMs, durationAwayMs);
+      maxAwayMs =
+        maxAwayMs === null
+          ? durationAwayMs
+          : Math.max(maxAwayMs, durationAwayMs);
+      emit("tab_return", {
+        duration_away_ms: durationAwayMs,
+        reason: blurReason,
+      });
     }
   }
 
@@ -91,15 +103,28 @@ export function createTabVisibilityTracker({
 /**
  * Attach visibility + window focus/blur listeners that emit tab_blur /
  * tab_return events. Returns a cleanup function.
+ *
+ * `shouldIgnoreBlur` (AEGIS-121): an optional predicate consulted on window
+ * blur. When it returns true, the blur is treated as a non-event — the tracker
+ * is not moved to the "away" state, so no `tab_blur` is emitted and the
+ * present/away edge bookkeeping stays consistent. Used by open-book exams to
+ * ignore focus moving into an in-page resource iframe (legitimate viewing),
+ * which is detectable because the tab as a whole still has focus
+ * (`document.hasFocus()` stays true when focus is inside an iframe, and only
+ * goes false on a real tab/window switch).
  */
 export function attachTabBlur(
   sessionId: string,
   enqueue: (event: TelemetryEvent) => void,
+  shouldIgnoreBlur?: () => boolean,
 ): () => void {
   const tracker = createTabVisibilityTracker({ sessionId, enqueue });
 
   const onVisibility = () => tracker.setVisible(!document.hidden);
-  const onBlur = () => tracker.setFocus(false);
+  const onBlur = () => {
+    if (shouldIgnoreBlur?.()) return;
+    tracker.setFocus(false);
+  };
   const onFocus = () => tracker.setFocus(true);
 
   document.addEventListener("visibilitychange", onVisibility);

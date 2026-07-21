@@ -67,3 +67,24 @@ export async function postUrlResources(
   const failed = results.filter((r) => r.status === "rejected").length;
   return { added: results.length - failed, failed };
 }
+
+/**
+ * Upload each PDF file to a freshly-created exam (AEGIS-121). Same two-phase
+ * pattern as postUrlResources — files need the exam id, so they're sent after
+ * POST /exams. Returns added/failed counts for partial-failure reporting.
+ */
+export async function postFileResources(
+  examId: string,
+  files: File[],
+): Promise<{ added: number; failed: number }> {
+  const results = await Promise.allSettled(
+    files.map((file) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("label", file.name);
+      return apiClient.post(`/exams/${examId}/resources/file`, form);
+    }),
+  );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  return { added: results.length - failed, failed };
+}

@@ -325,7 +325,19 @@ const ExamContent: React.FC<ExamContentProps> = ({
 
     const enqueue = client.enqueue.bind(client);
 
-    const cleanupTabBlur = attachTabBlur(sessionId, enqueue);
+    // AEGIS-121: in an open-book exam, focus moving into the in-panel resource
+    // iframe is legitimate — not a tab/window switch. The tab as a whole still
+    // has focus in that case (document.hasFocus() stays true when focus is
+    // inside an iframe, and only goes false on a real Alt+Tab / tab switch), so
+    // we ignore that blur rather than emitting a tab_blur. Closed-book is
+    // unaffected (predicate always false → identical behaviour).
+    const ignoreResourceBlur = () => isOpenBook && document.hasFocus();
+
+    const cleanupTabBlur = attachTabBlur(
+      sessionId,
+      enqueue,
+      ignoreResourceBlur,
+    );
     const cleanupIKI = attachIKI(
       sessionId,
       () => currentQuestionIdRef.current,
@@ -374,6 +386,12 @@ const ExamContent: React.FC<ExamContentProps> = ({
       rememberInternalCopy(document.getSelection()?.toString() ?? "");
     };
     const onBlur = () => {
+      // AEGIS-121: in an open-book exam, focus moving into the in-panel resource
+      // iframe fires window "blur" but the tab still has focus — that's
+      // legitimate viewing, not a window switch, so don't warn. A real Alt+Tab
+      // drops document.hasFocus() to false and still warns. Closed-book is
+      // unaffected (isOpenBook false → always warns as before).
+      if (isOpenBook && document.hasFocus()) return;
       showWarning("⚠️ Window focus lost — this has been recorded.");
     };
 
@@ -388,7 +406,7 @@ const ExamContent: React.FC<ExamContentProps> = ({
       document.removeEventListener("cut", onCopyOrCut);
       window.removeEventListener("blur", onBlur);
     };
-  }, [showWarning, rememberInternalCopy]);
+  }, [showWarning, rememberInternalCopy, isOpenBook]);
 
   // Warn before a browser refresh / tab close so the student doesn't
   // accidentally interrupt the exam (AEGIS-104). The browser shows its native
