@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -127,6 +128,11 @@ class SessionScore(Base):
         Float, nullable=False, default=0.0
     )
     integrity_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # False when the student produced zero telemetry events (e.g. never joined
+    # the exam) — the score is a real 0, not "not yet computed" (AEGIS-118).
+    has_telemetry: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     reviewer_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

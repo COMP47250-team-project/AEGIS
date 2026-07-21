@@ -152,6 +152,43 @@ async def test_results_hidden_until_released_for_mixed_exam(
 
 
 @pytest.mark.asyncio
+async def test_release_blocked_when_ungraded_short_answers_remain(
+    client: AsyncClient,
+) -> None:
+    """AEGIS-112b: release must be rejected while a gradable answer is
+    ungraded, with an actionable count in the error."""
+    exam_id, _ = await _setup_exam_with_answer(client, close=True)
+
+    resp = await client.post(f"/exams/{exam_id}/release-results")
+    assert resp.status_code == 409
+    assert "1 answer" in resp.json()["detail"]
+
+    report = (await client.get(f"/exams/{exam_id}/grade")).json()
+    assert report["results_released"] is False
+
+
+@pytest.mark.asyncio
+async def test_release_succeeds_once_all_answers_graded(
+    client: AsyncClient,
+) -> None:
+    """AEGIS-112b: once every gradable answer has a score, release succeeds
+    and stamps results_released_at (surfaced via results_released)."""
+    exam_id, answer_id = await _setup_exam_with_answer(client, close=True)
+
+    await client.patch(
+        f"/exams/{exam_id}/answers/grade",
+        json={"answer_id": answer_id, "score": 7},
+    )
+
+    resp = await client.post(f"/exams/{exam_id}/release-results")
+    assert resp.status_code == 200
+    assert resp.json()["results_released"] is True
+
+    report = (await client.get(f"/exams/{exam_id}/grade")).json()
+    assert report["results_released"] is True
+
+
+@pytest.mark.asyncio
 async def test_results_ready_flag_in_student_list(client: AsyncClient) -> None:
     exam_id, answer_id = await _setup_exam_with_answer(client, close=True)
 

@@ -13,7 +13,9 @@ import urllib.request
 
 BASE = os.environ.get("BASE", "http://localhost:8000")
 WS_BASE = os.environ.get("WS_BASE", "ws://host.docker.internal:8000")
+HTTP_BASE = os.environ.get("HTTP_BASE", "http://host.docker.internal:8000")
 N = int(os.environ.get("N_STUDENTS", "50"))
+N_PROFS = int(os.environ.get("N_PROFS", "2"))
 PW = "loadtest123"
 
 
@@ -45,7 +47,9 @@ emails = [f"ls{i}@demo.ac.uk" for i in range(N)]
 student_tokens = [token_for(e, "student", f"S{i}") for i, e in enumerate(emails)]
 
 quiz = post("/quizzes", {"title": "Load Test", "duration_minutes": 30}, prof_token)
-post(f"/quizzes/{quiz['id']}/questions", {"type": "short", "prompt": "Q?"}, prof_token)
+question = post(
+    f"/quizzes/{quiz['id']}/questions", {"type": "short", "prompt": "Q?"}, prof_token
+)
 post(f"/quizzes/{quiz['id']}/publish", {}, prof_token)
 exam = post(
     "/exams",
@@ -65,11 +69,13 @@ post(f"/exams/{exam_id}/open", {}, prof_token)
 
 data = {
     "ws_base": WS_BASE,
+    "http_base": HTTP_BASE,
     "exam_id": exam_id,
+    "question_id": question["id"],
     "students": student_tokens,
-    "professors": [prof_token, prof_token],  # both connect as the owning professor
+    "professors": [prof_token] * N_PROFS,  # all connect as the owning professor
 }
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 with open(out, "w") as f:
     json.dump(data, f)
-print(f"provisioned open exam {exam_id} with {N} enrolled students -> {out}")
+print(f"provisioned open exam {exam_id}: {N} students, {N_PROFS} professors -> {out}")

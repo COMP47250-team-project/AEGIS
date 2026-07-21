@@ -106,6 +106,42 @@ async def test_deactivate_user(client: AsyncClient, db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_deactivated_user_login_rejected_and_reactivated_login_succeeds(
+    client: AsyncClient,
+):
+    email, password = "deactivated@x.ie", "pw12345678"
+    reg = await client.post(
+        "/auth/register",
+        json={"email": email, "password": password, "role": "student"},
+    )
+    user_id = reg.json()["user"]["id"]
+
+    deactivate = await client.post(
+        f"/admin/users/{user_id}/deactivate", headers=ADMIN
+    )
+    assert deactivate.status_code == 200
+    assert deactivate.json()["is_active"] is False
+
+    blocked = await client.post(
+        "/auth/login", json={"email": email, "password": password}
+    )
+    assert blocked.status_code == 403
+    assert (
+        blocked.json()["detail"]
+        == "Your account has been deactivated. Please contact the support team for assistance."
+    )
+
+    activate = await client.post(f"/admin/users/{user_id}/activate", headers=ADMIN)
+    assert activate.status_code == 200
+    assert activate.json()["is_active"] is True
+
+    allowed = await client.post(
+        "/auth/login", json={"email": email, "password": password}
+    )
+    assert allowed.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_login_sets_last_login(client: AsyncClient):
     await client.post(
         "/auth/register",

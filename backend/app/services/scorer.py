@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.exam import ExamSession
+from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.services.audit import STUDENT_FLAGGED, record_audit_event
@@ -218,8 +218,20 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     for event in all_events:
         by_student.setdefault(event.student_id, []).append(event)
 
+    # Enrolled students produce zero telemetry when they never join the exam —
+    # they still need a SessionScore row (a real 0, not "not yet computed") so
+    # the professor report doesn't silently omit them (AEGIS-118).
+    enrolled_result = await db.execute(
+        select(Enrollment.student_id).where(Enrollment.exam_id == exam_id)
+    )
+    all_student_ids = set(by_student.keys()) | {
+        row[0] for row in enrolled_result.all()
+    }
+
     students_to_alert: list[tuple[str, float]] = []
-    for student_id, student_events in by_student.items():
+    for student_id in all_student_ids:
+        student_events = by_student.get(student_id, [])
+        has_telemetry = bool(student_events)
         components = compute_component_scores(student_events)
         aggregate = compute_risk_score(components, preset)
 
@@ -247,6 +259,7 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
         score_row.answer_timing_score = components["answer_time"]
         score_row.copy_sequence_score = components["resize"]
         score_row.integrity_score = aggregate
+        score_row.has_telemetry = has_telemetry
         score_row.computed_at = now
 
         if aggregate >= RISK_THRESHOLD:
@@ -261,7 +274,7 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     logger.info(
         "Scores computed for exam %s — %d students processed",
         exam_id,
-        len(by_student),
+        len(all_student_ids),
     )
 
 
