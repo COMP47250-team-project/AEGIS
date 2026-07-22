@@ -803,13 +803,7 @@ async def release_results(
             status_code=status.HTTP_409_CONFLICT,
             detail="Results can only be released for a closed exam",
         )
-    # AEGIS-116: block release if any short answers are still ungraded
-    report = await get_exam_grade(exam_id, db=db, user_id=user_id)
-    if report.ungraded_short > 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Cannot release results: {report.ungraded_short} answer(s) still ungraded. Please grade all answers first.",
-        )
+
     if exam.results_released_at is None:
         report = await get_exam_grade(exam_id, db=db, user_id=user_id)
         if report.ungraded_short > 0:
