@@ -158,7 +158,10 @@ const GroupsManager: React.FC = () => {
 
   async function reviewAndCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      setMsg({ text: "Please enter a group name.", ok: false });
+      return;
+    }
     const emails = collectEmails();
     if (emails.length === 0) {
       await doCreate([]); // deliberately empty group
@@ -168,6 +171,10 @@ const GroupsManager: React.FC = () => {
   }
 
   async function doCreate(emails: string[]) {
+    if (!name.trim()) {
+      setMsg({ text: "Please enter a group name.", ok: false });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -187,6 +194,10 @@ const GroupsManager: React.FC = () => {
   }
 
   function openGroup(id: string) {
+    if (detail?.id === id) {
+      setDetail(null); // clicking the open group again collapses it
+      return;
+    }
     setEditEmails("");
     setEditSkipped([]);
     setConfirmDelete(false);
@@ -378,7 +389,7 @@ const GroupsManager: React.FC = () => {
             </button>
           </p>
         )}
-        <button type="submit" disabled={busy || !name.trim()} className={primaryBtn}>
+        <button type="submit" disabled={busy} className={primaryBtn}>
           Review &amp; create
         </button>
 
@@ -390,7 +401,7 @@ const GroupsManager: React.FC = () => {
                   {pending.matched.length} student{pending.matched.length === 1 ? "" : "s"} will be
                   added:
                 </p>
-                <ul className="text-xs text-body space-y-0.5 max-h-32 overflow-y-auto">
+                <ul className="text-sm text-body space-y-0.5 max-h-32 overflow-y-auto">
                   {pending.matched.map((m) => (
                     <li key={m.student_id}>{m.name ? `${m.name} (${m.email})` : m.email}</li>
                   ))}
@@ -496,7 +507,7 @@ const GroupsManager: React.FC = () => {
             {detail.members.length === 0 ? (
               <p className="text-xs text-mute">No members yet.</p>
             ) : (
-              <ul className="text-xs text-body space-y-1">
+              <ul className="text-sm text-body space-y-1">
                 {detail.members.map((m) => (
                   <li key={m.student_id} className="flex items-center justify-between gap-2">
                     <span>{m.name ? `${m.name} (${m.email})` : m.email}</span>

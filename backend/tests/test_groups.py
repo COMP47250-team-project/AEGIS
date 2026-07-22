@@ -67,9 +67,13 @@ async def test_enroll_group_adds_all_members(client: AsyncClient) -> None:
     exam_id = await _make_draft_exam(client)
     resp = await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     assert resp.status_code == 201
-    assert resp.json()["enrolled"] == 3
+    body = resp.json()
+    assert body["enrolled"] == 3 and body["group_size"] == 3 and body["skipped"] == []
     enrollments = (await client.get(f"/exams/{exam_id}/enrollments")).json()
     assert len(enrollments) == 3
+    # re-enrolling the same group reports everyone as already enrolled (by name)
+    again = (await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})).json()
+    assert again["enrolled"] == 0 and len(again["skipped"]) == 3
 
 
 @pytest.mark.asyncio
@@ -98,7 +102,7 @@ async def test_empty_group_handled_gracefully(client: AsyncClient) -> None:
     exam_id = await _make_draft_exam(client)
     resp = await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     assert resp.status_code == 201
-    # AEGIS-119: response now also reports already-enrolled members (none here).
+    # response also reports already-enrolled members by name (none here).
     assert resp.json() == {"enrolled": 0, "group_size": 0, "skipped": []}
 
 
