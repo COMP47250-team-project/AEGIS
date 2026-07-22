@@ -360,7 +360,7 @@ const ExamContent: React.FC<ExamContentProps> = ({
       client.destroy();
       telemetryRef.current = null;
     };
-  }, [examId, sessionId]);
+  }, [examId, sessionId, isOpenBook]);
 
   // Warning banner cleanup on unmount.
   useEffect(() => {

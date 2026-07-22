@@ -13,7 +13,7 @@ export interface DraftUrlResource {
   embed: boolean;
 }
 
-export const newUrlResource = (): DraftUrlResource => ({
+const newUrlResource = (): DraftUrlResource => ({
   label: "",
   url: "",
   // Resources are always shown inside the exam panel (no new-tab option), so
