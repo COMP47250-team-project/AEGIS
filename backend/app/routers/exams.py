@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_role
+from app.routers.sessions import FLAGGED_THRESHOLD
 from typing import Literal, cast
 
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
@@ -237,19 +238,29 @@ async def enroll_group(
         await db.execute(select(StudentGroup).where(StudentGroup.id == body.group_id))
     ).scalar_one_or_none()
     if group is None or group.professor_id != professor_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     member_ids = (
-        await db.execute(
-            select(GroupMember.student_id).where(GroupMember.group_id == body.group_id)
+        (
+            await db.execute(
+                select(GroupMember.student_id).where(
+                    GroupMember.group_id == body.group_id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing = set(
         (
             await db.execute(
                 select(Enrollment.student_id).where(Enrollment.exam_id == exam.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
     skipped_ids = [sid for sid in member_ids if sid in existing]
@@ -343,9 +354,7 @@ async def open_exam(
 
     exam.state = "open"
     exam.opened_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
     return ExamRead.from_orm_with_count(exam, count)
@@ -370,9 +379,7 @@ async def close_exam(
 
     exam.state = "closed"
     exam.closed_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
 
@@ -796,6 +803,7 @@ async def release_results(
             status_code=status.HTTP_409_CONFLICT,
             detail="Results can only be released for a closed exam",
         )
+
     if exam.results_released_at is None:
         report = await get_exam_grade(exam_id, db=db, user_id=user_id)
         if report.ungraded_short > 0:
@@ -959,7 +967,7 @@ async def export_session_csv(
                 round(s.focus_loss_score, 4) if s else 0.0,
                 round(s.answer_timing_score, 4) if s else 0.0,
                 round(s.copy_sequence_score, 4) if s else 0.0,
-                "YES" if s and s.integrity_score >= 0.70 else "no",
+                "YES" if s and s.integrity_score >= FLAGGED_THRESHOLD else "no",
                 "YES" if s and s.has_telemetry else "NO",
             ]
         )

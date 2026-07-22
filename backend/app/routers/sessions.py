@@ -27,8 +27,10 @@ from app.schemas.session import (
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 # A student is "flagged" when their integrity score reaches this threshold.
-# Matches the professor UI's existing "High risk" cutoff (0.7).
-FLAGGED_THRESHOLD = 0.7
+# Note: the professor UI's "High risk" red badge still uses 0.7 separately —
+# this threshold was lowered per team lead's request; the two are intentionally
+# no longer in sync unless/until the UI tiers are revisited too.
+FLAGGED_THRESHOLD = 0.4
 
 # Dashboard "status" filter → exam state-machine value.
 _STATUS_TO_STATE = {"active": "open", "completed": "closed", "draft": "draft"}
@@ -89,9 +91,7 @@ async def list_sessions(
             )
         )
 
-    return SessionListResponse(
-        items=items, total=total, page=page, page_size=page_size
-    )
+    return SessionListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{session_id}/students/{student_id}/score")
@@ -147,9 +147,7 @@ async def _resolve_student_names(
     return {str(u.id): (u.full_name or u.email) for u in users_result.scalars().all()}
 
 
-def _score_row(
-    sid: str, name: str, score: SessionScore | None, attended: bool
-) -> dict:
+def _score_row(sid: str, name: str, score: SessionScore | None, attended: bool) -> dict:
     """Build one /scores row.
 
     ``attended`` (derived from StudentSession, i.e. the student joined the exam)
@@ -203,9 +201,7 @@ async def list_session_scores(
     of being silently omitted (AEGIS-118). Only the exam owner may access
     this endpoint.
     """
-    exam = await db.scalar(
-        select(ExamSession).where(ExamSession.id == session_id)
-    )
+    exam = await db.scalar(select(ExamSession).where(ExamSession.id == session_id))
     if exam is None or str(exam.created_by) != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -222,9 +218,7 @@ async def list_session_scores(
     # Attendance = the student created a StudentSession (joined/consented). This,
     # not telemetry, decides "Absent" (AEGIS-119).
     attended_result = await db.execute(
-        select(StudentSession.student_id).where(
-            StudentSession.exam_id == session_id
-        )
+        select(StudentSession.student_id).where(StudentSession.exam_id == session_id)
     )
     attended_ids = {row[0] for row in attended_result.all()}
 

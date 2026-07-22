@@ -117,14 +117,8 @@ test("professor registers, creates exam with 1 MCQ + 1 short-answer, exam is cre
     waitUntil: "commit",
   });
 
-  // Fill exam details. #exam-start is a datetime-local input (minute
-  // precision) and the backend rejects scheduled_start <= now (AEGIS-117) —
-  // a 60s buffer can be almost entirely eaten by minute-floor truncation
-  // (worst case: filled at second 59) plus the time to fill in the rest of
-  // this multi-field form, so the exam ends up scheduled in the past by
-  // submit time. 150s survives worst-case truncation with room to spare;
-  // T2 already retries for up to 150s if the exam hasn't auto-opened yet.
-  const startTime = new Date(Date.now() + 150_000);
+  // Fill exam details — starts in 5 s so it auto-opens before T2 enters it
+  const startTime = new Date(Date.now() + 60_000);
   const endTime = new Date(Date.now() + 35 * 60_000);
 
   await page.fill("#exam-title", EXAM_TITLE);

@@ -51,7 +51,12 @@
       </ul>
     </li>
     <li><a href="#environment-variables">Environment Variables</a></li>
-    <li><a href="#running-tests--ci-checks">Running Tests & CI Checks</a></li>
+    <li>
+      <a href="#running-tests--ci-checks">Running Tests & CI Checks</a>
+      <ul>
+        <li><a href="#detection-evaluation-results">Detection Evaluation Results</a></li>
+      </ul>
+    </li>
     <li><a href="#azure-environment">Azure Environment</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#contributing">Contributing</a></li>
@@ -292,12 +297,16 @@ npx playwright test e2e/exam-flow.spec.ts
 # Run in headed mode (watch the browser)
 npx playwright test --headed
 ```
-
 The CI `e2e` job runs automatically after `backend` and `frontend` checks pass. On failure it
 uploads the Playwright HTML report (screenshots + traces) as a GitHub Actions artifact.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+### Detection Evaluation Results
 
+Formal detection metrics (precision, recall, false positive rate, AUC-ROC) computed
+from controlled honest/assisted exam sessions are documented in
+[`docs/evaluation_results.md`](docs/evaluation_results.md).
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 ---
 
 ## Azure Environment
