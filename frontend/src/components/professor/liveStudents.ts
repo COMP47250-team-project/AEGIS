@@ -17,7 +17,7 @@ export interface LiveStudent {
 export type SortMode = "risk" | "name" | "flag";
 
 // A student is "flagged" at/above this risk score (matches the UI's red cutoff).
-export const FLAG_THRESHOLD = 0.7;
+export const FLAG_THRESHOLD = 0.4;
 
 /** Risk score to display/sort by, falling back to the legacy field. */
 export function studentRisk(s: LiveStudent): number {

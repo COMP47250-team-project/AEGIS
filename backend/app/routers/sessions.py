@@ -27,8 +27,10 @@ from app.schemas.session import (
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 # A student is "flagged" when their integrity score reaches this threshold.
-# Matches the professor UI's existing "High risk" cutoff (0.7).
-FLAGGED_THRESHOLD = 0.7
+# Note: the professor UI's "High risk" red badge still uses 0.7 separately —
+# this threshold was lowered per team lead's request; the two are intentionally
+# no longer in sync unless/until the UI tiers are revisited too.
+FLAGGED_THRESHOLD = 0.4
 
 # Dashboard "status" filter → exam state-machine value.
 _STATUS_TO_STATE = {"active": "open", "completed": "closed", "draft": "draft"}
@@ -89,9 +91,7 @@ async def list_sessions(
             )
         )
 
-    return SessionListResponse(
-        items=items, total=total, page=page, page_size=page_size
-    )
+    return SessionListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{session_id}/students/{student_id}/score")
@@ -139,9 +139,7 @@ async def list_session_scores(
 
     Only the exam owner may access this endpoint.
     """
-    exam = await db.scalar(
-        select(ExamSession).where(ExamSession.id == session_id)
-    )
+    exam = await db.scalar(select(ExamSession).where(ExamSession.id == session_id))
     if exam is None or str(exam.created_by) != user_id:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -156,7 +154,9 @@ async def list_session_scores(
         try:
             users_result = await db.execute(
                 select(User).where(
-                    User.id.in_([uuid.UUID(sid) for sid in student_ids if _is_valid_uuid(sid)])
+                    User.id.in_(
+                        [uuid.UUID(sid) for sid in student_ids if _is_valid_uuid(sid)]
+                    )
                 )
             )
             for u in users_result.scalars().all():

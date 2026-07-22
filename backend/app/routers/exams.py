@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_role
+from app.routers.sessions import FLAGGED_THRESHOLD
 from typing import Literal, cast
 
 from app.models.exam import Enrollment, ExamAnswer, ExamSession, StudentSession
@@ -221,19 +222,29 @@ async def enroll_group(
         await db.execute(select(StudentGroup).where(StudentGroup.id == body.group_id))
     ).scalar_one_or_none()
     if group is None or group.professor_id != professor_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     member_ids = (
-        await db.execute(
-            select(GroupMember.student_id).where(GroupMember.group_id == body.group_id)
+        (
+            await db.execute(
+                select(GroupMember.student_id).where(
+                    GroupMember.group_id == body.group_id
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     existing = set(
         (
             await db.execute(
                 select(Enrollment.student_id).where(Enrollment.exam_id == exam.id)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
     for sid in new_ids:
@@ -303,9 +314,7 @@ async def open_exam(
 
     exam.state = "open"
     exam.opened_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_OPENED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
     return ExamRead.from_orm_with_count(exam, count)
@@ -330,9 +339,7 @@ async def close_exam(
 
     exam.state = "closed"
     exam.closed_at = datetime.now(timezone.utc)
-    record_audit_event(
-        db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id)
-    )
+    record_audit_event(db, EXAM_CLOSED, actor_id=user_id, target_id=str(exam.id))
     await db.commit()
     await db.refresh(exam)
 
@@ -720,7 +727,6 @@ async def release_results(
     user_id: str = Depends(require_role("professor")),
 ) -> ExamGradeReport:
     """AEGIS-112b: release results to students ("Submit Grades").
-
     Only the owner, on a closed exam. Idempotent — releasing again just returns
     the current report (so re-editing a grade and re-releasing is safe).
     Returns the refreshed grade report.
@@ -731,6 +737,13 @@ async def release_results(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Results can only be released for a closed exam",
+        )
+    # AEGIS-116: block release if any short answers are still ungraded
+    report = await get_exam_grade(exam_id, db=db, user_id=user_id)
+    if report.ungraded_short > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot release results: {report.ungraded_short} answer(s) still ungraded. Please grade all answers first.",
         )
     if exam.results_released_at is None:
         exam.results_released_at = datetime.now(timezone.utc)
@@ -867,7 +880,7 @@ async def export_session_csv(
                 round(s.focus_loss_score, 4),
                 round(s.answer_timing_score, 4),
                 round(s.copy_sequence_score, 4),
-                "YES" if s.integrity_score >= 0.70 else "no",
+                "YES" if s.integrity_score >= FLAGGED_THRESHOLD else "no",
             ]
         )
 
