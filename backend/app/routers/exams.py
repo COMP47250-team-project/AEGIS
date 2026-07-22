@@ -43,7 +43,7 @@ from app.schemas.exam import (
     StudentGradeEntry,
     StudentSessionRead,
 )
-from app.services.exam_scheduling import auto_open_if_due
+from app.services.exam_scheduling import auto_close_if_expired, auto_open_if_due
 from app.services.scoring import dispatch_score_job
 
 logger = logging.getLogger(__name__)
@@ -95,10 +95,26 @@ async def list_exams(
         .order_by(ExamSession.created_at.desc())
     )
     rows = result.all()
+
+    # AEGIS-112b: which quizzes have short-answer questions? Needed so the
+    # closed-exam action button reads "Evaluate" (grading still needed) vs
+    # "View Grades" (MCQ-only, or already released) — mirrors student.py.
+    quiz_ids = list({exam.quiz_id for exam, _ in rows})
+    quizzes_with_short: set[uuid.UUID] = set()
+    if quiz_ids:
+        short_rows = await db.execute(
+            select(Question.quiz_id)
+            .where(Question.quiz_id.in_(quiz_ids), Question.type == "short")
+            .distinct()
+        )
+        quizzes_with_short = {qid for (qid,) in short_rows.all()}
+
     items: list[ExamRead] = []
     for exam, quiz in rows:
         count = await _enrollment_count(db, exam.id)
-        items.append(ExamRead.from_orm_with_count(exam, count, quiz_title=quiz.title))
+        item = ExamRead.from_orm_with_count(exam, count, quiz_title=quiz.title)
+        item.has_short_answers = exam.quiz_id in quizzes_with_short
+        items.append(item)
     return items
 
 
@@ -247,10 +263,34 @@ async def enroll_group(
         .all()
     )
     new_ids = [sid for sid in member_ids if sid not in existing]
+    skipped_ids = [sid for sid in member_ids if sid in existing]
     for sid in new_ids:
         db.add(Enrollment(exam_id=exam.id, student_id=sid))
     await db.commit()
-    return {"enrolled": len(new_ids), "group_size": len(member_ids)}
+
+    # AEGIS-119: tell the professor which members were skipped because they were
+    # already enrolled — by name/email, not just a count.
+    skipped: list[str] = []
+    if skipped_ids:
+        valid = []
+        for sid in skipped_ids:
+            try:
+                valid.append(uuid.UUID(sid))
+            except (ValueError, TypeError):
+                continue
+        name_map: dict[str, str] = {}
+        if valid:
+            rows = await db.execute(select(User).where(User.id.in_(valid)))
+            name_map = {
+                str(u.id): (u.full_name or u.email) for u in rows.scalars().all()
+            }
+        skipped = [name_map.get(sid, sid) for sid in skipped_ids]
+
+    return {
+        "enrolled": len(new_ids),
+        "group_size": len(member_ids),
+        "skipped": skipped,
+    }
 
 
 @router.delete(
@@ -490,6 +530,7 @@ async def get_student_session(
     exam = await _get_exam_or_404(db, exam_id)
     # Open the exam if its scheduled start has passed (AEGIS-104 auto-open).
     await auto_open_if_due(db, exam)
+    await auto_close_if_expired(db, exam)
 
     result = await db.execute(
         select(StudentSession).where(
@@ -562,6 +603,7 @@ async def get_exam_questions(
     exam = await _get_exam_or_404(db, exam_id)
     # Open on demand if the scheduled start has passed (AEGIS-104 auto-open).
     await auto_open_if_due(db, exam)
+    await auto_close_if_expired(db, exam)
     if exam.state != "open":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -651,6 +693,24 @@ async def get_exam_grade(
     )
     all_answers = list(answer_result.scalars().all())
 
+    # AEGIS-118: a StudentSession row (or a saved answer) means the student
+    # actually engaged with the exam — distinguishes "Absent" (neither) from
+    # "attended but left answers blank".
+    session_result = await db.execute(
+        select(StudentSession.student_id).where(StudentSession.exam_id == exam_id)
+    )
+    attended_ids = {row[0] for row in session_result.all()}
+    attended_ids |= {ans.student_id for ans in all_answers}
+
+    # AEGIS-119: per-student integrity score, for auto-highlighting high-risk
+    # ("copy") students in the grade view.
+    score_result = await db.execute(
+        select(SessionScore.student_id, SessionScore.integrity_score).where(
+            SessionScore.exam_id == exam_id
+        )
+    )
+    integrity_by_student = {sid: score for sid, score in score_result.all()}
+
     # Group answers by student
     answers_by_student: dict[str, dict[str, ExamAnswer]] = {}
     for ans in all_answers:
@@ -705,6 +765,8 @@ async def get_exam_grade(
                 mcq_correct=mcq_correct,
                 mcq_total=mcq_total,
                 answers=grade_answers,
+                attended=sid in attended_ids,
+                integrity_score=integrity_by_student.get(sid),
             )
         )
 
@@ -727,8 +789,11 @@ async def release_results(
     user_id: str = Depends(require_role("professor")),
 ) -> ExamGradeReport:
     """AEGIS-112b: release results to students ("Submit Grades").
-    Only the owner, on a closed exam. Idempotent — releasing again just returns
-    the current report (so re-editing a grade and re-releasing is safe).
+
+    Only the owner, on a closed exam, and only once every gradable answer has
+    a score — blocks premature release with an actionable ungraded count.
+    Idempotent — releasing again just returns the current report (so
+    re-editing a grade and re-releasing is safe).
     Returns the refreshed grade report.
     """
     exam = await _get_exam_or_404(db, exam_id)
@@ -746,8 +811,21 @@ async def release_results(
             detail=f"Cannot release results: {report.ungraded_short} answer(s) still ungraded. Please grade all answers first.",
         )
     if exam.results_released_at is None:
+        report = await get_exam_grade(exam_id, db=db, user_id=user_id)
+        if report.ungraded_short > 0:
+            plural = report.ungraded_short != 1
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"{report.ungraded_short} answer{'s' if plural else ''} "
+                    f"still {'need' if plural else 'needs'} grading before "
+                    "results can be released."
+                ),
+            )
         exam.results_released_at = datetime.now(timezone.utc)
         await db.commit()
+        report.results_released = True
+        return report
     return await get_exam_grade(exam_id, db=db, user_id=user_id)
 
 
@@ -831,12 +909,20 @@ async def export_session_csv(
             detail="Exam must be closed before exporting",
         )
 
+    # AEGIS-118: enrolled students with zero telemetry get no SessionScore row
+    # in the old flow — iterate enrollments (not scores) so nobody is silently
+    # omitted from the export.
+    enrollment_result = await db.execute(
+        select(Enrollment.student_id).where(Enrollment.exam_id == exam_id)
+    )
+    enrolled_ids = [row[0] for row in enrollment_result.all()]
+
     scores_result = await db.execute(
         select(SessionScore).where(SessionScore.exam_id == exam_id)
     )
-    scores = scores_result.scalars().all()
+    scores_by_student = {s.student_id: s for s in scores_result.scalars().all()}
 
-    student_ids = [s.student_id for s in scores]
+    student_ids = list(set(enrolled_ids) | set(scores_by_student.keys()))
     name_map: dict[str, str] = {}
     if student_ids:
         valid_uuids = []
@@ -866,21 +952,29 @@ async def export_session_csv(
             "answer_timing_score",
             "copy_sequence_score",
             "flagged",
+            "has_telemetry",
         ]
     )
-    for s in sorted(scores, key=lambda x: x.integrity_score, reverse=True):
+
+    def _sort_key(sid: str) -> float:
+        s = scores_by_student.get(sid)
+        return s.integrity_score if s else 0.0
+
+    for sid in sorted(student_ids, key=_sort_key, reverse=True):
+        s = scores_by_student.get(sid)
         writer.writerow(
             [
-                s.student_id,
-                name_map.get(s.student_id, "Unknown"),
-                round(s.integrity_score, 4),
-                round(s.tab_switch_score, 4),
-                round(s.paste_score, 4),
-                round(s.keystroke_score, 4),
-                round(s.focus_loss_score, 4),
-                round(s.answer_timing_score, 4),
-                round(s.copy_sequence_score, 4),
-                "YES" if s.integrity_score >= FLAGGED_THRESHOLD else "no",
+                sid,
+                name_map.get(sid, "Unknown"),
+                round(s.integrity_score, 4) if s else 0.0,
+                round(s.tab_switch_score, 4) if s else 0.0,
+                round(s.paste_score, 4) if s else 0.0,
+                round(s.keystroke_score, 4) if s else 0.0,
+                round(s.focus_loss_score, 4) if s else 0.0,
+                round(s.answer_timing_score, 4) if s else 0.0,
+                round(s.copy_sequence_score, 4) if s else 0.0,
+                "YES" if s and s.integrity_score >= FLAGGED_THRESHOLD else "no",
+                "YES" if s and s.has_telemetry else "NO",
             ]
         )
 

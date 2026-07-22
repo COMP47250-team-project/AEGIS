@@ -452,3 +452,8 @@ backend/auth/keys/*.pem
 .claude
 skills-lock.json
 backend/session_tapes/
+
+# ── Load test run artifacts ───────────────────────────────────────
+backend/tests/loadtest/data.json
+backend/tests/loadtest/k6*.txt
+backend/tests/loadtest/mem*.txt

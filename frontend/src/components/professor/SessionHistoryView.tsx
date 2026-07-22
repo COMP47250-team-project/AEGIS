@@ -16,6 +16,9 @@ interface SessionSummary {
 interface StudentScore {
   student_id: string;
   student_name: string;
+  // "absent" = never joined the exam (no StudentSession); "submitted" = joined.
+  // Absent is derived from attendance, not telemetry (AEGIS-119).
+  status: "submitted" | "absent";
   integrity_score: number;
   tab_switch_score: number;
   paste_score: number;
@@ -24,6 +27,7 @@ interface StudentScore {
   answer_timing_score: number;
   copy_sequence_score: number;
   flagged: boolean;
+  has_telemetry: boolean;
 }
 
 // Risk badge uses semantic AEGIS accent tokens:
@@ -77,6 +81,51 @@ const StudentScoreCard: React.FC<{
   const { label, cls } = riskBadge(score.integrity_score);
   const overallPct = Math.round(score.integrity_score * 100);
 
+  // Absent = never joined the exam (no StudentSession). Distinct from a student
+  // who joined/submitted but produced no telemetry (AEGIS-119).
+  if (score.status === "absent") {
+    return (
+      <div className="rounded-md border border-hairline bg-surface-card p-4">
+        <div className="flex items-start justify-between mb-1">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink truncate">
+              {score.student_name}
+            </p>
+          </div>
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-surface-soft text-mute border border-hairline ml-2 shrink-0">
+            Absent
+          </span>
+        </div>
+        <p className="text-xs text-mute mt-2">
+          Did not join the exam — no session was recorded.
+        </p>
+      </div>
+    );
+  }
+
+  // Joined/submitted but generated no telemetry: present, but no integrity
+  // signals to score. Must NOT read as a clean 0% or as Absent.
+  if (!score.has_telemetry) {
+    return (
+      <div className="rounded-md border border-hairline bg-surface-card p-4">
+        <div className="flex items-start justify-between mb-1">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink truncate">
+              {score.student_name}
+            </p>
+          </div>
+          <span className="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap bg-accent-blue-soft text-accent-blue border border-accent-blue/20 ml-2 shrink-0">
+            No telemetry
+          </span>
+        </div>
+        <p className="text-xs text-mute mt-2">
+          Submitted, but no telemetry was captured — no integrity signals to
+          score.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`rounded-md border p-4 ${
@@ -91,7 +140,6 @@ const StudentScoreCard: React.FC<{
             {score.flagged && <span title="Flagged student">⚠️</span>}
             {score.student_name}
           </p>
-          <p className="text-xs text-ash mt-0.5 truncate">{score.student_id}</p>
         </div>
         <div className="flex items-center gap-2 ml-2 shrink-0">
           <span className="text-lg font-bold text-ink">{overallPct}%</span>

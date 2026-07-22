@@ -189,7 +189,7 @@ async def test_export_row_count(
         "student_id", "name", "student_number", "risk_score",
         "tab_blur_count", "paste_count", "iki_score",
         "first_keypress_score", "answer_time_score", "resize_score",
-        "flagged", "exam_duration_seconds",
+        "flagged", "has_telemetry", "exam_duration_seconds",
     ]
 
     data_rows = list(reader)

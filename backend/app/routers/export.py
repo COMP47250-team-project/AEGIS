@@ -47,6 +47,7 @@ _HEADERS = [
     "answer_time_score",
     "resize_score",
     "flagged",
+    "has_telemetry",
     "exam_duration_seconds",
 ]
 
@@ -175,6 +176,7 @@ def _build_csv_row(
         round(score.answer_timing_score, 4) if score else "",
         round(score.copy_sequence_score, 4) if score else "",
         "YES" if flag else "NO",
+        "YES" if score and score.has_telemetry else "NO",
         exam_duration,
     ])
     return buf.getvalue().encode("utf-8")
