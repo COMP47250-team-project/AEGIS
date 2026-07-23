@@ -11,6 +11,7 @@ from app.routers import (
     groups,
     health,
     quizzes,
+    resources,
     sessions,
     student,
     telemetry,
@@ -39,6 +40,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(quizzes.router)
 app.include_router(exams.router)
+app.include_router(resources.router)
 app.include_router(courses.router)
 app.include_router(student.router)
 app.include_router(users.router)

@@ -4,11 +4,19 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiClient from "../api/client";
-import { durationMinutes, parseStudentEmails } from "./examCreate.helpers";
+import {
+  durationMinutes,
+  parseStudentEmails,
+  postUrlResources,
+  postFileResources,
+} from "./examCreate.helpers";
 import {
   SCORING_PRESETS,
   type ScoringPreset,
 } from "../components/professor/scoringPresets";
+import ResourceAllowlistEditor, {
+  type DraftUrlResource,
+} from "../components/professor/ResourceAllowlistEditor";
 
 type QType = "short" | "mcq";
 
@@ -45,6 +53,9 @@ const ExamCreate: React.FC = () => {
   const [questions, setQuestions] = useState<DraftQuestion[]>([newQuestion()]);
   const [enrolText, setEnrolText] = useState("");
   const [scoringPreset, setScoringPreset] = useState<ScoringPreset>("standard");
+  const [isOpenBook, setIsOpenBook] = useState(false);
+  const [urlResources, setUrlResources] = useState<DraftUrlResource[]>([]);
+  const [resourceFiles, setResourceFiles] = useState<File[]>([]);
   const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +70,12 @@ const ExamCreate: React.FC = () => {
   async function addGroupEmails(groupId: string) {
     if (!groupId) return;
     const { data } = await apiClient.get<{ members: { email: string }[] }>(
-      `/groups/${groupId}`
+      `/groups/${groupId}`,
     );
-    const emails = data.members.map((m) => m.email).filter(Boolean).join("\n");
+    const emails = data.members
+      .map((m) => m.email)
+      .filter(Boolean)
+      .join("\n");
     if (emails) setEnrolText((prev) => (prev ? `${prev}\n${emails}` : emails));
   }
 
@@ -143,8 +157,16 @@ const ExamCreate: React.FC = () => {
         scheduled_start: new Date(start).toISOString(),
         duration_minutes: duration,
         scoring_preset: scoringPreset,
+        mode: isOpenBook ? "open_book" : "closed_book",
       });
       const examId = exam.data.id;
+
+      // AEGIS-121: attach the open-book URL allowlist + PDF uploads (second
+      // phase — both need the exam id).
+      if (isOpenBook) {
+        await postUrlResources(examId, urlResources);
+        await postFileResources(examId, resourceFiles);
+      }
 
       const emails = parseStudentEmails(enrolText);
       const results = await Promise.allSettled(
@@ -260,6 +282,17 @@ const ExamCreate: React.FC = () => {
             ))}
           </select>
         </div>
+
+        {/* AEGIS-121: open-book toggle + resource allowlist */}
+        <ResourceAllowlistEditor
+          isOpenBook={isOpenBook}
+          onToggle={setIsOpenBook}
+          resources={urlResources}
+          onChange={setUrlResources}
+          files={resourceFiles}
+          onFilesChange={setResourceFiles}
+          inputClass={inputClass}
+        />
 
         {/* Questions */}
         <div className="space-y-3">

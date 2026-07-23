@@ -36,6 +36,7 @@ from app.schemas.exam import (
     EnrollmentRead,
     ExamCreate,
     ExamGradeReport,
+    ExamMode,
     ExamRead,
     GradeAnswerItem,
     ManualGradeSubmit,
@@ -547,6 +548,7 @@ async def get_student_session(
 
     read = StudentSessionRead.model_validate(session)
     read.exam_state = exam.state
+    read.mode = cast(ExamMode, exam.mode)
     return read
 
 
@@ -582,6 +584,7 @@ async def record_consent(
     exam = await _get_exam_or_404(db, exam_id)
     read = StudentSessionRead.model_validate(session)
     read.exam_state = exam.state
+    read.mode = cast(ExamMode, exam.mode)
     return read
 
 
@@ -779,6 +782,7 @@ async def get_exam_grade(
         students=student_entries,
         results_released=exam.results_released_at is not None,
         ungraded_short=ungraded_short,
+        mode=cast(ExamMode, exam.mode),
     )
 
 

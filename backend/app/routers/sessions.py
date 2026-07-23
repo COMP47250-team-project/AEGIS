@@ -259,6 +259,7 @@ _EVENT_SEVERITY: dict[str, str] = {
     "first_keypress": "low",
     "tab_return": "info",
     "question_time": "info",
+    "resource_access": "info",
 }
 
 
