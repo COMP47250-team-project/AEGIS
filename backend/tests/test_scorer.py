@@ -79,7 +79,12 @@ def test_iki_zscore_fires_on_cadence_anomaly() -> None:
 
 
 def test_iki_zscore_low_for_steady_typing() -> None:
-    # Same baseline, but the later window matches it (z ≈ 0) → low suspicion.
+    # Same baseline, and the later window keeps typing at the baseline median
+    # (200ms) → z ≈ 0 → low suspicion. Using a constant 200ms (rather than the
+    # alternating 150/250 pattern) makes the window median exactly 200 for ANY
+    # count, so the test can't silently break on an odd/even off-by-one: the
+    # scorer compares the window *median* to the baseline median, and matching it
+    # is precisely what "steady typing at the established rhythm" means.
     events: list[TelemetryEvent] = []
     for i in range(60):
         events.append(
@@ -89,12 +94,10 @@ def test_iki_zscore_low_for_steady_typing() -> None:
                 _T0 + timedelta(seconds=i * 4),
             )
         )
-    for i in range(15):
+    for i in range(15):  # later window typed steadily at the baseline median
         events.append(
             _ts_event(
-                "key_interval",
-                {"interval_ms": 150 if i % 2 == 0 else 250},
-                _T0 + timedelta(seconds=360 + i),
+                "key_interval", {"interval_ms": 200}, _T0 + timedelta(seconds=360 + i)
             )
         )
     assert compute_component_scores(events)["iki"] < 0.2
