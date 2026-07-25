@@ -45,7 +45,12 @@ async def test_store_event_persists_inner_payload_flat(
 @pytest.mark.asyncio
 async def test_stored_event_is_readable_by_scorer(db_session: AsyncSession) -> None:
     exam_id = uuid.uuid4()
-    # Two fast keystroke intervals → scorer should flag a high iki score.
+    # Two fast keystroke intervals. The IKI scorer needs a sufficient baseline
+    # (AEGIS-55) which two events can't form, so the sub-score is 0.0 — but the
+    # point of this test is that the payload is read *flat*: if it were nested
+    # under payload.payload the scorer would read interval_ms=None and we'd hit
+    # a different code path. We assert the flat read via the answer_time/iki keys
+    # being present and numeric rather than the old inline (400-20)/400 formula.
     for _ in range(2):
         await store_event(
             db_session,
@@ -59,8 +64,11 @@ async def test_stored_event_is_readable_by_scorer(db_session: AsyncSession) -> N
     )
     events = list(result.scalars().all())
 
-    # (400 - 20) / 400 = 0.95 — only reachable if the payload is read flat.
-    assert compute_component_scores(events)["iki"] == pytest.approx(0.95)
+    # Payload read flat: interval_ms is visible to the scorer. Baseline is
+    # insufficient at n=2, so the z-score IKI sub-score is a well-defined 0.0.
+    stored = events[0]
+    assert stored.payload == {"interval_ms": 20}
+    assert compute_component_scores(events)["iki"] == pytest.approx(0.0)
 
 
 @pytest.mark.asyncio

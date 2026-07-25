@@ -6,6 +6,13 @@ Higher score = more suspicious behaviour.
 Formula:
   risk = 0.30 × tab_switch + 0.25 × paste + 0.20 × iki + 0.10 × first_keypress
        + 0.10 × answer_time + 0.05 × resize
+
+The IKI (inter-keystroke-interval) sub-score is the project's formal statistical
+component (AEGIS-55): a per-student typing baseline (median + stddev of the first
+5 minutes) with each later 2-minute window scored by its z-score against that
+baseline. This authoritative score is computed here at exam close; the live
+professor view (``app.services.live_monitor``) uses a faster running-mean IKI
+estimate for its real-time display.
 """
 
 import logging
@@ -16,11 +23,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.exam import Enrollment, ExamSession
 from app.models.risk import RiskFlag
-from app.models.telemetry import SessionScore, TelemetryEvent
+from app.models.telemetry import SessionScore, StudentBaseline, TelemetryEvent
+from app.scoring.baseline_calculator import BaselineResult, compute_baseline
 from app.services.audit import STUDENT_FLAGGED, record_audit_event
 from app.services.scoring import Event
 from app.services.scoring.components.answer_time import answer_time_distribution_score
 from app.services.scoring.components.first_keypress import first_keypress_score
+from app.services.scoring.components.iki import (
+    BASELINE_WINDOW_SECONDS,
+    BaselineValues,
+    IKIEvent,
+    iki_outlier_score,
+)
 from app.services.scoring.components.paste import paste_score
 from app.services.scoring.components.resize import resize_score
 from app.services.scoring.components.tab_blur import tab_blur_score
@@ -65,33 +79,120 @@ _WEIGHTS = PRESETS[DEFAULT_PRESET]
 # Risk threshold — RiskFlag inserted and WS alert fired on first crossing
 RISK_THRESHOLD = 0.70
 
+
 def _clamp(v: float) -> float:
     return max(0.0, min(1.0, v))
 
 
-def compute_component_scores(events: list[TelemetryEvent]) -> dict[str, float]:
-    """Compute 0–1 sub-score for each of the six signals."""
+def _iki_events_for(events: list[TelemetryEvent]) -> list[IKIEvent]:
+    """Adapt stored ``key_interval`` rows to the IKI scorer's event shape.
+
+    The browser SDK's ``clientTs`` is dropped at ingestion (see
+    ``telemetry_service.store_event``), so we use the server-side
+    ``occurred_at`` as the timeline — robust against unsynced client clocks.
+    """
+    iki_events: list[IKIEvent] = []
+    for e in events:
+        if e.event_type != "key_interval":
+            continue
+        interval = e.payload.get("interval_ms")
+        if not isinstance(interval, (int, float)):
+            continue
+        # occurred_at is the server-side timeline; skip rows without one (only
+        # possible for un-flushed in-memory objects — never for persisted rows).
+        if e.occurred_at is None:
+            continue
+        iki_events.append(
+            IKIEvent(
+                event_type="key_interval",
+                client_ts_ms=e.occurred_at.timestamp() * 1000.0,
+                iki_ms=float(interval),
+            )
+        )
+    return iki_events
+
+
+def _compute_iki(events: list[TelemetryEvent]) -> tuple[float, BaselineResult]:
+    """Compute the z-score IKI sub-score and the baseline it used (AEGIS-55).
+
+    Establishes a per-student typing baseline from the first
+    ``BASELINE_WINDOW_SECONDS`` of keystrokes, then scores later 2-minute
+    windows by their z-score against that baseline. Returns the 0–1 sub-score
+    and the ``BaselineResult`` so the caller can persist it to student_baselines.
+    """
+    iki_events = _iki_events_for(events)
+    if not iki_events:
+        return 0.0, BaselineResult()
+
+    exam_start_ms = min(e.client_ts_ms for e in iki_events)
+    baseline_end_ms = exam_start_ms + BASELINE_WINDOW_SECONDS * 1000
+
+    # Baseline is built only from intervals inside the opening window.
+    baseline_intervals = [
+        e.iki_ms
+        for e in iki_events
+        if e.iki_ms is not None and e.client_ts_ms <= baseline_end_ms
+    ]
+    baseline = compute_baseline(
+        baseline_intervals,
+        char_count=len(baseline_intervals),
+        first_keypress_latencies_ms=[],
+    )
+    if not baseline.is_sufficient:
+        return 0.0, baseline
+
+    score = iki_outlier_score(
+        BaselineValues(
+            median_iki_ms=baseline.median_iki_ms or 0.0,
+            std_iki_ms=baseline.iki_stddev_ms or 0.0,
+            is_sufficient=True,
+        ),
+        iki_events,
+        exam_start_ms,
+    )
+    return _clamp(score), baseline
+
+
+async def _upsert_baseline(
+    db: AsyncSession,
+    exam_id: uuid.UUID,
+    student_id: str,
+    baseline: BaselineResult,
+    now: datetime | None,
+) -> None:
+    """Insert or update the student_baselines row for one (exam, student)."""
+    ts = now or datetime.now(timezone.utc)
+    existing = await db.execute(
+        select(StudentBaseline).where(
+            StudentBaseline.exam_id == exam_id,
+            StudentBaseline.student_id == student_id,
+        )
+    )
+    row = existing.scalar_one_or_none()
+    if row is None:
+        row = StudentBaseline(exam_id=exam_id, student_id=student_id)
+        db.add(row)
+    row.mean_keystroke_interval_ms = baseline.median_iki_ms
+    row.keystroke_stddev_ms = baseline.iki_stddev_ms
+    row.sample_count = baseline.sample_count
+    row.computed_at = ts
+
+
+def compute_component_scores(
+    events: list[TelemetryEvent], iki_score: float | None = None
+) -> dict[str, float]:
+    """Compute 0–1 sub-score for each of the six signals.
+
+    ``iki_score`` may be passed in when the caller has already run
+    ``_compute_iki`` (e.g. the batch scorer, which also needs the baseline) to
+    avoid recomputing it; when omitted it is computed here.
+    """
     # Adapt ORM rows to the lightweight ScoringEvent shape the component scorers
     # expect (decouples them from SQLAlchemy's Mapped[...] attribute types).
     scoring_events = [Event(e.event_type, e.payload) for e in events]
 
-    # IKI stays inline pending its own ticket (AEGIS-55): a very short mean
-    # interval indicates pasted / AI-generated text.
-    iki_events = [e for e in events if e.event_type == "key_interval"]
-    if iki_events:
-        intervals = []
-        for e in iki_events:
-            v = e.payload.get("interval_ms")
-            if isinstance(v, (int, float)):
-                intervals.append(float(v))
-        if intervals:
-            mean_iki = sum(intervals) / len(intervals)
-            # Very fast typing (<50ms avg) → score ~1.0, normal (>400ms) → ~0
-            iki_score = _clamp((400.0 - mean_iki) / 400.0)
-        else:
-            iki_score = 0.0
-    else:
-        iki_score = 0.0
+    if iki_score is None:
+        iki_score, _ = _compute_iki(events)
 
     return {
         "tab_switch": tab_blur_score(scoring_events),
@@ -113,6 +214,7 @@ def compute_risk_score(
     """
     weights = PRESETS.get(preset, PRESETS[DEFAULT_PRESET])
     return _clamp(sum(weights[k] * component_scores.get(k, 0.0) for k in weights))
+
 
 async def _ensure_risk_flag(
     db: AsyncSession,
@@ -196,6 +298,7 @@ async def _push_risk_alert(
             "Failed to push risk alert for exam=%s student=%s", exam_id, student_id
         )
 
+
 async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     """Query all telemetry events for a closed exam, compute per-student
     risk scores, and upsert into session_scores."""
@@ -224,16 +327,21 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
     enrolled_result = await db.execute(
         select(Enrollment.student_id).where(Enrollment.exam_id == exam_id)
     )
-    all_student_ids = set(by_student.keys()) | {
-        row[0] for row in enrolled_result.all()
-    }
+    all_student_ids = set(by_student.keys()) | {row[0] for row in enrolled_result.all()}
 
     students_to_alert: list[tuple[str, float]] = []
     for student_id in all_student_ids:
         student_events = by_student.get(student_id, [])
         has_telemetry = bool(student_events)
-        components = compute_component_scores(student_events)
+
+        # Compute the z-score IKI once — reused for the sub-score and persisted
+        # as the per-student typing baseline (AEGIS-55).
+        iki_score, baseline = _compute_iki(student_events)
+        components = compute_component_scores(student_events, iki_score=iki_score)
         aggregate = compute_risk_score(components, preset)
+
+        if baseline.is_sufficient:
+            await _upsert_baseline(db, exam_id, student_id, baseline, now=None)
 
         # Upsert session_scores
         existing_result = await db.execute(
@@ -276,5 +384,3 @@ async def compute_and_save_scores(db: AsyncSession, exam_id: uuid.UUID) -> None:
         exam_id,
         len(all_student_ids),
     )
-
-
