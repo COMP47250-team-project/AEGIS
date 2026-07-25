@@ -24,8 +24,10 @@ from app.services.scoring.components.tab_blur import tab_blur_score
 ACTIVE_WINDOW_S = 60.0
 
 # Same normalisation the DB scorer uses, so the live score matches the final one.
-# All signals except iki delegate to the shared component scorers (AEGIS-54/56);
-# iki stays an inline running mean until its own ticket (AEGIS-55).
+# All signals except iki delegate to the shared component scorers (AEGIS-54/56).
+# iki here is a fast running-mean estimate for the real-time view; the
+# authoritative final score at exam close uses the per-student z-score baseline
+# (AEGIS-55, see app.services.scorer._compute_iki), which needs the full session.
 _IKI_BASELINE_MS = 400.0
 
 
@@ -51,7 +53,8 @@ class StudentAggregate:
 
     def record(self, event_type: str, payload: dict, now: float) -> None:
         # Low-frequency frames are buffered for the shared component scorers;
-        # key_interval is high-frequency so it stays an inline running mean.
+        # key_interval is high-frequency so it stays an inline running mean here
+        # (the authoritative z-score IKI is computed at exam close, AEGIS-55).
         if event_type in (
             "tab_blur",
             "tab_return",

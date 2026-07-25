@@ -63,4 +63,4 @@ def test_version_prefers_app_version_env(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_version_falls_back_to_pyproject(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("APP_VERSION", raising=False)
     # Falls back to the [project].version field in backend/pyproject.toml.
-    assert health_module._version() == "0.1.0"
+    assert health_module._version() == "1.0.0"
