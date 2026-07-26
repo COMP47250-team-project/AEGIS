@@ -22,6 +22,7 @@ import SubmitConfirmModal from "../components/exam/SubmitConfirmModal";
 import type { ExamQuestion } from "../components/exam/QuestionRenderer";
 import { TelemetryClient } from "../telemetry/TelemetryClient";
 import { attachTabBlur } from "../telemetry/signals/tabBlur";
+import { attachFullscreenExit } from "../telemetry/signals/fullscreenExit";
 import { isInternalPaste, makePasteEvent } from "../telemetry/signals/paste";
 import { attachIKI } from "../telemetry/signals/iki";
 import { attachFirstKeypress } from "../telemetry/signals/firstKeypress";
@@ -254,6 +255,11 @@ const ExamContent: React.FC<ExamContentProps> = ({
     warningTimerRef.current = setTimeout(() => setWarningMsg(null), 4000);
   }, []);
 
+  // Fullscreen-exit banner: persists (unlike the 4s auto-dismiss above)
+  // until the student actually returns to fullscreen — it's an ongoing
+  // state, not a one-off event.
+  const [isOutOfFullscreen, setIsOutOfFullscreen] = useState(false);
+
   // Text the student copied from within the exam. A paste of the same text is
   // internal and allowed (not flagged). Stored and compared on the client only
   // — clipboard content is never transmitted (AEGIS-104, data minimisation).
@@ -350,12 +356,14 @@ const ExamContent: React.FC<ExamContentProps> = ({
       enqueue,
     );
     const cleanupResize = attachResize(sessionId, enqueue);
+    const cleanupFullscreenExit = attachFullscreenExit(sessionId, enqueue);
 
     return () => {
       cleanupTabBlur();
       cleanupIKI();
       cleanupFirstKeypress();
       cleanupResize();
+      cleanupFullscreenExit();
       client.flush();
       client.destroy();
       telemetryRef.current = null;
@@ -385,6 +393,9 @@ const ExamContent: React.FC<ExamContentProps> = ({
       // only for text that did NOT originate within the exam.
       rememberInternalCopy(document.getSelection()?.toString() ?? "");
     };
+    const onFullscreenChange = () => {
+      setIsOutOfFullscreen(document.fullscreenElement === null);
+    };
     const onBlur = () => {
       // AEGIS-121: in an open-book exam, focus moving into the in-panel resource
       // iframe fires window "blur" but the tab still has focus — that's
@@ -396,6 +407,7 @@ const ExamContent: React.FC<ExamContentProps> = ({
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("copy", onCopyOrCut);
     document.addEventListener("cut", onCopyOrCut);
     window.addEventListener("blur", onBlur);
@@ -614,6 +626,9 @@ const ExamContent: React.FC<ExamContentProps> = ({
     // yet submitted" and both proceed.
     if (hasSubmittedRef.current) return;
     hasSubmittedRef.current = true;
+    // Exit fullscreen cleanly on submit (feature-detected — no-op if never
+    // entered or already exited).
+    document.exitFullscreen?.().catch(() => {});
 
     const state = contentStateRef.current;
     if (state.kind !== "loaded") return;
@@ -831,6 +846,26 @@ const ExamContent: React.FC<ExamContentProps> = ({
           <span>{warningMsg}</span>
         </div>
       )}
+      {/* Fullscreen-exit banner: persists until the student returns to
+          fullscreen (unlike the auto-dismiss banner above) */}
+      {isOutOfFullscreen && (
+        <div
+          className="mx-4 mt-2 mb-0 px-4 py-2 bg-primary/10 border border-primary/30 text-charcoal text-sm rounded-md flex items-center gap-2 animate-fade-in"
+          role="alert"
+          aria-live="assertive"
+        >
+          <span className="shrink-0 text-base">⚠️</span>
+          <span>You left fullscreen — this has been recorded.</span>
+          <button
+            onClick={() => {
+              document.documentElement.requestFullscreen().catch(() => {});
+            }}
+            className="ml-auto shrink-0 underline font-medium"
+          >
+            Return to fullscreen
+          </button>
+        </div>
+      )}
 
       {/* AEGIS-41: confirmation modal — only shown for manual submission */}
       <SubmitConfirmModal
@@ -971,6 +1006,15 @@ const ExamShell: React.FC = () => {
 
   const handleConsent = useCallback(async () => {
     if (!examId) return;
+    // Fullscreen deterrent (feature-detected; graceful no-op if unsupported
+    // or blocked — never a hard requirement to begin the exam). Must fire
+    // synchronously here, before any await, since browsers only honour
+    // requestFullscreen() within the direct call stack of a user gesture.
+    if (document.fullscreenEnabled && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {
+        // Ignore — e.g. user/browser denied it. Never blocks the exam.
+      });
+    }
     setIsSubmitting(true);
     try {
       const { data } = await apiClient.post<StudentSession>(
