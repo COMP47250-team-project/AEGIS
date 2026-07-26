@@ -192,3 +192,59 @@ async def test_duplicate_group_name_rejected(client: AsyncClient) -> None:
     # only the original group exists
     names = [g["name"] for g in (await client.get("/groups")).json()]
     assert names.count("Computer Science 123") == 1
+
+@pytest.mark.asyncio
+async def test_search_students_prefix_match(client: AsyncClient) -> None:
+    await _register_students(client)
+    resp = await client.get("/groups/search-students", params={"q": "g1"})
+    assert resp.status_code == 200
+    emails = {s["email"] for s in resp.json()}
+    assert emails == {"g1@demo.ac.uk"}
+
+
+@pytest.mark.asyncio
+async def test_search_students_substring_match(client: AsyncClient) -> None:
+    await _register_students(client)
+    # "demo.ac.uk" is a suffix/substring shared by all three seeded emails.
+    resp = await client.get("/groups/search-students", params={"q": "demo.ac.uk"})
+    assert resp.status_code == 200
+    assert len(resp.json()) == 3
+
+
+@pytest.mark.asyncio
+async def test_search_students_matches_name_too(client: AsyncClient) -> None:
+    await _register_students(client)
+    resp = await client.get("/groups/search-students", params={"q": "Two"})
+    assert resp.status_code == 200
+    emails = {s["email"] for s in resp.json()}
+    assert emails == {"g2@demo.ac.uk"}
+
+
+@pytest.mark.asyncio
+async def test_search_students_excludes_non_students(client: AsyncClient) -> None:
+    await _register_students(client)
+    # A professor whose email would otherwise match the same query.
+    await client.post(
+        "/auth/register",
+        json={
+            "email": "g-prof@demo.ac.uk",
+            "password": "demo1234",
+            "role": "professor",
+            "name": "G Professor",
+        },
+    )
+    resp = await client.get("/groups/search-students", params={"q": "demo.ac.uk"})
+    assert resp.status_code == 200
+    emails = {s["email"] for s in resp.json()}
+    assert "g-prof@demo.ac.uk" not in emails
+    assert len(emails) == 3
+
+
+@pytest.mark.asyncio
+async def test_search_students_respects_limit_cap(client: AsyncClient) -> None:
+    await _register_students(client)
+    resp = await client.get(
+        "/groups/search-students", params={"q": "demo.ac.uk", "limit": 2}
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
