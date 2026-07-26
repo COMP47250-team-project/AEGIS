@@ -14,13 +14,22 @@ async def _register_students(client: AsyncClient) -> None:
     for email, name in STUDENTS:
         await client.post(
             "/auth/register",
-            json={"email": email, "password": "demo1234", "role": "student", "name": name},
+            json={
+                "email": email,
+                "password": "demo1234",
+                "role": "student",
+                "name": name,
+            },
         )
 
 
 async def _make_draft_exam(client: AsyncClient) -> str:
-    quiz = (await client.post("/quizzes", json={"title": "G", "duration_minutes": 30})).json()
-    await client.post(f"/quizzes/{quiz['id']}/questions", json={"type": "short", "prompt": "Q?"})
+    quiz = (
+        await client.post("/quizzes", json={"title": "G", "duration_minutes": 30})
+    ).json()
+    await client.post(
+        f"/quizzes/{quiz['id']}/questions", json={"type": "short", "prompt": "Q?"}
+    )
     await client.post(f"/quizzes/{quiz['id']}/publish")
     exam = (
         await client.post(
@@ -51,7 +60,9 @@ async def test_create_group_with_three_students(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_groups_persist_and_list(client: AsyncClient) -> None:
     await _register_students(client)
-    await client.post("/groups", json={"name": "Listed", "student_emails": [STUDENTS[0][0]]})
+    await client.post(
+        "/groups", json={"name": "Listed", "student_emails": [STUDENTS[0][0]]}
+    )
     groups = (await client.get("/groups")).json()
     assert any(g["name"] == "Listed" and g["member_count"] == 1 for g in groups)
 
@@ -72,7 +83,9 @@ async def test_enroll_group_adds_all_members(client: AsyncClient) -> None:
     enrollments = (await client.get(f"/exams/{exam_id}/enrollments")).json()
     assert len(enrollments) == 3
     # re-enrolling the same group reports everyone as already enrolled (by name)
-    again = (await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})).json()
+    again = (
+        await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
+    ).json()
     assert again["enrolled"] == 0 and len(again["skipped"]) == 3
 
 
@@ -81,11 +94,14 @@ async def test_group_and_individual_enrollments_coexist(client: AsyncClient) -> 
     await _register_students(client)
     gid = (
         await client.post(
-            "/groups", json={"name": "C", "student_emails": [STUDENTS[0][0], STUDENTS[1][0]]}
+            "/groups",
+            json={"name": "C", "student_emails": [STUDENTS[0][0], STUDENTS[1][0]]},
         )
     ).json()["id"]
     exam_id = await _make_draft_exam(client)
-    await client.post(f"/exams/{exam_id}/enroll-by-email", json={"email": STUDENTS[2][0]})
+    await client.post(
+        f"/exams/{exam_id}/enroll-by-email", json={"email": STUDENTS[2][0]}
+    )
     await client.post(f"/exams/{exam_id}/enroll-group", json={"group_id": gid})
     enrollments = (await client.get(f"/exams/{exam_id}/enrollments")).json()
     assert len(enrollments) == 3
@@ -114,10 +130,10 @@ async def test_create_group_reports_skipped_emails(client: AsyncClient) -> None:
         json={
             "name": "Mixed",
             "student_emails": [
-                STUDENTS[0][0],       # registered -> added
-                STUDENTS[0][0],       # duplicate -> skipped
-                "ghost@demo.ac.uk",   # not registered -> skipped
-                "not-an-email",       # invalid format -> skipped
+                STUDENTS[0][0],  # registered -> added
+                STUDENTS[0][0],  # duplicate -> skipped
+                "ghost@demo.ac.uk",  # not registered -> skipped
+                "not-an-email",  # invalid format -> skipped
             ],
         },
     )
@@ -150,7 +166,9 @@ async def test_validate_reports_without_creating(client: AsyncClient) -> None:
 async def test_update_members_add_remove_and_skip(client: AsyncClient) -> None:
     await _register_students(client)
     gid = (
-        await client.post("/groups", json={"name": "EditMembers", "student_emails": [STUDENTS[0][0]]})
+        await client.post(
+            "/groups", json={"name": "EditMembers", "student_emails": [STUDENTS[0][0]]}
+        )
     ).json()["id"]
     resp = await client.put(
         f"/groups/{gid}/members",
@@ -163,7 +181,9 @@ async def test_update_members_add_remove_and_skip(client: AsyncClient) -> None:
     assert reasons[STUDENTS[0][0]] == "Already in the group."
     assert "not registered" in reasons["ghost@demo.ac.uk"]
 
-    removed = await client.put(f"/groups/{gid}/members", json={"remove": [STUDENTS[0][0]]})
+    removed = await client.put(
+        f"/groups/{gid}/members", json={"remove": [STUDENTS[0][0]]}
+    )
     assert {m["email"] for m in removed.json()["members"]} == {STUDENTS[1][0]}
 
 
@@ -171,7 +191,9 @@ async def test_update_members_add_remove_and_skip(client: AsyncClient) -> None:
 async def test_delete_group(client: AsyncClient) -> None:
     await _register_students(client)
     gid = (
-        await client.post("/groups", json={"name": "Temp", "student_emails": [STUDENTS[0][0]]})
+        await client.post(
+            "/groups", json={"name": "Temp", "student_emails": [STUDENTS[0][0]]}
+        )
     ).json()["id"]
     resp = await client.delete(f"/groups/{gid}")
     assert resp.status_code == 204
@@ -182,16 +204,23 @@ async def test_delete_group(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_duplicate_group_name_rejected(client: AsyncClient) -> None:
     await _register_students(client)
-    r1 = await client.post("/groups", json={"name": "Computer Science 123", "student_emails": []})
+    r1 = await client.post(
+        "/groups", json={"name": "Computer Science 123", "student_emails": []}
+    )
     assert r1.status_code == 201
     # exact and case-insensitive duplicates are both rejected
-    for dup in ("Computer Science 123", "computer science 123", "  Computer Science 123  "):
+    for dup in (
+        "Computer Science 123",
+        "computer science 123",
+        "  Computer Science 123  ",
+    ):
         r = await client.post("/groups", json={"name": dup, "student_emails": []})
         assert r.status_code == 409
         assert "already exists" in r.json()["detail"]
     # only the original group exists
     names = [g["name"] for g in (await client.get("/groups")).json()]
     assert names.count("Computer Science 123") == 1
+
 
 @pytest.mark.asyncio
 async def test_search_students_prefix_match(client: AsyncClient) -> None:
