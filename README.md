@@ -306,6 +306,8 @@ Formal detection metrics (precision, recall, false positive rate, AUC-ROC) compu
 from controlled honest/assisted exam sessions are documented in
 [`docs/evaluation_results.md`](docs/evaluation_results.md).
 
+The full evaluation plan (methodology, load test protocol, usability study, signal justification, and limitations) is in [`docs/evaluation_plan.md`](docs/evaluation_plan.md). Academic references and data sources are in [`docs/data_sources.md`](docs/data_sources.md).
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 ---
 
