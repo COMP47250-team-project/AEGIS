@@ -9,7 +9,8 @@ export type EventType =
   | "resize"
   | "answer_start"
   | "question_time"
-  | "resource_access";
+  | "resource_access"
+  | "fullscreen_exit";
 
 export interface TelemetryEvent {
   type: EventType;

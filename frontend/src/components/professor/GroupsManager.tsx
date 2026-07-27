@@ -86,6 +86,9 @@ const GroupsManager: React.FC = () => {
   const [examId, setExamId] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // AEGIS-124 Part B: typeahead suggestions for the add-member input.
+  const [suggestions, setSuggestions] = useState<Member[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const loadGroups = useCallback(() => {
     apiClient
@@ -250,6 +253,57 @@ const GroupsManager: React.FC = () => {
       loadGroups();
     } catch {
       setMsg({ text: "Failed to add members", ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // AEGIS-124 Part B: debounced (~250ms) typeahead search as the professor
+  // types in the add-member input. Already-enrolled members are filtered
+  // out client-side so they never appear as a suggestion twice.
+  useEffect(() => {
+    const q = editEmails.trim();
+    if (!q) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      apiClient
+        .get<Member[]>("/groups/search-students", { params: { q } })
+        .then(({ data }) => {
+          const enrolled = new Set(
+            (detail?.members ?? []).map((m) => m.email.toLowerCase()),
+          );
+          setSuggestions(data.filter((s) => !enrolled.has(s.email.toLowerCase())));
+          setShowSuggestions(true);
+        })
+        .catch(() => {
+          setSuggestions([]);
+          setShowSuggestions(false);
+        });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [editEmails, detail]);
+
+  // Selecting a suggestion adds that one student via the existing PUT
+  // /groups/{id}/members flow — no new backend call needed for the add
+  // itself, only for the search.
+  async function selectSuggestion(student: Member) {
+    if (!detail) return;
+    setShowSuggestions(false);
+    setBusy(true);
+    setMsg(null);
+    try {
+      const { data } = await apiClient.put<GroupDetail>(`/groups/${detail.id}/members`, {
+        add: [student.email],
+      });
+      setDetail(data);
+      setEditEmails("");
+      loadGroups();
+      setMsg({ text: "Member added.", ok: true });
+    } catch {
+      setMsg({ text: "Failed to add member", ok: false });
     } finally {
       setBusy(false);
     }
@@ -527,13 +581,34 @@ const GroupsManager: React.FC = () => {
             {/* Add members to this group */}
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <input
-                  className={`${inputClass} flex-1`}
-                  value={editEmails}
-                  onChange={(e) => setEditEmails(e.target.value)}
-                  placeholder="Add students by email (comma or paste)"
-                  aria-label="Add students by email"
-                />
+                <div className="relative flex-1">
+                  <input
+                    className={inputClass}
+                    value={editEmails}
+                    onChange={(e) => setEditEmails(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                    placeholder="Add students by email or name (comma or paste)"
+                    aria-label="Add students by email or name"
+                  />
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="absolute top-full left-0 right-0 mt-1 bg-surface-doc border border-hairline rounded shadow-md z-10 max-h-48 overflow-y-auto">
+                      {suggestions.map((s) => (
+                        <li key={s.student_id}>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => selectSuggestion(s)}
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-soft"
+                          >
+                            <span className="font-medium">{s.name ?? s.email}</span>
+                            {s.name && <span className="text-mute ml-1">{s.email}</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <button onClick={addMembers} disabled={busy || !editEmails.trim()} className={primaryBtn}>
                   Add
                 </button>

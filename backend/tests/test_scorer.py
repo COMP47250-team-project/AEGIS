@@ -101,3 +101,23 @@ def test_iki_zscore_low_for_steady_typing() -> None:
             )
         )
     assert compute_component_scores(events)["iki"] < 0.2
+
+
+def test_fullscreen_exit_events_do_not_affect_score() -> None:
+    """fullscreen_exit is evidence-only — it must never influence the risk/
+    confidence score. compute_component_scores must return identical
+    results whether or not fullscreen_exit events are present, proving the
+    scorer simply doesn't process this event type."""
+    base_events = [
+        _event("tab_blur", {}),
+        _event("paste", {}),
+    ]
+    with_fullscreen_exit = base_events + [
+        _event("fullscreen_exit", {}),
+        _event("fullscreen_exit", {}),
+    ]
+
+    scores_without = compute_component_scores(base_events)
+    scores_with = compute_component_scores(with_fullscreen_exit)
+
+    assert scores_with == scores_without

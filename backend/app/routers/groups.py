@@ -1,8 +1,8 @@
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -104,6 +104,35 @@ async def _owned_group_or_404(
     if group is None or group.professor_id != professor_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
     return group
+
+
+@router.get("/search-students", response_model=list[MemberRead])
+async def search_students(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=10),
+    db: AsyncSession = Depends(get_db),
+    professor_id: str = Depends(require_role("professor")),
+) -> list[MemberRead]:
+    """Typeahead search for students by email or name, prefix or substring
+    (AEGIS-124 Part B). Student-only — reuses the same role filter as
+    _classify_emails — never returns professors/admins. Capped at `limit`.
+    Registered ahead of any /{group_id} route so "search-students" is never
+    mistaken for a group id.
+    """
+    pattern = f"%{q.strip()}%"
+    result = await db.execute(
+        select(User)
+        .where(
+            User.role == "student",
+            or_(User.email.ilike(pattern), User.full_name.ilike(pattern)),
+        )
+        .order_by(User.full_name)
+        .limit(limit)
+    )
+    return [
+        MemberRead(student_id=str(u.id), email=u.email, name=u.full_name)
+        for u in result.scalars().all()
+    ]
 
 
 @router.post("", response_model=GroupDetail, status_code=status.HTTP_201_CREATED)
