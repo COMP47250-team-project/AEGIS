@@ -85,6 +85,21 @@ async def close_exam_sessions(exam_id_str: str) -> int:
             await ws.close(code=_WS_EXAM_CLOSED)
         except Exception:
             logger.debug("Failed to close a student socket for exam %s", exam_id_str)
+
+    # AEGIS-125: also fan out to the professor's live view so it reflects
+    # "closed" without a manual refresh. AEGIS-115 only notified students, so the
+    # auto-close (time-expiry) path left the professor console frozen on its last
+    # snapshot, appearing open indefinitely. The professor's frontend handles the
+    # `exam_closed` frame (stop the live view, offer "view report").
+    async with _professor_registry_lock:
+        professor_ws = _professor_connections.pop(exam_id_str, None)
+    if professor_ws is not None:
+        try:
+            await professor_ws.send_text(message)
+            await professor_ws.close(code=_WS_EXAM_CLOSED)
+        except Exception:
+            logger.debug("Failed to close the professor socket for exam %s", exam_id_str)
+
     return len(sockets)
 
 # Heartbeat interval expected by the AEGIS-48 acceptance criteria
@@ -363,6 +378,24 @@ async def professor_monitor_ws(
 
     try:
         while True:
+            # AEGIS-125: reconcile auto-close from the professor's own live view.
+            # The lazy student read paths that trigger auto_close_if_expired stop
+            # firing once students submit and leave, so without this the exam
+            # would never close server-side and the console would show it open
+            # forever. When this closes the exam, close_exam_sessions() sends the
+            # exam_closed frame to this socket and closes it (handled below).
+            try:
+                async with AsyncSessionLocal() as db:
+                    from app.services.exam_scheduling import auto_close_if_expired
+
+                    fresh = await db.scalar(
+                        select(ExamSession).where(ExamSession.id == exam_id)
+                    )
+                    if fresh is not None and await auto_close_if_expired(db, fresh):
+                        break  # socket already notified + closed by the fan-out
+            except Exception:
+                logger.exception("Professor WS auto-close reconcile failed")
+
             payload = live_monitor.snapshot(str(exam_id), preset=scoring_preset)
             try:
                 await websocket.send_text(json.dumps(payload))

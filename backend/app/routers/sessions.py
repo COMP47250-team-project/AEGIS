@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import require_role
 from app.models.exam import Enrollment, ExamSession, StudentSession
+from app.services.exam_scheduling import auto_close_if_expired
 from app.models.quiz import Quiz
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.models.user import User
@@ -44,6 +45,21 @@ async def list_sessions(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> SessionListResponse:
+    # AEGIS-125: reconcile auto-close before listing. auto_close_if_expired is
+    # only triggered by student read paths, which stop firing once students
+    # submit and leave — so an expired exam stayed "open" here (no "Evaluate")
+    # until manually closed. Close any of this professor's expired-but-open
+    # exams so the list reflects the true state.
+    open_exams = (
+        await db.execute(
+            select(ExamSession).where(
+                ExamSession.created_by == user_id, ExamSession.state == "open"
+            )
+        )
+    ).scalars().all()
+    for ex in open_exams:
+        await auto_close_if_expired(db, ex)
+
     base = select(ExamSession).where(ExamSession.created_by == user_id)
     if status != "all":
         base = base.where(ExamSession.state == _STATUS_TO_STATE[status])

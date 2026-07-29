@@ -89,6 +89,20 @@ async def list_exams(
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_role("professor")),
 ) -> list[ExamRead]:
+    # AEGIS-125: reconcile auto-close so an expired exam shows "Evaluate" here
+    # (closed) rather than staying "open" — the lazy student-only close paths
+    # stop firing once students leave, so the professor's My Exams view must
+    # reconcile expiry itself.
+    open_exams = (
+        await db.execute(
+            select(ExamSession).where(
+                ExamSession.created_by == user_id, ExamSession.state == "open"
+            )
+        )
+    ).scalars().all()
+    for ex in open_exams:
+        await auto_close_if_expired(db, ex)
+
     result = await db.execute(
         select(ExamSession, Quiz)
         .join(Quiz, ExamSession.quiz_id == Quiz.id)
