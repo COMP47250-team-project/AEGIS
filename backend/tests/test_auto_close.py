@@ -170,3 +170,37 @@ async def test_auto_close_not_expired_does_not_dispatch_score_job():
 
     assert result is False
     mock_dispatch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_close_exam_sessions_notifies_student_and_professor():
+    """AEGIS-125: the close fan-out must notify BOTH the student sockets and the
+    professor's live-view socket. AEGIS-115 only told students, so the
+    auto-close (time-expiry) path left the professor console frozen open.
+    """
+    from app.routers import telemetry
+
+    exam_key = "exam-125-fanout-test"
+    student_ws = AsyncMock()
+    professor_ws = AsyncMock()
+    telemetry._connections[exam_key] = {"stud-1": student_ws}
+    telemetry._professor_connections[exam_key] = professor_ws
+
+    try:
+        notified = await telemetry.close_exam_sessions(exam_key)
+    finally:
+        telemetry._connections.pop(exam_key, None)
+        telemetry._professor_connections.pop(exam_key, None)
+
+    assert notified == 1
+    # Student notified + closed.
+    student_ws.send_text.assert_awaited_once()
+    assert "exam_closed" in student_ws.send_text.call_args.args[0]
+    student_ws.close.assert_awaited_once()
+    # Professor notified + closed (the AEGIS-125 fix).
+    professor_ws.send_text.assert_awaited_once()
+    assert "exam_closed" in professor_ws.send_text.call_args.args[0]
+    professor_ws.close.assert_awaited_once()
+    # Both registries cleared.
+    assert exam_key not in telemetry._connections
+    assert exam_key not in telemetry._professor_connections

@@ -19,6 +19,9 @@ import TimelineModal from "../components/professor/TimelineModal";
 const HIGH_RISK_THRESHOLD = 0.6;
 
 interface ProfessorPayload {
+  // AEGIS-125: control frames (e.g. "exam_closed") carry a type; snapshot
+  // frames don't.
+  type?: string;
   exam_id: string;
   scoring_preset?: string;
   students: LiveStudent[];
@@ -62,6 +65,10 @@ const ProfessorSession: React.FC = () => {
   const [ending, setEnding] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("risk");
   const [selected, setSelected] = useState<LiveStudent | null>(null);
+  // AEGIS-125: set when the exam auto-closes (time expiry) so the live view
+  // reflects "closed" without a manual refresh, instead of freezing on its last
+  // snapshot and appearing open indefinitely.
+  const [closed, setClosed] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -87,6 +94,13 @@ const ProfessorSession: React.FC = () => {
     ws.onmessage = (evt) => {
       try {
         const payload: ProfessorPayload = JSON.parse(evt.data as string);
+        // AEGIS-125: the exam auto-closed (or was closed) — stop the live view
+        // and show the closed state. The server closes the socket right after.
+        if (payload.type === "exam_closed") {
+          setClosed(true);
+          setWsStatus("idle");
+          return;
+        }
         setStudents(payload.students ?? []);
         if (payload.scoring_preset) setScoringPreset(payload.scoring_preset);
         setUpdatedAt(new Date());
@@ -160,6 +174,33 @@ const ProfessorSession: React.FC = () => {
             </button>
           </div>
         )}
+
+        {/* AEGIS-125: exam auto-closed — live view reflects "closed" at once. */}
+        {closed && (
+          <div
+            role="status"
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 rounded-md bg-surface-soft border border-hairline"
+          >
+            <p className="text-sm text-ink">
+              <span className="font-semibold">This exam has ended.</span> Live
+              monitoring has stopped — final integrity scores are being computed.
+            </p>
+            <button
+              onClick={() => navigate("/professor/dashboard?tab=history")}
+              className="shrink-0 px-3 py-1.5 bg-primary text-ink text-xs font-bold rounded-md hover:bg-primary-pressed transition-colors"
+            >
+              View report
+            </button>
+          </div>
+        )}
+
+        {/* AEGIS-125: the live risk is a fast provisional estimate; the final
+            authoritative integrity score is computed at close and may differ. */}
+        <p className="mb-4 text-xs text-mute">
+          Live risk is a <span className="font-semibold">provisional estimate</span>{" "}
+          — the <span className="font-semibold">final integrity score</span> is
+          computed when the exam closes and may differ.
+        </p>
 
         {/* Status + controls */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -290,7 +331,7 @@ const ProfessorSession: React.FC = () => {
                       />
                     </div>
                     <p className="text-xs text-mute mt-1 text-right">
-                      Risk: {Math.round(risk * 100)}%
+                      Live estimate: {Math.round(risk * 100)}%
                     </p>
                   </div>
 

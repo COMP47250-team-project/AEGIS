@@ -85,6 +85,21 @@ async def close_exam_sessions(exam_id_str: str) -> int:
             await ws.close(code=_WS_EXAM_CLOSED)
         except Exception:
             logger.debug("Failed to close a student socket for exam %s", exam_id_str)
+
+    # AEGIS-125: also fan out to the professor's live view so it reflects
+    # "closed" without a manual refresh. AEGIS-115 only notified students, so the
+    # auto-close (time-expiry) path left the professor console frozen on its last
+    # snapshot, appearing open indefinitely. The professor's frontend handles the
+    # `exam_closed` frame (stop the live view, offer "view report").
+    async with _professor_registry_lock:
+        professor_ws = _professor_connections.pop(exam_id_str, None)
+    if professor_ws is not None:
+        try:
+            await professor_ws.send_text(message)
+            await professor_ws.close(code=_WS_EXAM_CLOSED)
+        except Exception:
+            logger.debug("Failed to close the professor socket for exam %s", exam_id_str)
+
     return len(sockets)
 
 # Heartbeat interval expected by the AEGIS-48 acceptance criteria
