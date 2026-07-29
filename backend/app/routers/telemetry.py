@@ -378,6 +378,24 @@ async def professor_monitor_ws(
 
     try:
         while True:
+            # AEGIS-125: reconcile auto-close from the professor's own live view.
+            # The lazy student read paths that trigger auto_close_if_expired stop
+            # firing once students submit and leave, so without this the exam
+            # would never close server-side and the console would show it open
+            # forever. When this closes the exam, close_exam_sessions() sends the
+            # exam_closed frame to this socket and closes it (handled below).
+            try:
+                async with AsyncSessionLocal() as db:
+                    from app.services.exam_scheduling import auto_close_if_expired
+
+                    fresh = await db.scalar(
+                        select(ExamSession).where(ExamSession.id == exam_id)
+                    )
+                    if fresh is not None and await auto_close_if_expired(db, fresh):
+                        break  # socket already notified + closed by the fan-out
+            except Exception:
+                logger.exception("Professor WS auto-close reconcile failed")
+
             payload = live_monitor.snapshot(str(exam_id), preset=scoring_preset)
             try:
                 await websocket.send_text(json.dumps(payload))
