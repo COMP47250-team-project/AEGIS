@@ -46,8 +46,28 @@ from app.schemas.exam import (
 )
 from app.services.exam_scheduling import auto_close_if_expired, auto_open_if_due
 from app.services.scoring import dispatch_score_job
+from app.services.email import get_email_service
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify_students_grades_ready(
+    exam_id: uuid.UUID, quiz_title: str, db: AsyncSession
+) -> None:
+    """Fire-and-forget: email enrolled students that their grades are published."""
+    result = await db.execute(
+        select(User.email)
+        .join(Enrollment, Enrollment.student_id == User.id)
+        .where(Enrollment.exam_id == exam_id)
+    )
+    emails = [row[0] for row in result.all()]
+    email_svc = get_email_service()
+    for email in emails:
+        try:
+            await email_svc.send_grade_notification(email, quiz_title)
+        except Exception:
+            logger.warning("Grade notification failed for %s", email)
+
 
 router = APIRouter(prefix="/exams", tags=["exams"])
 
@@ -94,12 +114,16 @@ async def list_exams(
     # stop firing once students leave, so the professor's My Exams view must
     # reconcile expiry itself.
     open_exams = (
-        await db.execute(
-            select(ExamSession).where(
-                ExamSession.created_by == user_id, ExamSession.state == "open"
+        (
+            await db.execute(
+                select(ExamSession).where(
+                    ExamSession.created_by == user_id, ExamSession.state == "open"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for ex in open_exams:
         await auto_close_if_expired(db, ex)
 
@@ -803,6 +827,7 @@ async def get_exam_grade(
 @router.post("/{exam_id}/release-results", response_model=ExamGradeReport)
 async def release_results(
     exam_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user_id: str = Depends(require_role("professor")),
 ) -> ExamGradeReport:
@@ -834,8 +859,12 @@ async def release_results(
                     "results can be released."
                 ),
             )
+        quiz_title = report.quiz_title or "Exam"
         exam.results_released_at = datetime.now(timezone.utc)
         await db.commit()
+        background_tasks.add_task(
+            _notify_students_grades_ready, exam_id, quiz_title, db
+        )
         report.results_released = True
         return report
     return await get_exam_grade(exam_id, db=db, user_id=user_id)
