@@ -1,0 +1,28 @@
+# Horizontal Pod Autoscaler for the backend — the "scale to many instances"
+# goal. Requires metrics-server (present on AKS; optional locally, which is why
+# the local overlay removes this HPA and pins replicas=1). On AKS the HPA owns
+# the replica count; the Deployment's replicas:2 matches minReplicas so there's
+# no initial fight.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

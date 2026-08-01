@@ -457,3 +457,7 @@ backend/session_tapes/
 backend/tests/loadtest/data.json
 backend/tests/loadtest/k6*.txt
 backend/tests/loadtest/mem*.txt
+
+
+# kubernetes secrets
+/k8s/overlays/aks/secret.env

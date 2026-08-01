@@ -1,0 +1,11 @@
+# Local dev overrides for the non-secret backend config.
+# BACKEND_CORS_ORIGINS must list the exact app host — the backend only
+# regex-allows *.azurecontainerapps.io otherwise (main.py), which nip.io is not.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  APP_ENV: "development"
+  LOG_LEVEL: "DEBUG"
+  BACKEND_CORS_ORIGINS: "http://app.127.0.0.1.nip.io"

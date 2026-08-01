@@ -1,0 +1,31 @@
+# Base kustomization for AEGIS. Overlays (local, aks) reference this and set
+# the concrete image names/tags, secrets, hostnames, and env-specific patches.
+#
+# The Deployments/Job carry bare `image: aegis-backend` / `aegis-frontend`
+# names; each overlay owns the `images:` transform that resolves them to a real
+# registry + tag. (Base deliberately does NOT set newName: if it did, the
+# overlay's image matcher — which keys on the original name — would no longer
+# match. So `kubectl apply -k k8s/base` alone is not meant to run.)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aegis
+
+resources:
+  - namespace.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+  - backend/configmap.yaml
+  - backend/hpa.yaml
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+  - migrate/job.yaml
+  - ingress.yaml
+
+# Non-selector labels for provenance (not added to selectors, which are
+# immutable across updates).
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: aegis
+      app.kubernetes.io/managed-by: kustomize

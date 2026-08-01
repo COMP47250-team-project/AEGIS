@@ -1,0 +1,21 @@
+# Non-secret backend configuration. Secrets (DATABASE_URL, JWT_SECRET_KEY,
+# storage/service-bus connection strings) live in the `backend-secret` Secret
+# generated per overlay. Keys here mirror the env vars the backend actually
+# consumes (app/config.py + os.environ reads); overlays patch env-specific
+# values (APP_ENV, BACKEND_CORS_ORIGINS, LOG_LEVEL).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRE_MINUTES: "480"
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  # Overridden per overlay to the exact app host (CORS is credentialed).
+  BACKEND_CORS_ORIGINS: "http://localhost:5173"
+  AZURE_SERVICE_BUS_QUEUE_NAME: "telemetry-events"
+  SCORE_QUEUE_NAME: "score-jobs"
+  AEGIS_EVENTS_QUEUE_NAME: "aegis-events"
+  SCORER_BATCH_INTERVAL_SECONDS: "30"
+  SCORER_MAX_DELIVERY_ATTEMPTS: "3"

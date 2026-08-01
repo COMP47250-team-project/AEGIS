@@ -1,0 +1,39 @@
+# AKS overlay — authored now, DEPLOYED in a later feature (cluster provisioning
+# + secrets wiring come next). Uses MANAGED Azure services: NO in-cluster
+# Postgres/Azurite (base only). Render/validate with:
+#   kubectl kustomize k8s/overlays/aks
+#
+# Before deploying: set the real ACR login server in the images: block below
+# (or `cd`-into this dir and run `kustomize edit set image \
+#   aegis-backend=<acr>.azurecr.io/backend:<sha> \
+#   aegis-frontend=<acr>.azurecr.io/frontend:<sha>`), and create secret.env
+# from secret.example.env (secret.env is gitignored).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aegis
+
+resources:
+  - ../../base
+
+# Real image refs come from ACR (mirrors .github/workflows/cd.yml image naming:
+# <ACR_LOGIN_SERVER>/backend:<sha>). Replace REGISTRY + tag at deploy time.
+images:
+  - name: aegis-backend
+    newName: REGISTRY.azurecr.io/backend
+    newTag: latest
+  - name: aegis-frontend
+    newName: REGISTRY.azurecr.io/frontend
+    newTag: latest
+
+# Real secret values live in secret.env (gitignored) — copy from
+# secret.example.env. Alternatively apply the Secret out-of-band and delete
+# this generator.
+secretGenerator:
+  - name: backend-secret
+    envs:
+      - secret.env
+
+patches:
+  - path: patches/backend-config.yaml
+  - path: patches/ingress-tls.yaml

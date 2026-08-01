@@ -1,0 +1,42 @@
+# LOCAL overlay — self-contained stack for Docker Desktop / kind.
+# Adds in-cluster Postgres + Azurite; app connects to them by Service DNS.
+# No Azure connectivity required. Verify with:
+#   kubectl apply -k k8s/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: aegis
+
+resources:
+  - ../../base
+  - postgres.yaml
+  - azurite.yaml
+
+# Local images built into the Docker/kind daemon (see k8s/README.md).
+images:
+  - name: aegis-backend
+    newName: aegis-backend
+    newTag: local
+  - name: aegis-frontend
+    newName: aegis-frontend
+    newTag: local
+
+# backend-secret is generated (hash-suffixed) from throwaway local values;
+# kustomize rewrites the envFrom secretRef in the Deployment + Job to match.
+secretGenerator:
+  - name: backend-secret
+    envs:
+      - secret.env
+
+patches:
+  - path: patches/backend-config.yaml
+  - path: patches/replicas-and-pullpolicy.yaml
+  - path: patches/migrate-pullpolicy.yaml
+  - path: patches/ingress-hosts.yaml
+  # No metrics-server on a laptop, and minReplicas:2 would fight replicas:1.
+  - patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: backend
