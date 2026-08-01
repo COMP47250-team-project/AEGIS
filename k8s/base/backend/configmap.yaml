@@ -13,7 +13,7 @@ data:
   APP_ENV: "production"
   LOG_LEVEL: "INFO"
   # Overridden per overlay to the exact app host (CORS is credentialed).
-  BACKEND_CORS_ORIGINS: "http://localhost:5173"
+  BACKEND_CORS_ORIGINS: '["http://localhost:5173"]'
   AZURE_SERVICE_BUS_QUEUE_NAME: "telemetry-events"
   SCORE_QUEUE_NAME: "score-jobs"
   AEGIS_EVENTS_QUEUE_NAME: "aegis-events"

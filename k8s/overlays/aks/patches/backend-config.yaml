@@ -8,4 +8,4 @@ metadata:
 data:
   APP_ENV: "production"
   LOG_LEVEL: "INFO"
-  BACKEND_CORS_ORIGINS: "https://app.aegis.example.com"
+  BACKEND_CORS_ORIGINS: '["https://app.aegis.example.com"]'

@@ -30,7 +30,8 @@ secretGenerator:
 
 patches:
   - path: patches/backend-config.yaml
-  - path: patches/replicas-and-pullpolicy.yaml
+  - path: patches/backend-replicas.yaml
+  - path: patches/frontend-replicas.yaml
   - path: patches/migrate-pullpolicy.yaml
   - path: patches/ingress-hosts.yaml
   # No metrics-server on a laptop, and minReplicas:2 would fight replicas:1.

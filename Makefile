@@ -1,0 +1,166 @@
+# AEGIS — developer & ops Makefile. Drives docker-compose and Kubernetes (minikube).
+# Extensible: set K8S_PROVIDER (minikube today; add a provider block for kind/k3s).
+
+K8S_PROVIDER ?= minikube
+NAMESPACE    ?= aegis
+OVERLAY      ?= k8s/overlays/local
+BACKEND_IMG  ?= aegis-backend:local
+FRONTEND_IMG ?= aegis-frontend:local
+SVC          ?= backend
+COMPOSE      ?= docker compose
+
+# Build+save always target the HOST docker daemon, even if `minikube docker-env`
+# is active in the shell (that mismatch causes "cannot find image in cache").
+HOST_DOCKER  := env -u DOCKER_HOST -u DOCKER_TLS_VERIFY -u DOCKER_CERT_PATH -u MINIKUBE_ACTIVE_DOCKERD
+
+# ── Provider seam ────────────────────────────────────────────────────────────
+# Each provider defines: how to start/stop/delete the cluster, enable ingress,
+# load a local image, and report the cluster IP. Add kind/k3s as `else ifeq`.
+# image_load streams a host-built image as an archive into the cluster; the
+# `docker save | … load -` form avoids minikube's "unable to calculate
+# manifest: blob not found" when Docker's containerd image store is enabled.
+# (kind/k3s map to `kind load image-archive` / `ctr images import`.)
+ifeq ($(K8S_PROVIDER),minikube)
+CLUSTER_START  := minikube start
+CLUSTER_STOP   := minikube stop
+CLUSTER_DELETE := minikube delete
+INGRESS_ENABLE := minikube addons enable ingress
+CLUSTER_IP     := minikube ip
+define image_load
+$(HOST_DOCKER) docker save $(1) | $(HOST_DOCKER) minikube image load -
+endef
+else
+$(error Unsupported K8S_PROVIDER '$(K8S_PROVIDER)'. Supported: minikube. Add a provider block for kind/k3s.)
+endif
+
+IP_NOW   = $(shell $(CLUSTER_IP) 2>/dev/null)
+GUARD_IP = test -n "$(IP_NOW)" || { echo ">> $(K8S_PROVIDER) not running or unreachable. Run 'make cluster-up' first."; exit 1; }
+
+.DEFAULT_GOAL := help
+
+##@ Docker Compose
+
+up: ## Start the compose stack and wait until healthy
+	$(COMPOSE) up -d --wait
+
+down: ## Stop the compose stack (keep volumes)
+	$(COMPOSE) down
+
+down-v: ## Stop the compose stack and DELETE volumes (postgres + azurite data)
+	$(COMPOSE) down -v --remove-orphans
+
+build: ## Build compose images
+	$(COMPOSE) build
+
+logs: ## Tail compose logs (SVC=backend|frontend|db|azurite; default backend)
+	$(COMPOSE) logs -f --tail=100 $(SVC)
+
+ps: ## Show compose container status
+	$(COMPOSE) ps
+
+restart: ## Restart a compose service (SVC=…)
+	$(COMPOSE) restart $(SVC)
+
+shell: ## Open a shell in a compose service (SVC=…; default backend)
+	$(COMPOSE) exec $(SVC) /bin/sh
+
+seed: ## Load demo data into the compose stack (admin + profs + students + quiz)
+	$(COMPOSE) exec -T backend python -m scripts.seed
+
+##@ Kubernetes (minikube)
+
+cluster-up: ## Start the cluster and enable the ingress controller
+	$(CLUSTER_START)
+	$(INGRESS_ENABLE)
+	@echo ">> Waiting for ingress controller"
+	@for i in $$(seq 1 30); do kubectl -n ingress-nginx get deploy ingress-nginx-controller >/dev/null 2>&1 && break; sleep 2; done
+	kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=180s
+
+images: ## Build backend+frontend images and load them into the cluster (needs cluster-up)
+	@$(GUARD_IP)
+	$(HOST_DOCKER) docker build -t $(BACKEND_IMG) ./backend
+	$(HOST_DOCKER) docker build -f ./frontend/Dockerfile.prod --build-arg VITE_API_URL=http://api.$(IP_NOW).nip.io -t $(FRONTEND_IMG) ./frontend
+	$(call image_load,$(BACKEND_IMG))
+	$(call image_load,$(FRONTEND_IMG))
+
+deploy: ## Apply manifests, run migrations, stamp live cluster IP into ingress + CORS
+	@$(GUARD_IP)
+	kubectl apply -k $(OVERLAY)
+	-kubectl rollout status statefulset/postgres -n $(NAMESPACE) --timeout=180s
+	kubectl wait --for=condition=complete job/migrate -n $(NAMESPACE) --timeout=300s
+	kubectl patch ingress aegis -n $(NAMESPACE) --type=json -p '[{"op":"replace","path":"/spec/rules/0/host","value":"app.$(IP_NOW).nip.io"},{"op":"replace","path":"/spec/rules/1/host","value":"api.$(IP_NOW).nip.io"}]'
+	kubectl patch configmap backend-config -n $(NAMESPACE) --type merge -p '{"data":{"BACKEND_CORS_ORIGINS":"[\"http://app.$(IP_NOW).nip.io\"]"}}'
+	kubectl rollout restart deploy/backend -n $(NAMESPACE)
+	kubectl rollout status deploy/backend -n $(NAMESPACE) --timeout=180s
+	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=180s
+	@echo ">> Deployed. 'make url' for links, 'make smoke' to verify."
+
+k8s-seed: ## Load demo data into the cluster backend
+	kubectl exec -n $(NAMESPACE) deploy/backend -- python -m scripts.seed
+
+k8s-status: ## Show cluster resources in the aegis namespace
+	kubectl get pods,svc,ingress,job,pvc -n $(NAMESPACE)
+
+k8s-logs: ## Tail cluster logs (SVC=backend|frontend; default backend)
+	kubectl logs -f -n $(NAMESPACE) -l app.kubernetes.io/component=$(SVC) --tail=100
+
+k8s-shell: ## Shell into a cluster deployment (SVC=…; default backend)
+	kubectl exec -it -n $(NAMESPACE) deploy/$(SVC) -- /bin/sh
+
+url: ## Print the live app/api URLs
+	@$(GUARD_IP)
+	@echo "App : http://app.$(IP_NOW).nip.io"
+	@echo "API : http://api.$(IP_NOW).nip.io  (health: /healthz)"
+
+k8s-all: ## One-shot local bring-up (cluster-up → images → deploy → seed → url)
+	$(MAKE) cluster-up
+	$(MAKE) images
+	$(MAKE) deploy
+	$(MAKE) k8s-seed
+	$(MAKE) url
+
+##@ Tests & verification
+
+test: ## Run backend unit tests (pytest)
+	cd backend && uv run pytest -q
+
+e2e: ## Run Playwright end-to-end tests (auto-starts the compose stack)
+	cd frontend && npx playwright test
+
+lint: ## Lint backend (ruff) + frontend (eslint)
+	cd backend && uv run ruff check .
+	cd frontend && npm run lint
+
+smoke: ## Curl-check the ingress: backend health, frontend health, admin login (needs k8s-seed)
+	@$(GUARD_IP)
+	@echo ">> backend  http://api.$(IP_NOW).nip.io/healthz"; curl -fsS http://api.$(IP_NOW).nip.io/healthz >/dev/null && echo "   OK"
+	@echo ">> frontend http://app.$(IP_NOW).nip.io/health";  curl -fsS http://app.$(IP_NOW).nip.io/health  >/dev/null && echo "   OK"
+	@echo ">> login    admin@aegis.ie"; curl -fsS -X POST http://api.$(IP_NOW).nip.io/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@aegis.ie","password":"SuperAdmin123!"}' | grep -q access_token && echo "   OK" || { echo "   FAILED — run 'make k8s-seed' first"; exit 1; }
+
+##@ Teardown
+
+undeploy: ## Delete AEGIS from the cluster (namespace cascade removes pods + PVCs + data)
+	kubectl delete -k $(OVERLAY) --ignore-not-found
+
+clean: ## Full in-cluster wipe: remove PVCs, delete all resources, wait for namespace to vanish
+	-kubectl delete pvc --all -n $(NAMESPACE) --ignore-not-found
+	kubectl delete -k $(OVERLAY) --ignore-not-found
+	-kubectl wait --for=delete namespace/$(NAMESPACE) --timeout=120s
+
+cluster-down: ## Stop the cluster (fast resume later; keeps data)
+	$(CLUSTER_STOP)
+
+cluster-delete: ## Delete the cluster entirely (removes ALL data and volumes)
+	$(CLUSTER_DELETE)
+
+nuke: cluster-delete ## Alias for cluster-delete (destroy the whole cluster)
+
+##@ Meta
+
+help: ## Show this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nAEGIS make targets\n  Usage: make \033[36m<target>\033[0m\n"} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} /^[a-zA-Z0-9_%-]+:.*##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+.PHONY: up down down-v build logs ps restart shell seed \
+	cluster-up images deploy k8s-seed k8s-status k8s-logs k8s-shell url k8s-all \
+	test e2e lint smoke \
+	undeploy clean cluster-down cluster-delete nuke help

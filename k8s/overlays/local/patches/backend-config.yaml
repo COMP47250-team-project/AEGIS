@@ -8,4 +8,4 @@ metadata:
 data:
   APP_ENV: "development"
   LOG_LEVEL: "DEBUG"
-  BACKEND_CORS_ORIGINS: "http://app.127.0.0.1.nip.io"
+  BACKEND_CORS_ORIGINS: '["http://app.127.0.0.1.nip.io"]'
