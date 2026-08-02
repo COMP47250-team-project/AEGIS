@@ -1,0 +1,23 @@
+# Non-secret backend configuration. Secrets (DATABASE_URL, JWT_SECRET_KEY,
+# storage/service-bus connection strings) live in the backend-secret Secret.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "backend" | nindent 4 }}
+data:
+  JWT_ALGORITHM: {{ .Values.backend.config.jwtAlgorithm | quote }}
+  JWT_EXPIRE_MINUTES: {{ .Values.backend.config.jwtExpireMinutes | quote }}
+  APP_ENV: {{ .Values.backend.appEnv | quote }}
+  LOG_LEVEL: {{ .Values.backend.logLevel | quote }}
+  # toJson: pydantic-settings parses this list[str] field with json.loads()
+  # BEFORE its comma-split validator runs, so a bare URL string would throw at
+  # startup. Emitting a JSON array (e.g. ["http://app…"]) is required.
+  BACKEND_CORS_ORIGINS: {{ .Values.backend.corsOrigins | toJson | quote }}
+  AZURE_SERVICE_BUS_QUEUE_NAME: {{ .Values.backend.config.serviceBusQueueName | quote }}
+  SCORE_QUEUE_NAME: {{ .Values.backend.config.scoreQueueName | quote }}
+  AEGIS_EVENTS_QUEUE_NAME: {{ .Values.backend.config.eventsQueueName | quote }}
+  SCORER_BATCH_INTERVAL_SECONDS: {{ .Values.backend.config.scorerBatchIntervalSeconds | quote }}
+  SCORER_MAX_DELIVERY_ATTEMPTS: {{ .Values.backend.config.scorerMaxDeliveryAttempts | quote }}

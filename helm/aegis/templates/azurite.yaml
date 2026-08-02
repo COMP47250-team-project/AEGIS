@@ -1,0 +1,78 @@
+{{- if .Values.localServices.enabled }}
+# Azurite — Azure Storage emulator, LOCAL only (AKS uses real Azure Blob).
+# The backend's session-tape append path uses AZURE_STORAGE_CONNECTION_STRING;
+# the local secret points it at http://azurite:10000/devstoreaccount1 using the
+# well-known Azurite dev account key. Args mirror docker-compose.yml
+# (loose + skipApiVersionCheck).
+apiVersion: v1
+kind: Service
+metadata:
+  name: azurite
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "azurite" | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "aegis.selectorLabels" "azurite" | nindent 4 }}
+  ports:
+    - name: blob
+      port: 10000
+      targetPort: 10000
+    - name: queue
+      port: 10001
+      targetPort: 10001
+    - name: table
+      port: 10002
+      targetPort: 10002
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azurite
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "azurite" | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aegis.selectorLabels" "azurite" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aegis.selectorLabels" "azurite" | nindent 8 }}
+    spec:
+      containers:
+        - name: azurite
+          image: {{ .Values.localServices.azurite.image }}
+          args:
+            - azurite
+            - --blobHost
+            - "0.0.0.0"
+            - --queueHost
+            - "0.0.0.0"
+            - --tableHost
+            - "0.0.0.0"
+            - --loose
+            - --skipApiVersionCheck
+          ports:
+            - name: blob
+              containerPort: 10000
+            - name: queue
+              containerPort: 10001
+            - name: table
+              containerPort: 10002
+          readinessProbe:
+            tcpSocket:
+              port: blob
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+{{- end }}

@@ -1,0 +1,86 @@
+{{- if .Values.localServices.enabled }}
+# In-cluster PostgreSQL for LOCAL development only (AKS uses managed Azure
+# Postgres Flexible Server). Values mirror docker-compose.yml (dev/dev/appdb).
+# Headless Service "postgres" gives a stable in-cluster DNS name that the
+# backend-secret DATABASE_URL points at:
+#   postgresql+asyncpg://dev:dev@postgres:5432/appdb
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "postgres" | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "aegis.selectorLabels" "postgres" | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "postgres" | nindent 4 }}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "aegis.selectorLabels" "postgres" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aegis.selectorLabels" "postgres" | nindent 8 }}
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.localServices.postgres.image }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.localServices.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              value: {{ .Values.localServices.postgres.password | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.localServices.postgres.database | quote }}
+            # Keep PGDATA in a subdir so the mounted volume root (which may hold
+            # lost+found) doesn't upset initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.localServices.postgres.user | quote }}, "-d", {{ .Values.localServices.postgres.database | quote }}]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.localServices.postgres.user | quote }}, "-d", {{ .Values.localServices.postgres.database | quote }}]
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.localServices.postgres.storage }}
+{{- end }}

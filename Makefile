@@ -4,6 +4,8 @@
 K8S_PROVIDER ?= minikube
 NAMESPACE    ?= aegis
 OVERLAY      ?= k8s/overlays/local
+HELM_RELEASE ?= aegis
+CHART        ?= helm/aegis
 BACKEND_IMG  ?= aegis-backend:local
 FRONTEND_IMG ?= aegis-frontend:local
 SVC          ?= backend
@@ -91,16 +93,14 @@ images: ## Build backend+frontend images and load them into the cluster (needs c
 	$(call image_load,$(BACKEND_IMG))
 	$(call image_load,$(FRONTEND_IMG))
 
-deploy: ## Apply manifests, run migrations, stamp live cluster IP into ingress + CORS
+deploy: ## Helm-install locally, stamping the live cluster IP into ingress hosts + CORS
 	@$(GUARD_IP)
-	kubectl apply -k $(OVERLAY)
-	-kubectl rollout status statefulset/postgres -n $(NAMESPACE) --timeout=180s
-	kubectl wait --for=condition=complete job/migrate -n $(NAMESPACE) --timeout=300s
-	kubectl patch ingress aegis -n $(NAMESPACE) --type=json -p '[{"op":"replace","path":"/spec/rules/0/host","value":"app.$(IP_NOW).nip.io"},{"op":"replace","path":"/spec/rules/1/host","value":"api.$(IP_NOW).nip.io"}]'
-	kubectl patch configmap backend-config -n $(NAMESPACE) --type merge -p '{"data":{"BACKEND_CORS_ORIGINS":"[\"http://app.$(IP_NOW).nip.io\"]"}}'
-	kubectl rollout restart deploy/backend -n $(NAMESPACE)
-	kubectl rollout status deploy/backend -n $(NAMESPACE) --timeout=180s
-	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=180s
+	helm upgrade --install $(HELM_RELEASE) $(CHART) -n $(NAMESPACE) --create-namespace \
+		-f $(CHART)/values-local.yaml \
+		--set ingress.appHost=app.$(IP_NOW).nip.io \
+		--set ingress.apiHost=api.$(IP_NOW).nip.io \
+		--set-json 'backend.corsOrigins=["http://app.$(IP_NOW).nip.io"]' \
+		--wait --timeout 300s
 	@echo ">> Deployed. 'make url' for links, 'make smoke' to verify."
 
 k8s-seed: ## Pre-create Azurite blob containers, then load demo data into the cluster backend
@@ -135,10 +135,12 @@ expose: ## Forward ingress to HOST_IP:EXPOSE_PORT (default 8080) — no root nee
 		--build-arg VITE_API_URL=http://api.$(HOST_IP).nip.io:$(EXPOSE_PORT) \
 		-t $(FRONTEND_IMG) ./frontend
 	$(call image_load,$(FRONTEND_IMG))
-	kubectl patch ingress aegis -n $(NAMESPACE) --type=json -p \
-		'[{"op":"replace","path":"/spec/rules/0/host","value":"app.$(HOST_IP).nip.io"},{"op":"replace","path":"/spec/rules/1/host","value":"api.$(HOST_IP).nip.io"}]'
-	kubectl patch configmap backend-config -n $(NAMESPACE) --type merge -p \
-		'{"data":{"BACKEND_CORS_ORIGINS":"[\"http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)\"]"}}'
+	helm upgrade --install $(HELM_RELEASE) $(CHART) -n $(NAMESPACE) --create-namespace \
+		-f $(CHART)/values-local.yaml \
+		--set ingress.appHost=app.$(HOST_IP).nip.io \
+		--set ingress.apiHost=api.$(HOST_IP).nip.io \
+		--set-json 'backend.corsOrigins=["http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)"]' \
+		--wait --timeout 300s
 	kubectl rollout restart deploy/backend -n $(NAMESPACE)
 	kubectl rollout restart deploy/frontend -n $(NAMESPACE)
 	kubectl rollout status deploy/backend -n $(NAMESPACE) --timeout=120s
@@ -228,14 +230,24 @@ lint: ## Lint backend (ruff) + frontend (eslint)
 
 smoke: ## Curl-check the ingress: backend health, frontend health, admin login (needs k8s-seed)
 	@$(GUARD_IP)
-	@echo ">> backend  http://api.$(IP_NOW).nip.io/healthz"; curl -fsS http://api.$(IP_NOW).nip.io/healthz >/dev/null && echo "   OK"
-	@echo ">> frontend http://app.$(IP_NOW).nip.io/health";  curl -fsS http://app.$(IP_NOW).nip.io/health  >/dev/null && echo "   OK"
-	@echo ">> login    admin@aegis.ie"; curl -fsS -X POST http://api.$(IP_NOW).nip.io/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@aegis.ie","password":"SuperAdmin123!"}' | grep -q access_token && echo "   OK" || { echo "   FAILED — run 'make k8s-seed' first"; exit 1; }
+	@if [ -f /tmp/aegis-pf.pid ] && kill -0 $$(cat /tmp/aegis-pf.pid) 2>/dev/null; then \
+		API_HOST="http://api.$(HOST_IP).nip.io:$(EXPOSE_PORT)"; \
+		APP_HOST="http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)"; \
+		echo ">> (via expose: $(HOST_IP):$(EXPOSE_PORT))"; \
+	else \
+		API_HOST="http://api.$(IP_NOW).nip.io"; \
+		APP_HOST="http://app.$(IP_NOW).nip.io"; \
+		echo ">> (via direct minikube IP: $(IP_NOW))"; \
+	fi; \
+	echo ">> backend  $$API_HOST/healthz"; curl -fsS "$$API_HOST/healthz" >/dev/null && echo "   OK"; \
+	echo ">> frontend $$APP_HOST/health";  curl -fsS "$$APP_HOST/health"  >/dev/null && echo "   OK"; \
+	echo ">> login    admin@aegis.ie"; curl -fsS -X POST "$$API_HOST/auth/login" -H 'Content-Type: application/json' -d '{"email":"admin@aegis.ie","password":"SuperAdmin123!"}' | grep -q access_token && echo "   OK" || { echo "   FAILED — run 'make k8s-seed' first"; exit 1; }
 
 ##@ Teardown
 
-undeploy: ## Delete AEGIS from the cluster (namespace cascade removes pods + PVCs + data)
-	kubectl delete -k $(OVERLAY) --ignore-not-found
+undeploy: ## Uninstall the Helm release (namespace cascade removes pods + PVCs + data)
+	-helm uninstall $(HELM_RELEASE) -n $(NAMESPACE)
+	kubectl delete namespace $(NAMESPACE) --ignore-not-found
 
 clean: ## Full in-cluster wipe: delete namespace (cascades pods/PVCs/all data) then wait
 	kubectl delete namespace $(NAMESPACE) --ignore-not-found

@@ -1,0 +1,31 @@
+{{- if .Values.hpa.enabled }}
+# Horizontal Pod Autoscaler for the backend — the "scale to many instances"
+# goal. Requires metrics-server (native on AKS; absent on a laptop, which is why
+# the local values disable this and pin replicas=1). On AKS the HPA owns the
+# replica count; the Deployment's replicas matches minReplicas so there's no
+# initial fight.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "backend" | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.targetCPUUtilizationPercentage }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+{{- end }}

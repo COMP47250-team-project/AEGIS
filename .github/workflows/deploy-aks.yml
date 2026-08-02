@@ -1,0 +1,231 @@
+# .github/workflows/deploy-aks.yml
+#
+# Deploys AEGIS to Azure Kubernetes Service (AKS) via Helm — the Kubernetes
+# deployment track, ALONGSIDE the Container Apps CD (cd.yml). This is
+# workflow_dispatch ONLY: it never triggers on push, so it can never race or
+# fight the push-triggered cd.yml. Run it by hand from the Actions tab once the
+# AKS cluster (infra/aks.bicep) and the GitHub secrets below exist.
+#
+# Reused GitHub secrets (same as cd.yml):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID   (OIDC federated login)
+#   ACR_LOGIN_SERVER                                          (e.g. aegisprodacrxxxx.azurecr.io)
+#   RESOURCE_GROUP                                            (e.g. aegis-prod-rg)
+# New GitHub secrets for AKS:
+#   AKS_CLUSTER_NAME                                          (from infra/aks.bicep output clusterName)
+#   AKS_APP_HOST, AKS_API_HOST                                (ingress hostnames, e.g. app.<domain> / api.<domain>)
+#   DATABASE_URL, JWT_SECRET_KEY,                             (backend-secret contents — managed Azure)
+#   AZURE_SERVICE_BUS_CONNECTION_STRING, AZURE_STORAGE_CONNECTION_STRING
+
+name: Deploy to AKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      imageTag:
+        description: "Image tag to deploy (defaults to the current commit SHA)."
+        required: false
+        default: ""
+
+# One deploy at a time; let an in-progress deploy finish rather than cancelling
+# it mid-rollout (a cancelled helm upgrade can leave the release half-applied).
+concurrency:
+  group: deploy-aks-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # needed for OIDC login to Azure
+
+env:
+  ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # 1. Build and push backend image (mirrors cd.yml)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-backend:
+    name: Build & push backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: |
+          ACR_NAME="$(echo "${{ secrets.ACR_LOGIN_SERVER }}" | cut -d. -f1)"
+          az acr login --name "$ACR_NAME"
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.imageTag }}"
+          [ -n "$TAG" ] || TAG="${{ github.sha }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend image
+        run: |
+          IMAGE="$ACR_LOGIN_SERVER/backend:${{ steps.tag.outputs.tag }}"
+          docker build -t "$IMAGE" ./backend
+          docker push "$IMAGE"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 2. Build and push frontend image (VITE_API_URL baked to the AKS api host)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-frontend:
+    name: Build & push frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Log in to ACR
+        run: |
+          ACR_NAME="$(echo "${{ secrets.ACR_LOGIN_SERVER }}" | cut -d. -f1)"
+          az acr login --name "$ACR_NAME"
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.imageTag }}"
+          [ -n "$TAG" ] || TAG="${{ github.sha }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push frontend image
+        run: |
+          # VITE_API_URL is baked at build time and must point at the AKS API
+          # ingress host (NOT the Container Apps backend FQDN cd.yml uses).
+          IMAGE="$ACR_LOGIN_SERVER/frontend:${{ steps.tag.outputs.tag }}"
+          API_URL="https://${{ secrets.AKS_API_HOST }}"
+          docker build \
+            -f ./frontend/Dockerfile.prod \
+            --build-arg "VITE_API_URL=${API_URL}" \
+            -t "$IMAGE" \
+            ./frontend
+          docker push "$IMAGE"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 3. Deploy to AKS via Helm
+  # ──────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build-backend, build-frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.imageTag }}"
+          [ -n "$TAG" ] || TAG="${{ github.sha }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "${{ secrets.AKS_CLUSTER_NAME }}" \
+            --overwrite-existing
+
+      - name: Ensure namespace
+        run: kubectl create namespace aegis --dry-run=client -o yaml | kubectl apply -f -
+
+      # ACR admin creds → docker-registry pull secret. Managed-identity AcrPull
+      # is denied for the sponsored-subscription guest accounts (see
+      # infra/modules/acr.bicep), so the chart pulls via this imagePullSecret.
+      - name: Create ACR pull secret
+        run: |
+          ACR_NAME="$(echo "$ACR_LOGIN_SERVER" | cut -d. -f1)"
+          az acr update --name "$ACR_NAME" --admin-enabled true
+          USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv)
+          PASSWORD=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
+          echo "::add-mask::$PASSWORD"
+          kubectl create secret docker-registry acr-pull \
+            --namespace aegis \
+            --docker-server="$ACR_LOGIN_SERVER" \
+            --docker-username="$USERNAME" \
+            --docker-password="$PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # backend-secret applied out-of-band (chart's secret.create is false on
+      # AKS). Values come from GitHub secrets — never committed or in chart values.
+      - name: Create backend secret
+        run: |
+          kubectl create secret generic backend-secret \
+            --namespace aegis \
+            --from-literal=DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+            --from-literal=JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+            --from-literal=AZURE_STORAGE_CONNECTION_STRING="${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+            --from-literal=AZURE_SERVICE_BUS_CONNECTION_STRING="${{ secrets.AZURE_SERVICE_BUS_CONNECTION_STRING }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm upgrade --install
+        run: |
+          helm upgrade --install aegis helm/aegis \
+            --namespace aegis \
+            -f helm/aegis/values-aks.yaml \
+            --set backend.image.repository="$ACR_LOGIN_SERVER/backend" \
+            --set backend.image.tag="${{ steps.tag.outputs.tag }}" \
+            --set frontend.image.repository="$ACR_LOGIN_SERVER/frontend" \
+            --set frontend.image.tag="${{ steps.tag.outputs.tag }}" \
+            --set ingress.appHost="${{ secrets.AKS_APP_HOST }}" \
+            --set ingress.apiHost="${{ secrets.AKS_API_HOST }}" \
+            --set-json 'backend.corsOrigins=["https://${{ secrets.AKS_APP_HOST }}"]' \
+            --wait --timeout 300s
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # 4. Smoke test
+  # ──────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy]
+
+    steps:
+      - name: Wait for ingress to stabilise
+        run: sleep 30
+
+      - name: Backend health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.AKS_API_HOST }}/healthz")
+          echo "Backend /healthz returned HTTP $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
+
+      - name: Frontend health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ secrets.AKS_APP_HOST }}/health")
+          echo "Frontend /health returned HTTP $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
