@@ -36,6 +36,14 @@ endif
 IP_NOW   = $(shell $(CLUSTER_IP) 2>/dev/null)
 GUARD_IP = test -n "$(IP_NOW)" || { echo ">> $(K8S_PROVIDER) not running or unreachable. Run 'make cluster-up' first."; exit 1; }
 
+# HOST_IP: the Linux host's LAN IP — used by `make expose` to forward the
+# ingress controller port so it's reachable from other machines (e.g. a Windows
+# dev box). Auto-detected via the default-route interface; override if needed:
+#   make expose HOST_IP=192.168.1.42
+HOST_IP     ?= $(shell ip route get 1.1.1.1 2>/dev/null | awk '/src/{for(i=1;i<=NF;i++) if($$i=="src") print $$(i+1)}' | head -1)
+# EXPOSE_PORT: high port (no root) forwarded to ingress-nginx :80 inside the cluster.
+EXPOSE_PORT ?= 8080
+
 .DEFAULT_GOAL := help
 
 ##@ Docker Compose
@@ -95,7 +103,19 @@ deploy: ## Apply manifests, run migrations, stamp live cluster IP into ingress +
 	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=180s
 	@echo ">> Deployed. 'make url' for links, 'make smoke' to verify."
 
-k8s-seed: ## Load demo data into the cluster backend
+k8s-seed: ## Load demo data into the cluster backend + pre-create Azurite blob containers
+	@echo ">> Pre-creating Azurite blob containers (session-tapes, exam-resources)"
+	kubectl exec -n $(NAMESPACE) deploy/backend -- python -c "\
+import os, asyncio; \
+from azure.storage.blob.aio import BlobServiceClient; \
+conn = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', ''); \
+async def mk(): \
+    if not conn: print('no conn str, skipping'); return; \
+    async with BlobServiceClient.from_connection_string(conn) as c: \
+        for name in ['session-tapes','exam-resources']: \
+            try: await c.create_container(name); print('created',name) \
+            except Exception as e: print('exists or error:',name,e) \
+asyncio.run(mk())"
 	kubectl exec -n $(NAMESPACE) deploy/backend -- python -m scripts.seed
 
 k8s-status: ## Show cluster resources in the aegis namespace
@@ -107,10 +127,68 @@ k8s-logs: ## Tail cluster logs (SVC=backend|frontend; default backend)
 k8s-shell: ## Shell into a cluster deployment (SVC=…; default backend)
 	kubectl exec -it -n $(NAMESPACE) deploy/$(SVC) -- /bin/sh
 
-url: ## Print the live app/api URLs
+url: ## Print the live app/api URLs (minikube IP — only reachable on this Linux host)
 	@$(GUARD_IP)
 	@echo "App : http://app.$(IP_NOW).nip.io"
 	@echo "API : http://api.$(IP_NOW).nip.io  (health: /healthz)"
+	@echo ""
+	@echo "NOTE: $(IP_NOW) is the minikube docker-bridge IP, only routable on this machine."
+	@echo "      Run 'make expose' to forward traffic via the host LAN IP ($(HOST_IP))."
+
+expose: ## Forward ingress to HOST_IP:EXPOSE_PORT (default 8080) — no root needed; rebuilds frontend
+	@$(GUARD_IP)
+	@test -n "$(HOST_IP)" || { echo ">> Cannot detect HOST_IP. Run: make expose HOST_IP=<your-lan-ip>"; exit 1; }
+	@pkill -f "[k]ubectl port-forward.*ingress-nginx" 2>/dev/null || true; sleep 1
+	@echo ">> Starting port-forward $(HOST_IP):$(EXPOSE_PORT) -> ingress-nginx:80 (PID in /tmp/aegis-pf.pid)"
+	@nohup kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller $(EXPOSE_PORT):80 --address=$(HOST_IP) >/tmp/aegis-pf.log 2>&1 & echo $$! > /tmp/aegis-pf.pid; sleep 2; grep -q "error\|Error" /tmp/aegis-pf.log && { cat /tmp/aegis-pf.log; exit 1; } || true
+	@echo ">> Rebuilding frontend with VITE_API_URL=http://api.$(HOST_IP).nip.io:$(EXPOSE_PORT)"
+	$(HOST_DOCKER) docker build -f ./frontend/Dockerfile.prod \
+		--build-arg VITE_API_URL=http://api.$(HOST_IP).nip.io:$(EXPOSE_PORT) \
+		-t $(FRONTEND_IMG) ./frontend
+	$(call image_load,$(FRONTEND_IMG))
+	kubectl patch ingress aegis -n $(NAMESPACE) --type=json -p \
+		'[{"op":"replace","path":"/spec/rules/0/host","value":"app.$(HOST_IP).nip.io"},{"op":"replace","path":"/spec/rules/1/host","value":"api.$(HOST_IP).nip.io"}]'
+	kubectl patch configmap backend-config -n $(NAMESPACE) --type merge -p \
+		'{"data":{"BACKEND_CORS_ORIGINS":"[\"http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)\"]"}}'
+	kubectl rollout restart deploy/backend -n $(NAMESPACE)
+	kubectl rollout status deploy/backend -n $(NAMESPACE) --timeout=120s
+	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=120s
+	@echo ""
+	@echo ">> Exposed. From any machine on the same network:"
+	@echo "   App : http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)"
+	@echo "   API : http://api.$(HOST_IP).nip.io:$(EXPOSE_PORT)/healthz"
+	@echo "   (port-forward log: /tmp/aegis-pf.log)"
+
+unexpose: ## Stop the port-forward started by `make expose`
+	@if [ -f /tmp/aegis-pf.pid ]; then \
+		kill $$(cat /tmp/aegis-pf.pid) 2>/dev/null && echo ">> port-forward stopped" || echo ">> process already gone"; \
+		rm -f /tmp/aegis-pf.pid; \
+	else \
+		pkill -f "[k]ubectl port-forward.*ingress-nginx" 2>/dev/null && echo ">> port-forward stopped" || echo ">> no port-forward running"; \
+	fi
+
+diagnose: ## Diagnose why the app URLs are unreachable from this machine
+	@$(GUARD_IP)
+	@echo "=== 1. minikube IP ==="
+	@$(CLUSTER_IP)
+	@echo ""
+	@echo "=== 2. nip.io DNS resolution (needs internet DNS, not corporate) ==="
+	@nslookup app.$(IP_NOW).nip.io 8.8.8.8 2>/dev/null | grep -E "Address|Name" || echo "   FAILED — nip.io DNS blocked. Use /etc/hosts workaround (see below)"
+	@echo ""
+	@echo "=== 3. Can we ping the minikube node? ==="
+	@ping -c1 -W2 $(IP_NOW) >/dev/null 2>&1 && echo "   OK — $(IP_NOW) is routable" || echo "   FAILED — $(IP_NOW) not reachable (wrong driver?)"
+	@echo ""
+	@echo "=== 4. Direct curl to ingress-nginx NodePort (bypasses DNS) ==="
+	@NODE_PORT=$$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}' 2>/dev/null); \
+	if [ -n "$$NODE_PORT" ]; then \
+		echo "   NodePort: $$NODE_PORT"; \
+		curl -fsS --max-time 3 -H "Host: api.$(IP_NOW).nip.io" http://$(IP_NOW):$$NODE_PORT/healthz >/dev/null && echo "   OK — ingress routes correctly" || echo "   FAILED — ingress not routing (check ingress patch)"; \
+	else echo "   Cannot read NodePort"; fi
+	@echo ""
+	@echo "=== 5. /etc/hosts workaround (if DNS is blocked) ==="
+	@echo "   Add these lines to /etc/hosts on this machine:"
+	@echo "   $(IP_NOW)  app.$(IP_NOW).nip.io"
+	@echo "   $(IP_NOW)  api.$(IP_NOW).nip.io"
 
 k8s-all: ## One-shot local bring-up (cluster-up → images → deploy → seed → url)
 	$(MAKE) cluster-up
@@ -142,9 +220,8 @@ smoke: ## Curl-check the ingress: backend health, frontend health, admin login (
 undeploy: ## Delete AEGIS from the cluster (namespace cascade removes pods + PVCs + data)
 	kubectl delete -k $(OVERLAY) --ignore-not-found
 
-clean: ## Full in-cluster wipe: remove PVCs, delete all resources, wait for namespace to vanish
-	-kubectl delete pvc --all -n $(NAMESPACE) --ignore-not-found
-	kubectl delete -k $(OVERLAY) --ignore-not-found
+clean: ## Full in-cluster wipe: delete namespace (cascades pods/PVCs/all data) then wait
+	kubectl delete namespace $(NAMESPACE) --ignore-not-found
 	-kubectl wait --for=delete namespace/$(NAMESPACE) --timeout=120s
 
 cluster-down: ## Stop the cluster (fast resume later; keeps data)
@@ -161,6 +238,6 @@ help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nAEGIS make targets\n  Usage: make \033[36m<target>\033[0m\n"} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} /^[a-zA-Z0-9_%-]+:.*##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: up down down-v build logs ps restart shell seed \
-	cluster-up images deploy k8s-seed k8s-status k8s-logs k8s-shell url k8s-all \
+	cluster-up images deploy k8s-seed k8s-status k8s-logs k8s-shell url expose unexpose diagnose k8s-all \
 	test e2e lint smoke \
 	undeploy clean cluster-down cluster-delete nuke help
