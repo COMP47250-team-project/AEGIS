@@ -21,7 +21,7 @@ HOST_DOCKER  := env -u DOCKER_HOST -u DOCKER_TLS_VERIFY -u DOCKER_CERT_PATH -u M
 # manifest: blob not found" when Docker's containerd image store is enabled.
 # (kind/k3s map to `kind load image-archive` / `ctr images import`.)
 ifeq ($(K8S_PROVIDER),minikube)
-CLUSTER_START  := minikube start
+CLUSTER_START  := minikube start --driver=docker
 CLUSTER_STOP   := minikube stop
 CLUSTER_DELETE := minikube delete
 INGRESS_ENABLE := minikube addons enable ingress
@@ -103,19 +103,8 @@ deploy: ## Apply manifests, run migrations, stamp live cluster IP into ingress +
 	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=180s
 	@echo ">> Deployed. 'make url' for links, 'make smoke' to verify."
 
-k8s-seed: ## Load demo data into the cluster backend + pre-create Azurite blob containers
-	@echo ">> Pre-creating Azurite blob containers (session-tapes, exam-resources)"
-	kubectl exec -n $(NAMESPACE) deploy/backend -- python -c "\
-import os, asyncio; \
-from azure.storage.blob.aio import BlobServiceClient; \
-conn = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', ''); \
-async def mk(): \
-    if not conn: print('no conn str, skipping'); return; \
-    async with BlobServiceClient.from_connection_string(conn) as c: \
-        for name in ['session-tapes','exam-resources']: \
-            try: await c.create_container(name); print('created',name) \
-            except Exception as e: print('exists or error:',name,e) \
-asyncio.run(mk())"
+k8s-seed: ## Pre-create Azurite blob containers, then load demo data into the cluster backend
+	kubectl exec -n $(NAMESPACE) deploy/backend -- python -m scripts.init_blob
 	kubectl exec -n $(NAMESPACE) deploy/backend -- python -m scripts.seed
 
 k8s-status: ## Show cluster resources in the aegis namespace
@@ -151,6 +140,7 @@ expose: ## Forward ingress to HOST_IP:EXPOSE_PORT (default 8080) — no root nee
 	kubectl patch configmap backend-config -n $(NAMESPACE) --type merge -p \
 		'{"data":{"BACKEND_CORS_ORIGINS":"[\"http://app.$(HOST_IP).nip.io:$(EXPOSE_PORT)\"]"}}'
 	kubectl rollout restart deploy/backend -n $(NAMESPACE)
+	kubectl rollout restart deploy/frontend -n $(NAMESPACE)
 	kubectl rollout status deploy/backend -n $(NAMESPACE) --timeout=120s
 	kubectl rollout status deploy/frontend -n $(NAMESPACE) --timeout=120s
 	@echo ""
@@ -169,28 +159,55 @@ unexpose: ## Stop the port-forward started by `make expose`
 
 diagnose: ## Diagnose why the app URLs are unreachable from this machine
 	@$(GUARD_IP)
-	@echo "=== 1. minikube IP ==="
+	@echo "=== 1. minikube IP and driver ==="
 	@$(CLUSTER_IP)
+	@minikube profile list 2>/dev/null | grep -E "minikube|Driver" || true
 	@echo ""
 	@echo "=== 2. nip.io DNS resolution (needs internet DNS, not corporate) ==="
 	@nslookup app.$(IP_NOW).nip.io 8.8.8.8 2>/dev/null | grep -E "Address|Name" || echo "   FAILED — nip.io DNS blocked. Use /etc/hosts workaround (see below)"
 	@echo ""
 	@echo "=== 3. Can we ping the minikube node? ==="
-	@ping -c1 -W2 $(IP_NOW) >/dev/null 2>&1 && echo "   OK — $(IP_NOW) is routable" || echo "   FAILED — $(IP_NOW) not reachable (wrong driver?)"
+	@ping -c1 -W2 $(IP_NOW) >/dev/null 2>&1 \
+		&& echo "   OK — $(IP_NOW) is routable from this machine" \
+		|| { echo "   FAILED — $(IP_NOW) not reachable."; \
+		     echo "   If driver=docker: run 'minikube delete && minikube start --driver=docker'"; \
+		     echo "   If driver=kvm2/virtualbox: run 'minikube tunnel' in a separate terminal"; }
 	@echo ""
 	@echo "=== 4. Direct curl to ingress-nginx NodePort (bypasses DNS) ==="
 	@NODE_PORT=$$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.port==80)].nodePort}' 2>/dev/null); \
 	if [ -n "$$NODE_PORT" ]; then \
 		echo "   NodePort: $$NODE_PORT"; \
-		curl -fsS --max-time 3 -H "Host: api.$(IP_NOW).nip.io" http://$(IP_NOW):$$NODE_PORT/healthz >/dev/null && echo "   OK — ingress routes correctly" || echo "   FAILED — ingress not routing (check ingress patch)"; \
+		curl -fsS --max-time 3 -H "Host: api.$(IP_NOW).nip.io" http://$(IP_NOW):$$NODE_PORT/healthz >/dev/null \
+			&& echo "   OK — ingress routes correctly" \
+			|| echo "   FAILED — node IP not reachable (need minikube tunnel for VM drivers)"; \
 	else echo "   Cannot read NodePort"; fi
 	@echo ""
-	@echo "=== 5. /etc/hosts workaround (if DNS is blocked) ==="
+	@echo "=== 5. Check port-forward (expose) is running ==="
+	@pgrep -f "[k]ubectl port-forward.*ingress-nginx" >/dev/null \
+		&& echo "   OK — port-forward running (PID: $$(cat /tmp/aegis-pf.pid 2>/dev/null || pgrep -f '[k]ubectl port-forward.*ingress-nginx'))" \
+		|| echo "   NOT running — run 'make expose' for LAN access"
+	@echo ""
+	@echo "=== 6. /etc/hosts workaround (if DNS is blocked) ==="
 	@echo "   Add these lines to /etc/hosts on this machine:"
 	@echo "   $(IP_NOW)  app.$(IP_NOW).nip.io"
 	@echo "   $(IP_NOW)  api.$(IP_NOW).nip.io"
 
-k8s-all: ## One-shot local bring-up (cluster-up → images → deploy → seed → url)
+tunnel: ## Start minikube tunnel in background (needed for VM drivers to route cluster IP to host)
+	@echo ">> Starting minikube tunnel (routes $(IP_NOW) to this machine, needs sudo)"
+	@nohup minikube tunnel >/tmp/aegis-tunnel.log 2>&1 & echo $$! > /tmp/aegis-tunnel.pid
+	@sleep 2
+	@echo ">> Tunnel PID: $$(cat /tmp/aegis-tunnel.pid) — log: /tmp/aegis-tunnel.log"
+	@echo "   Stop with: make tunnel-stop"
+
+tunnel-stop: ## Stop the minikube tunnel started by `make tunnel`
+	@if [ -f /tmp/aegis-tunnel.pid ]; then \
+		kill $$(cat /tmp/aegis-tunnel.pid) 2>/dev/null && echo ">> tunnel stopped" || echo ">> process already gone"; \
+		rm -f /tmp/aegis-tunnel.pid; \
+	else \
+		pkill -f "[m]inikube tunnel" 2>/dev/null && echo ">> tunnel stopped" || echo ">> no tunnel running"; \
+	fi
+
+
 	$(MAKE) cluster-up
 	$(MAKE) images
 	$(MAKE) deploy
@@ -238,6 +255,6 @@ help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nAEGIS make targets\n  Usage: make \033[36m<target>\033[0m\n"} /^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5); next} /^[a-zA-Z0-9_%-]+:.*##/ {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 .PHONY: up down down-v build logs ps restart shell seed \
-	cluster-up images deploy k8s-seed k8s-status k8s-logs k8s-shell url expose unexpose diagnose k8s-all \
+	cluster-up images deploy k8s-seed k8s-status k8s-logs k8s-shell url expose unexpose tunnel tunnel-stop diagnose k8s-all \
 	test e2e lint smoke \
 	undeploy clean cluster-down cluster-delete nuke help
