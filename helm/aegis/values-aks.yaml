@@ -43,7 +43,7 @@ localServices:
 
 ingress:
   # AKS Application Routing add-on (Azure-managed nginx).
-  className: webapprouting.kubernetes.io
+  className: webapprouting.kubernetes.azure.com
   appHost: app.aegis.example.com
   apiHost: api.aegis.example.com
   tls:
@@ -56,6 +56,9 @@ ingress:
 # Azure connection strings from GitHub secrets) — never rendered by the chart.
 secret:
   create: false
+
+migrate:
+  enabled: false
 
 # Pull private images from ACR. The deploy workflow creates this docker-registry
 # secret from ACR admin creds (managed-identity AcrPull is denied for the

@@ -14,8 +14,8 @@ param dnsPrefix string = name
 @description('Node count for the system node pool.')
 param nodeCount int = 2
 
-@description('Node VM size. Standard_B2s is a low-cost burstable size adequate for a demo cluster.')
-param nodeVmSize string = 'Standard_B2s'
+@description('Node VM size. Standard_B2s_v2 (2 vCPU, 8 GiB) is available in westeurope for sponsored subscriptions; the v1 Standard_B2s is not allowed.')
+param nodeVmSize string = 'Standard_B2s_v2'
 
 @description('Kubernetes version. Empty string lets AKS pick the current default.')
 param kubernetesVersion string = ''

@@ -75,6 +75,9 @@ localServices:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
 
+migrate:
+  enabled: true
+
 ingress:
   # nginx locally; webapprouting.kubernetes.io for the AKS Application Routing addon.
   className: nginx

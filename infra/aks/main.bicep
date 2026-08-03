@@ -29,7 +29,7 @@ param environmentName string = 'dev'
 param nodeCount int = 2
 
 @description('Node VM size for the AKS system node pool.')
-param nodeVmSize string = 'Standard_B2s'
+param nodeVmSize string = 'Standard_B2s_v2'
 
 // Same naming scheme as main.bicep: stable suffix + env-prefixed names.
 var suffix = uniqueString(resourceGroup().id)

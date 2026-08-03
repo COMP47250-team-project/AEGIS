@@ -1,3 +1,4 @@
+{{- if .Values.migrate.enabled }}
 # One-shot DB migration — runs `alembic upgrade head` using the SAME backend
 # image, decoupled from the backend Deployment so migrations run exactly once
 # regardless of replica count.
@@ -84,3 +85,4 @@ spec:
             capabilities:
               drop:
                 - ALL
+{{- end }}
