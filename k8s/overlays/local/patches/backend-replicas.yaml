@@ -1,0 +1,12 @@
+# Local dev: single replica each (no HPA, single-node cluster).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: backend
+          imagePullPolicy: IfNotPresent

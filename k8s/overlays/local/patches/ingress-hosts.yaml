@@ -1,0 +1,28 @@
+# Local ingress hosts via nip.io (resolve to 127.0.0.1, no /etc/hosts edits).
+# ingress-nginx on Docker Desktop / kind is reachable at 127.0.0.1.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegis
+spec:
+  rules:
+    - host: app.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    - host: api.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000

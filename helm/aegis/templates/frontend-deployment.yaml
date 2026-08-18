@@ -1,0 +1,55 @@
+# AEGIS frontend — the Vite build served by nginx (frontend/Dockerfile.prod),
+# health at /health (nginx.conf). VITE_API_URL is baked at BUILD time, so each
+# environment builds its own image pointing at that environment's api host;
+# there is no runtime env injection for the SPA (Helm cannot change it here).
+#
+# Runs as root: stock nginx:stable-alpine binds privileged port 80 as the
+# master process, so runAsNonRoot would crash it. Switching to
+# nginxinc/nginx-unprivileged (:8080) is a documented later cleanup.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "frontend" | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "aegis.selectorLabels" "frontend" | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "aegis.selectorLabels" "frontend" | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: frontend
+          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
+          imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}

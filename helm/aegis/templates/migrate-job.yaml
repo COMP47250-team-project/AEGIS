@@ -1,0 +1,88 @@
+{{- if .Values.migrate.enabled }}
+# One-shot DB migration — runs `alembic upgrade head` using the SAME backend
+# image, decoupled from the backend Deployment so migrations run exactly once
+# regardless of replica count.
+#
+# IMPORTANT: alembic/env.py reads DATABASE_URL (the asyncpg async URL), NOT
+# DATABASE_URL_SYNC — so backend-secret must carry DATABASE_URL. WORKDIR /app is
+# baked into the image, which is where alembic.ini + alembic/ live.
+#
+# Helm hook: run on install AND upgrade, and delete the prior Job before
+# recreating it. This sidesteps the "Job pod template is immutable" problem —
+# a plain re-apply of an unchanged-named Job is a no-op, but before-hook-creation
+# deletes the old one first so migrations re-run on every upgrade. hook-succeeded
+# then cleans it up so a successful run leaves no clutter.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  labels:
+    {{- include "aegis.labels" . | nindent 4 }}
+    {{- include "aegis.selectorLabels" "migrate" | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "aegis.selectorLabels" "migrate" | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      {{- if .Values.localServices.enabled }}
+      # Only needed with the in-cluster Postgres — the StatefulSet and this Job
+      # start together. On AKS the managed Postgres is already up and there is no
+      # `postgres` Service in-cluster, so this initContainer is omitted.
+      # Uses pg_isready (not just nc -z) because postgres opens the TCP port
+      # before it finishes database initialisation — nc would pass too early.
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.localServices.postgres.image }}
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U {{ .Values.localServices.postgres.user }} -d {{ .Values.localServices.postgres.database }}; do
+                echo "waiting for postgres..."; sleep 2;
+              done
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+      {{- end }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          command:
+            - alembic
+            - upgrade
+            - head
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+{{- end }}

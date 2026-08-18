@@ -1,0 +1,40 @@
+# Production ingress: real hostnames + TLS (cert-manager issues the cert).
+# Replace the example hosts with your real DNS (or the ingress LB IP via nip.io
+# for a quick demo). The cert-manager annotation assumes a ClusterIssuer named
+# "letsencrypt-prod" — created in the later cert-manager feature; until then,
+# remove the annotation + tls block, or terminate TLS at Azure Front Door.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aegis
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  tls:
+    - hosts:
+        - app.aegis.example.com
+        - api.aegis.example.com
+      secretName: aegis-tls
+  rules:
+    - host: app.aegis.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  number: 80
+    - host: api.aegis.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000

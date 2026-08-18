@@ -1,0 +1,107 @@
+# Default values for the aegis chart.
+# These are safe, generic defaults; per-environment files override them:
+#   -f values-local.yaml   (minikube / kind — self-contained stack)
+#   -f values-aks.yaml     (Azure Kubernetes Service — managed datastores)
+#
+# The chart deploys: backend (FastAPI), frontend (nginx SPA), a migration Job
+# (alembic, run as a Helm hook), an Ingress (two hosts), and — only when
+# localServices.enabled — an in-cluster Postgres + Azurite for local dev.
+
+namespace: aegis
+
+backend:
+  image:
+    repository: aegis-backend
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 2
+  appEnv: production
+  logLevel: INFO
+  # CORS is credentialed, so the exact browser origin(s) must be listed.
+  # Rendered via `toJson` into BACKEND_CORS_ORIGINS because pydantic-settings
+  # parses that list[str] field with json.loads() before its comma-split
+  # validator runs — a bare URL string throws at startup.
+  corsOrigins:
+    - http://localhost:5173
+  # Non-secret queue/scoring config (mirrors app/config.py consumers).
+  config:
+    jwtAlgorithm: HS256
+    jwtExpireMinutes: "480"
+    serviceBusQueueName: telemetry-events
+    scoreQueueName: score-jobs
+    eventsQueueName: aegis-events
+    scorerBatchIntervalSeconds: "30"
+    scorerMaxDeliveryAttempts: "3"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+frontend:
+  image:
+    repository: aegis-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+# Horizontal Pod Autoscaler for the backend. Needs metrics-server (native on
+# AKS; absent on a laptop) — off locally, on for AKS.
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# In-cluster Postgres + Azurite. true for local dev; false on AKS (managed
+# Azure Postgres / Blob are used there instead, wired via the backend Secret).
+localServices:
+  enabled: false
+  postgres:
+    image: postgres:16
+    user: dev
+    password: dev
+    database: appdb
+    storage: 2Gi
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+
+migrate:
+  enabled: true
+
+ingress:
+  # nginx locally; webapprouting.kubernetes.io for the AKS Application Routing addon.
+  className: nginx
+  appHost: app.aegis.example.com
+  apiHost: api.aegis.example.com
+  # Long proxy timeouts keep telemetry WebSockets (/ws/exam, /ws/professor) alive.
+  wsProxyTimeout: "3600"
+  tls:
+    enabled: false
+    secretName: aegis-tls
+    # cert-manager ClusterIssuer; only emitted when tls.enabled.
+    clusterIssuer: ""
+
+# backend-secret. create=true renders throwaway dev values into a Secret
+# (local only). On AKS this is false: the Secret is applied out-of-band (the
+# deploy workflow creates it from GitHub secrets / Key Vault).
+secret:
+  create: false
+  databaseUrl: ""
+  jwtSecretKey: ""
+  azureStorageConnectionString: ""
+  # AKS only — local omits Service Bus entirely (publish path is guarded on empty).
+  azureServiceBusConnectionString: ""
+
+# Referenced by backend/frontend/migrate pods to pull private images (AKS ACR).
+# Empty locally (images are built into the cluster daemon).
+imagePullSecrets: []

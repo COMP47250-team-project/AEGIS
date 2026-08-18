@@ -1,0 +1,81 @@
+# AEGIS backend — FastAPI on uvicorn (:8000).
+#
+# CMD override: the image's default CMD couples `alembic upgrade head &&
+# uvicorn ...`, which races when replicas > 1. Migrations run once via the
+# migrate Job (../migrate/job.yaml); here we run uvicorn only.
+# --proxy-headers/--forwarded-allow-ips let the app see the external https
+# scheme behind a TLS-terminating ingress (affects Secure-cookie behaviour).
+#
+# Probes: readiness hits /healthz (returns 503 until the DB is reachable, so
+# traffic is withheld until migrations+DB are up). Liveness is a bare TCP
+# check — NOT /healthz — so a transient DB blip doesn't trigger a restart storm.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: backend
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: aegis-backend # overlays set newName + newTag
+          command:
+            - uvicorn
+            - app.main:app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --proxy-headers
+            - --forwarded-allow-ips
+            - "*"
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secret
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

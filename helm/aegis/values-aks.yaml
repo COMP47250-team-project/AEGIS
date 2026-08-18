@@ -1,0 +1,67 @@
+# AKS overlay — Azure Kubernetes Service. Uses MANAGED Azure services (no
+# in-cluster Postgres/Azurite) and the AKS Application Routing add-on for ingress.
+#
+# The deploy workflow (.github/workflows/deploy-aks.yml) overrides image
+# repository/tag and ingress hosts via --set, and applies backend-secret
+# out-of-band (from GitHub secrets), so secret.create stays false here.
+#
+#   helm upgrade --install aegis helm/aegis -n aegis --create-namespace \
+#     -f helm/aegis/values-aks.yaml \
+#     --set backend.image.repository=<acr>.azurecr.io/backend --set backend.image.tag=<sha> \
+#     --set frontend.image.repository=<acr>.azurecr.io/frontend --set frontend.image.tag=<sha> \
+#     --set ingress.appHost=app.<domain> --set ingress.apiHost=api.<domain>
+
+backend:
+  image:
+    # repository is set at deploy time to <acr-login-server>/backend
+    repository: REGISTRY.azurecr.io/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 2
+  appEnv: production
+  logLevel: INFO
+  corsOrigins:
+    - https://app.aegis.example.com
+
+frontend:
+  image:
+    repository: REGISTRY.azurecr.io/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 2
+
+# metrics-server is native on AKS — let the HPA own the backend replica count.
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Managed Azure Postgres + Blob — no in-cluster datastores.
+localServices:
+  enabled: false
+
+ingress:
+  # AKS Application Routing add-on (Azure-managed nginx).
+  className: webapprouting.kubernetes.azure.com
+  appHost: app.aegis.example.com
+  apiHost: api.aegis.example.com
+  tls:
+    # cert-manager ClusterIssuer is a later feature; leave off until DNS + issuer exist.
+    enabled: false
+    secretName: aegis-tls
+    clusterIssuer: letsencrypt-prod
+
+# backend-secret is applied out-of-band by the deploy workflow (real managed
+# Azure connection strings from GitHub secrets) — never rendered by the chart.
+secret:
+  create: false
+
+migrate:
+  enabled: false
+
+# Pull private images from ACR. The deploy workflow creates this docker-registry
+# secret from ACR admin creds (managed-identity AcrPull is denied for the
+# sponsored-subscription guest accounts — see infra/modules/acr.bicep).
+imagePullSecrets:
+  - name: acr-pull

@@ -1,0 +1,51 @@
+# Local overlay — minikube / kind. Self-contained: in-cluster Postgres + Azurite,
+# no Azure connectivity required. Mirrors the old k8s/overlays/local Kustomize.
+#   helm upgrade --install aegis helm/aegis -n aegis --create-namespace \
+#     -f helm/aegis/values-local.yaml --set ingress.appHost=... --set ingress.apiHost=...
+#
+# The Makefile `deploy` target passes the live minikube IP into ingress.appHost/
+# apiHost and backend.corsOrigins via --set, so those stay generic here.
+
+backend:
+  image:
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 1
+  appEnv: development
+  logLevel: DEBUG
+  corsOrigins:
+    - http://app.127.0.0.1.nip.io
+
+frontend:
+  image:
+    tag: local
+    pullPolicy: IfNotPresent
+  replicas: 1
+
+# No metrics-server on a single-node laptop; pin replicas instead.
+hpa:
+  enabled: false
+
+# Bring up in-cluster Postgres + Azurite.
+localServices:
+  enabled: true
+
+ingress:
+  className: nginx
+  appHost: app.127.0.0.1.nip.io
+  apiHost: api.127.0.0.1.nip.io
+  tls:
+    enabled: false
+
+# Render the throwaway dev Secret in-cluster (values mirror docker-compose.yml).
+# The Azurite key is the well-known public emulator dev key — not a real secret.
+secret:
+  create: true
+  databaseUrl: postgresql+asyncpg://dev:dev@postgres:5432/appdb
+  jwtSecretKey: local_dev_only_not_a_real_secret_change_in_prod_0000000000
+  azureStorageConnectionString: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+
+imagePullSecrets: []
+
+migrate:
+  enabled: true

@@ -1,0 +1,12 @@
+# Job pod templates are immutable once created; setting pull policy explicitly
+# (local images are built into the daemon, never pulled).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  template:
+    spec:
+      containers:
+        - name: migrate
+          imagePullPolicy: IfNotPresent

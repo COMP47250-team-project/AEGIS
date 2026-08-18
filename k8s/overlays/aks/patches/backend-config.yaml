@@ -1,0 +1,11 @@
+# Production config. APP_ENV=production makes the backend set the refresh
+# cookie SameSite=None; Secure (required for cross-host app/api over TLS).
+# BACKEND_CORS_ORIGINS must be the real app host (credentialed CORS).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  APP_ENV: "production"
+  LOG_LEVEL: "INFO"
+  BACKEND_CORS_ORIGINS: '["https://app.aegis.example.com"]'
