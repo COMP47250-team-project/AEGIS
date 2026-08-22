@@ -3,6 +3,8 @@ using './main.bicep'
 // dev | prod — drives the resource name prefix.
 param environmentName = 'dev'
 
+param postgresLocation = 'northeurope'
+
 // PostgreSQL admin password — DO NOT hard-code a real value here.
 // Pass it at deploy time instead, e.g.:
 //   az deployment group create -g aegis-prod-rg --template-file infra/main.bicep \

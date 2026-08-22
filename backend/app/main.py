@@ -19,6 +19,7 @@ from app.routers import (
 )
 from app.routers.export import router as export_router
 
+logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(

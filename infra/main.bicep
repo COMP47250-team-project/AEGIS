@@ -169,6 +169,12 @@ module backendApp 'modules/containerApp.bicep' = {
     minReplicas: 1
     targetPort: 8000
     keyVaultSecrets: backendKeyVaultSecrets
+    plainEnvVars: [
+      {
+        name: 'FRONTEND_BASE_URL',
+        value: 'https://${frontendApp.outputs.fqdn}'
+      }
+    ]
     registryServer: acrServer
     registryUsername: acrUsername
     registryPassword: acrPassword
