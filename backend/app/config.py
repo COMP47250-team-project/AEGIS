@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     aegis_events_queue_name: str = "aegis-events"
     scorer_batch_interval_seconds: int = 30
     scorer_max_delivery_attempts: int = 3
+    acs_connection_string: str | None = None
+    acs_sender_address: str | None = None
+    frontend_base_url: str = "http://localhost:5173"
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

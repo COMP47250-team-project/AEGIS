@@ -1,41 +1,42 @@
-// frontend/src/pages/Login.tsx
 import React, { useState, FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import apiClient from "../api/client";
 
-const LoginPage: React.FC = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+const ResetPasswordPage: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") ?? "";
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const { login, user } = useAuth();
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const location = useLocation();
-  const successMessage =
-    (location.state as { successMessage?: string } | null)?.successMessage ??
-    null;
 
-  // Redirect to role-appropriate dashboard after successful login
-  React.useEffect(() => {
-    if (user) {
-      if (user.role === "professor") {
-        navigate("/professor/dashboard", { replace: true });
-      } else if (user.role === "super_admin") {
-        navigate("/admin", { replace: true });
-      } else {
-        navigate("/student/dashboard", { replace: true });
-      }
-    }
-  }, [user, navigate]);
+  const validate = (): string | null => {
+    if (newPassword.length < 8)
+      return "Password must be at least 8 characters.";
+    if (newPassword !== confirmPassword) return "Passwords do not match.";
+    return null;
+  };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setIsLoading(true);
-
     try {
-      await login(email, password);
+      await apiClient.post("/auth/reset-password", {
+        token,
+        new_password: newPassword,
+      });
+      navigate("/login", {
+        state: { successMessage: "Password updated. Please sign in." },
+        replace: true,
+      });
     } catch (err: unknown) {
       if (
         err &&
@@ -47,20 +48,38 @@ const LoginPage: React.FC = () => {
       ) {
         const data = (err.response as { data?: { detail?: string } }).data;
         setError(
-          data?.detail || "Login failed. Please check your credentials.",
+          data?.detail ??
+            "Unable to reset password. Please request a new link.",
         );
       } else {
-        setError("Unable to reach the server. Is the backend running?");
+        setError("Unable to reach the server. Please try again.");
       }
     } finally {
       setIsLoading(false);
     }
   };
 
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
+        <div className="w-full max-w-md bg-surface-card border border-hairline rounded-md p-10 text-center space-y-4">
+          <p className="text-ink text-sm">
+            This reset link is missing or malformed.
+          </p>
+          <Link
+            to="/forgot-password"
+            className="text-link-teal font-medium text-sm"
+          >
+            Request a new one
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-canvas flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Brand mark */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-lg bg-surface-dark mb-4">
             <svg
@@ -83,80 +102,76 @@ const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Card — flat on canvas, no shadow */}
         <div className="bg-surface-card border border-hairline rounded-md p-10">
-          <h2 className="text-lg font-semibold text-ink mb-6">Sign in</h2>
+          <h2 className="text-lg font-semibold text-ink mb-6">
+            Set a new password
+          </h2>
 
           {error && (
             <div className="mb-4 px-4 py-3 rounded-md bg-accent-red-soft border-l-2 border-accent-red text-ink text-sm">
-              {error}
-            </div>
-          )}
-
-          {successMessage && !error && (
-            <div className="mb-4 px-4 py-3 rounded-md bg-accent-green-soft border-l-2 border-accent-green text-ink text-sm">
-              {successMessage}
+              {error}{" "}
+              {error.includes("invalid or has expired") && (
+                <Link
+                  to="/forgot-password"
+                  className="underline text-link-teal"
+                >
+                  Request a new link
+                </Link>
+              )}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label
-                htmlFor="email"
+                htmlFor="new-password"
                 className="block text-sm font-medium text-body mb-1.5"
               >
-                Email address
+                New password
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@ucd.ie"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min. 8 characters"
                 className="w-full px-3 py-2 bg-surface-card border border-hairline rounded-md text-ink placeholder-ash text-sm focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/30 transition"
               />
             </div>
 
             <div>
               <label
-                htmlFor="password"
+                htmlFor="confirm-password"
                 className="block text-sm font-medium text-body mb-1.5"
               >
-                Password
+                Confirm new password
               </label>
               <input
-                id="password"
+                id="confirm-password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
                 className="w-full px-3 py-2 bg-surface-card border border-hairline rounded-md text-ink placeholder-ash text-sm focus:outline-none focus:border-accent-blue focus:ring-2 focus:ring-accent-blue/30 transition"
               />
-              <div className="mt-1.5 text-right">
-                <Link to="/forgot-password" className="text-xs text-link-teal">
-                  Forgot password?
-                </Link>
-              </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              data-testid="login-submit"
               className="w-full py-2.5 px-4 bg-primary disabled:bg-surface-soft disabled:text-ash text-ink text-sm font-bold rounded-md transition-colors"
             >
-              {isLoading ? "Signing in…" : "Sign in"}
+              {isLoading ? "Updating…" : "Update password"}
             </button>
           </form>
 
           <p className="mt-6 text-center text-sm text-mute">
-            Don't have an account?{" "}
-            <Link to="/register" className="text-link-teal font-medium">
-              Register
+            <Link to="/login" className="text-link-teal font-medium">
+              Back to Sign in
             </Link>
           </p>
         </div>
@@ -165,4 +180,4 @@ const LoginPage: React.FC = () => {
   );
 };
 
-export default LoginPage;
+export default ResetPasswordPage;

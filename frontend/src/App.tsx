@@ -5,6 +5,8 @@ import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/Login";
 import RegisterPage from "./pages/Register";
+import ForgotPasswordPage from "./pages/ForgotPassword";
+import ResetPasswordPage from "./pages/ResetPassword";
 import StudentDashboard from "./pages/StudentDashboard";
 import ProfessorConsole from "./pages/ProfessorConsole";
 import ProfessorSession from "./pages/ProfessorSession";
@@ -22,11 +24,16 @@ const App: React.FC = () => {
           {/* Public routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* Protected — students only */}
           <Route element={<ProtectedRoute allowedRole="student" />}>
             <Route path="/student/dashboard" element={<StudentDashboard />} />
-            <Route path="/student/exams/:id/results" element={<StudentResults />} />
+            <Route
+              path="/student/exams/:id/results"
+              element={<StudentResults />}
+            />
             {/* ExamShell: consent gate always checked server-side on mount */}
             <Route path="/exam/:id" element={<ExamShell />} />
             {/* AEGIS-41: submission confirmation page, reached only after
@@ -39,7 +46,10 @@ const App: React.FC = () => {
           <Route element={<ProtectedRoute allowedRole="professor" />}>
             <Route path="/professor/dashboard" element={<ProfessorConsole />} />
             <Route path="/professor/exams/new" element={<ExamCreate />} />
-            <Route path="/professor/session/:sessionId" element={<ProfessorSession />} />
+            <Route
+              path="/professor/session/:sessionId"
+              element={<ProfessorSession />}
+            />
           </Route>
 
           {/* Protected — super admin only */}

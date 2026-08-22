@@ -1,0 +1,434 @@
+# CI/CD for the three Bicep stacks under infra/ (main.bicep — Container Apps
+# track; aks/main.bicep — AKS/Helm track, depends on the ACR that main.bicep
+# creates; azure/main.bicep — one-time subscription bootstrap). Read-only
+# checks (lint/validate/what-if) run automatically; actually changing Azure
+# resources only ever happens via a manually-triggered workflow_dispatch run
+# with action=apply — nothing here mutates infra on push or PR.
+
+name: Infra (Bicep)
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["infra/**"]
+  push:
+    branches: [main]
+    paths: ["infra/**"]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "plan = validate + what-if only (read-only). apply = actually deploy."
+        type: choice
+        options: [plan, apply]
+        default: plan
+      stack:
+        description: "Which stack to run."
+        type: choice
+        options: [all, main, aks, azure]
+        default: all
+      confirm:
+        description: 'Only checked when action=apply. Type "apply" to confirm you want to create/modify Azure resources.'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write # needed for OIDC login to Azure
+
+# Read-only jobs on the same ref can be superseded by a newer push; cancel them.
+# Applies get their own per-stack concurrency group further down so a running
+# apply is never cancelled mid-deploy.
+concurrency:
+  group: infra-readonly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Lint every Bicep file (offline — no Azure credentials needed)
+  # ──────────────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (az bicep lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint all .bicep files
+        run: |
+          status=0
+          while IFS= read -r -d '' file; do
+            echo "::group::az bicep lint -f $file"
+            az bicep lint -f "$file" || status=1
+            echo "::endgroup::"
+          done < <(find infra -name '*.bicep' -print0 | sort -z)
+          exit $status
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Plan — main (resource group scope, Container Apps track)
+  # ──────────────────────────────────────────────────────────────────────────
+  plan-main:
+    name: Plan (main)
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'plan'
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+      POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect required secret
+        id: detect
+        run: |
+          if [ -n "$POSTGRES_ADMIN_PASSWORD" ] && [ -n "$RESOURCE_GROUP" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=main skipped::POSTGRES_ADMIN_PASSWORD or RESOURCE_GROUP not set — skipping plan for infra/main.bicep."
+          fi
+
+      - name: Azure login
+        if: steps.detect.outputs.present == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          az deployment group validate \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
+
+      - name: What-if (drift detection)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          {
+            echo "### What-if: main (resource group: $RESOURCE_GROUP)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD" \
+            --no-pretty-print \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Current resource group state
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          {
+            echo "### Current resources in $RESOURCE_GROUP (as of this run)"
+            echo '```'
+            az resource list --resource-group "$RESOURCE_GROUP" -o table
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Plan — aks (resource group scope, AKS/Helm track)
+  # ──────────────────────────────────────────────────────────────────────────
+  plan-aks:
+    name: Plan (aks)
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'plan'
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect required secret
+        id: detect
+        run: |
+          if [ -n "$RESOURCE_GROUP" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=aks skipped::RESOURCE_GROUP not set — skipping plan for infra/aks/main.bicep."
+          fi
+
+      - name: Azure login
+        if: steps.detect.outputs.present == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          az deployment group validate \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/aks/main.bicep \
+            --parameters infra/aks/main.bicepparam
+
+      - name: What-if (drift detection)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          {
+            echo "### What-if: aks (resource group: $RESOURCE_GROUP)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/aks/main.bicep \
+            --parameters infra/aks/main.bicepparam \
+            --no-pretty-print \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Plan — azure (subscription scope, one-time bootstrap)
+  # ──────────────────────────────────────────────────────────────────────────
+  plan-azure:
+    name: Plan (azure)
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'plan'
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ALERT_EMAILS: ${{ secrets.ALERT_EMAILS }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect required secret
+        id: detect
+        run: |
+          if [ -n "$ALERT_EMAILS" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=azure skipped::ALERT_EMAILS not set — skipping plan for infra/azure/main.bicep."
+          fi
+
+      - name: Azure login
+        if: steps.detect.outputs.present == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          az deployment sub validate \
+            --location westeurope \
+            --template-file infra/azure/main.bicep \
+            --parameters infra/azure/main.bicepparam \
+            --parameters alertEmails="$ALERT_EMAILS"
+
+      - name: What-if (drift detection)
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          {
+            echo "### What-if: azure (subscription scope)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          az deployment sub what-if \
+            --location westeurope \
+            --template-file infra/azure/main.bicep \
+            --parameters infra/azure/main.bicepparam \
+            --parameters alertEmails="$ALERT_EMAILS" \
+            --no-pretty-print \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Apply — main. workflow_dispatch + action=apply ONLY.
+  # ──────────────────────────────────────────────────────────────────────────
+  apply-main:
+    name: Apply (main)
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' &&
+      (github.event.inputs.stack == 'all' || github.event.inputs.stack == 'main')
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: infra-apply-main
+      cancel-in-progress: false
+    env:
+      RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+      POSTGRES_ADMIN_PASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+
+    steps:
+      - name: Check typed confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "apply" ]; then
+            echo "::error::Type 'apply' (exactly) into the confirm input to deploy. Aborting — no changes made."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          if [ -z "$POSTGRES_ADMIN_PASSWORD" ] || [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::POSTGRES_ADMIN_PASSWORD or RESOURCE_GROUP not set — cannot apply infra/main.bicep."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Re-run what-if immediately before create so the exact diff being
+      # applied is visible in this run's log, right next to the apply step.
+      - name: What-if (final check before apply)
+        run: |
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
+
+      - name: Apply (Incremental)
+        run: |
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --mode Incremental \
+            --name "gha-main-${{ github.run_id }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --parameters postgresAdminPassword="$POSTGRES_ADMIN_PASSWORD"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Apply — aks. Needs apply-main first: infra/aks/main.bicep references the
+  # ACR that main.bicep creates as an `existing` resource.
+  # ──────────────────────────────────────────────────────────────────────────
+  apply-aks:
+    name: Apply (aks)
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' &&
+      (github.event.inputs.stack == 'all' || github.event.inputs.stack == 'aks') &&
+      (needs.apply-main.result == 'success' || needs.apply-main.result == 'skipped')
+    needs: [lint, apply-main]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: infra-apply-aks
+      cancel-in-progress: false
+    env:
+      RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+
+    steps:
+      - name: Check typed confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "apply" ]; then
+            echo "::error::Type 'apply' (exactly) into the confirm input to deploy. Aborting — no changes made."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "::error::RESOURCE_GROUP not set — cannot apply infra/aks/main.bicep."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-if (final check before apply)
+        run: |
+          az deployment group what-if \
+            --resource-group "$RESOURCE_GROUP" \
+            --template-file infra/aks/main.bicep \
+            --parameters infra/aks/main.bicepparam
+
+      - name: Apply (Incremental)
+        run: |
+          az deployment group create \
+            --resource-group "$RESOURCE_GROUP" \
+            --mode Incremental \
+            --name "gha-aks-${{ github.run_id }}" \
+            --template-file infra/aks/main.bicep \
+            --parameters infra/aks/main.bicepparam
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Apply — azure (subscription scope, one-time bootstrap).
+  # ──────────────────────────────────────────────────────────────────────────
+  apply-azure:
+    name: Apply (azure)
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply' &&
+      (github.event.inputs.stack == 'all' || github.event.inputs.stack == 'azure')
+    needs: [lint]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: infra-apply-azure
+      cancel-in-progress: false
+    env:
+      ALERT_EMAILS: ${{ secrets.ALERT_EMAILS }}
+
+    steps:
+      - name: Check typed confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "apply" ]; then
+            echo "::error::Type 'apply' (exactly) into the confirm input to deploy. Aborting — no changes made."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required secrets
+        run: |
+          if [ -z "$ALERT_EMAILS" ]; then
+            echo "::error::ALERT_EMAILS not set — cannot apply infra/azure/main.bicep."
+            exit 1
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-if (final check before apply)
+        run: |
+          az deployment sub what-if \
+            --location westeurope \
+            --template-file infra/azure/main.bicep \
+            --parameters infra/azure/main.bicepparam \
+            --parameters alertEmails="$ALERT_EMAILS"
+
+      - name: Apply
+        run: |
+          az deployment sub create \
+            --location westeurope \
+            --name "gha-azure-${{ github.run_id }}" \
+            --template-file infra/azure/main.bicep \
+            --parameters infra/azure/main.bicepparam \
+            --parameters alertEmails="$ALERT_EMAILS"

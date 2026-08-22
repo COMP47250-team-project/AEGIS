@@ -1,10 +1,13 @@
-"""Authentication endpoints — register, login, refresh, logout.
+"""Authentication endpoints — register, login, refresh, logout,
+forgot-password, reset-password (FR-7).
 
 Backed by PostgreSQL via SQLAlchemy; uses HS256 JWT (same key as dependencies.py).
 Tokens generated here are accepted by all other protected routes.
 """
 
+import hashlib
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -18,8 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.services.audit import USER_REGISTERED, record_audit_event
+from app.services.email import get_email_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,6 +66,15 @@ class RefreshIn(BaseModel):
 
 class LogoutIn(BaseModel):
     refresh_token: str
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
 
 
 # Refresh token also travels in an httpOnly cookie so the browser session
@@ -288,3 +302,76 @@ async def logout(
                 _REVOKED_JTIS.add(jti)
     _clear_refresh_cookie(response)
     return {"message": "Logged out"}
+
+
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+_RESET_TOKEN_TTL_HOURS = 1
+
+
+@router.post("/forgot-password", status_code=200)
+async def forgot_password(
+    payload: ForgotPasswordIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    # Always return 200 to prevent email enumeration.
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    if user and user.is_active:
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = _hash_token(raw_token)
+        expires = datetime.now(timezone.utc) + timedelta(hours=_RESET_TOKEN_TTL_HOURS)
+        db.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=expires,
+            )
+        )
+        await db.commit()
+        reset_url = f"{settings.frontend_base_url}/reset-password?token={raw_token}"
+        try:
+            await get_email_service().send_password_reset(user.email, reset_url)
+        except Exception:
+            pass  # email failure must never block the response
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password(
+    payload: ResetPasswordIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters.",
+        )
+    token_hash = _hash_token(payload.token)
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.token_hash == token_hash,
+            PasswordResetToken.used.is_(False),
+            PasswordResetToken.expires_at > now,
+        )
+    )
+    reset_token = result.scalar_one_or_none()
+    if reset_token is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This link is invalid or has expired. Please request a new one.",
+        )
+    user_result = await db.execute(select(User).where(User.id == reset_token.user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This link is invalid or has expired. Please request a new one.",
+        )
+    user.hashed_password = _hash_password(payload.new_password)
+    reset_token.used = True
+    await db.commit()
+    return {"message": "Password updated. Please sign in."}

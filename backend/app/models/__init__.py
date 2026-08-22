@@ -17,3 +17,4 @@ from app.models.telemetry import (
 )  # noqa: F401
 from app.models.group import StudentGroup, GroupMember  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
+from app.models.password_reset import PasswordResetToken  # noqa: F401

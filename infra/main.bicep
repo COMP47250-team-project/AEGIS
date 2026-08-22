@@ -80,6 +80,16 @@ var backendKeyVaultSecrets = wireKeyVaultSecrets
         secretName: 'storage-connection-string'
         keyVaultUrl: '${keyVaultSecretBase}storage-connection-string'
       }
+      {
+        envVarName: 'ACS_CONNECTION_STRING'
+        secretName: 'acs-connection-string'
+        keyVaultUrl: '${keyVaultSecretBase}acs-connection-string'
+      }
+      {
+        envVarName: 'ACS_SENDER_ADDRESS'
+        secretName: 'acs-sender-address'
+        keyVaultUrl: '${keyVaultSecretBase}acs-sender-address'
+      }
     ]
   : []
 
@@ -135,6 +145,14 @@ module storage 'modules/storage.bicep' = {
   name: 'storage'
   params: {
     name: '${prefix}st${suffix}'
+    location: location
+  }
+}
+
+module acs 'modules/acs.bicep' = {
+  name: 'acs'
+  params: {
+    name: '${prefix}-acs-${suffix}'
     location: location
   }
 }
@@ -212,3 +230,8 @@ output serviceBusConnectionString string = serviceBus.outputs.connectionString
 // Ticket requires connection strings as outputs; move to Key Vault in AEGIS-25.
 #disable-next-line outputs-should-not-contain-secrets
 output storageConnectionString string = storage.outputs.connectionString
+
+// ACS outputs — store these as Key Vault secrets 'acs-connection-string' and 'acs-sender-address'.
+#disable-next-line outputs-should-not-contain-secrets
+output acsConnectionString string = acs.outputs.connectionString
+output acsSenderAddress string = acs.outputs.senderAddress
