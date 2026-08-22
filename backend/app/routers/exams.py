@@ -51,16 +51,24 @@ from app.services.email import get_email_service
 logger = logging.getLogger(__name__)
 
 
-async def _notify_students_grades_ready(
-    exam_id: uuid.UUID, quiz_title: str, db: AsyncSession
-) -> None:
-    """Fire-and-forget: email enrolled students that their grades are published."""
-    result = await db.execute(
-        select(User.email)
-        .join(Enrollment, Enrollment.student_id == User.id)
-        .where(Enrollment.exam_id == exam_id)
-    )
-    emails = [row[0] for row in result.all()]
+async def _notify_students_grades_ready(exam_id: uuid.UUID, quiz_title: str) -> None:
+    """Fire-and-forget: email enrolled students that their grades are published.
+
+    Background tasks run after the request's `db` session dependency has
+    already been closed (FastAPI >=0.106), so this opens its own session
+    rather than reusing the request-scoped one (same pattern as
+    dispatch_score_job below).
+    """
+    from app.database import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            select(User.email)
+            .join(Enrollment, Enrollment.student_id == User.id)
+            .where(Enrollment.exam_id == exam_id)
+        )
+        emails = [row[0] for row in result.all()]
+
     email_svc = get_email_service()
     for email in emails:
         try:
@@ -862,9 +870,7 @@ async def release_results(
         quiz_title = report.quiz_title or "Exam"
         exam.results_released_at = datetime.now(timezone.utc)
         await db.commit()
-        background_tasks.add_task(
-            _notify_students_grades_ready, exam_id, quiz_title, db
-        )
+        background_tasks.add_task(_notify_students_grades_ready, exam_id, quiz_title)
         report.results_released = True
         return report
     return await get_exam_grade(exam_id, db=db, user_id=user_id)
