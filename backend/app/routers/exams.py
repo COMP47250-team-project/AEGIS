@@ -57,17 +57,24 @@ async def _notify_students_grades_ready(exam_id: uuid.UUID, quiz_title: str) -> 
     Background tasks run after the request's `db` session dependency has
     already been closed (FastAPI >=0.106), so this opens its own session
     rather than reusing the request-scoped one (same pattern as
-    dispatch_score_job below).
+    dispatch_score_job in services/scoring/dispatch.py). A DB failure here
+    must never propagate — Starlette runs background tasks as part of the
+    response cycle, so an uncaught exception here would surface as a failure
+    on the release-results request itself.
     """
     from app.database import AsyncSessionLocal
 
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(User.email)
-            .join(Enrollment, Enrollment.student_id == User.id)
-            .where(Enrollment.exam_id == exam_id)
-        )
-        emails = [row[0] for row in result.all()]
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(User.email)
+                .join(Enrollment, Enrollment.student_id == User.id)
+                .where(Enrollment.exam_id == exam_id)
+            )
+            emails = [row[0] for row in result.all()]
+    except Exception:
+        logger.exception("Failed to load recipients for exam %s", exam_id)
+        return
 
     email_svc = get_email_service()
     for email in emails:
