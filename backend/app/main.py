@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import (
     admin,
+    ai,
     auth,
     courses,
     exams,
@@ -49,4 +50,5 @@ app.include_router(telemetry.router)
 app.include_router(sessions.router)
 app.include_router(groups.router)
 app.include_router(export_router)
+app.include_router(ai.router)
 app.include_router(health.router)

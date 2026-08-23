@@ -4,6 +4,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import apiClient from "../../api/client";
 import type { LiveStudent } from "./liveStudents";
+import IntegrityBrief from "./IntegrityBrief";
 
 interface TimelineItem {
   event_type: string;
@@ -48,7 +49,10 @@ function eventIcon(type: string): string {
   return map[type] ?? "•";
 }
 
-function formatEventLabel(type: string, payload: Record<string, unknown>): string {
+function formatEventLabel(
+  type: string,
+  payload: Record<string, unknown>,
+): string {
   switch (type) {
     case "tab_hidden":
       return "Student left this tab";
@@ -59,7 +63,8 @@ function formatEventLabel(type: string, payload: Record<string, unknown>): strin
     case "focus_gained":
       return "Window regained focus";
     case "paste": {
-      const chars = payload["char_count"] ?? payload["length"] ?? payload["size"] ?? "?";
+      const chars =
+        payload["char_count"] ?? payload["length"] ?? payload["size"] ?? "?";
       return `Pasted ~${chars} characters`;
     }
     case "key_interval": {
@@ -122,8 +127,8 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
     apiClient
       .get<ScoreData>(
         `/sessions/${encodeURIComponent(sessionId)}/students/${encodeURIComponent(
-          studentId
-        )}/score`
+          studentId,
+        )}/score`,
       )
       .then(({ data }) => setScore(data))
       .catch(() => setScore({ available: false }));
@@ -142,7 +147,9 @@ const ScoreBreakdown: React.FC<{ sessionId: string; studentId: string }> = ({
 
   return (
     <div className="px-4 py-3 border-b border-hairline bg-surface-soft">
-      <p className="text-xs font-semibold text-ink mb-2">Signal breakdown (0.0–1.0)</p>
+      <p className="text-xs font-semibold text-ink mb-2">
+        Signal breakdown (0.0–1.0)
+      </p>
       <div className="space-y-1.5">
         {SIGNAL_LABELS.map(([apiKey, label]) => {
           const value = score.components?.[apiKey] ?? 0;
@@ -211,12 +218,12 @@ const TimelineModal: React.FC<{
         page_size: number;
       }>(
         `/sessions/${encodeURIComponent(sessionId)}/students/${encodeURIComponent(
-          student.student_id
-        )}/events?page=${pageNum}&page_size=${PAGE_SIZE}`
+          student.student_id,
+        )}/events?page=${pageNum}&page_size=${PAGE_SIZE}`,
       );
       return data;
     },
-    [sessionId, student.student_id]
+    [sessionId, student.student_id],
   );
 
   // Initial load — page 1
@@ -307,6 +314,15 @@ const TimelineModal: React.FC<{
 
         <ScoreBreakdown sessionId={sessionId} studentId={student.student_id} />
 
+        {/* 1A — AI Integrity Brief (only shown for closed exams where a score exists) */}
+        <div className="px-4 pb-2">
+          <IntegrityBrief
+            examId={sessionId}
+            studentId={student.student_id}
+            studentName={student.name}
+          />
+        </div>
+
         <div className="overflow-y-auto p-4 flex-1">
           {error ? (
             <p className="text-accent-red text-sm">Could not load events.</p>
@@ -335,7 +351,8 @@ const TimelineModal: React.FC<{
                           {e.severity && e.severity !== "info" && (
                             <span
                               className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
-                                SEVERITY_STYLE[e.severity] ?? SEVERITY_STYLE.info
+                                SEVERITY_STYLE[e.severity] ??
+                                SEVERITY_STYLE.info
                               }`}
                             >
                               {e.severity}
