@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.ai.client import AIProvider, _StubAIClient, get_ai_client
+from app.services.ai.client import AIProvider, get_ai_client
 from app.services.ai.grading import AnswerToGrade, GradeSuggestion, suggest_grades
 from app.services.ai.narrative import (
     BriefResult,

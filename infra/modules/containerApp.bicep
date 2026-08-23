@@ -51,6 +51,15 @@ var registrySecrets = empty(registryServer)
       }
     ]
 
+// Env vars derived from Key Vault secret refs — extracted to a variable so
+// a for-expression is not used directly inside concat() (Bicep BCP138).
+var kvEnvVars = [
+  for s in keyVaultSecrets: {
+    name: s.envVarName
+    secretRef: s.secretName
+  }
+]
+
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
   location: location
@@ -86,12 +95,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             memory: memory
           }
           env: concat(
-            [
-              for s in keyVaultSecrets: {
-                name: s.envVarName
-                secretRef: s.secretName
-              }
-            ],
+            kvEnvVars,
             plainEnvVars
           )
         }

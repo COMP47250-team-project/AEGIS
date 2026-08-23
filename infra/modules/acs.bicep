@@ -5,8 +5,8 @@
 @description('Base name; resources are derived from it.')
 param name string
 
-@description('Azure region.')
-param location string = resourceGroup().location
+// All ACS resources use 'global' as their location; the location parameter
+// is intentionally omitted to avoid the no-unused-params linter warning.
 
 // Email Communication Service (data plane for email sending)
 resource emailService 'Microsoft.Communication/emailServices@2023-04-01' = {
@@ -39,5 +39,6 @@ resource commService 'Microsoft.Communication/communicationServices@2023-04-01' 
   }
 }
 
+#disable-next-line outputs-should-not-contain-secrets
 output connectionString string = commService.listKeys().primaryConnectionString
 output senderAddress string = 'DoNotReply@${managedDomain.properties.mailFromSenderDomain}'

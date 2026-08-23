@@ -174,7 +174,6 @@ module acs 'modules/acs.bicep' = {
   name: 'acs'
   params: {
     name: '${prefix}-acs-${suffix}'
-    location: location
   }
 }
 

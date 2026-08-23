@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import require_role
-from app.models.exam import ExamAnswer, ExamSession, Enrollment
+from app.models.exam import ExamAnswer, ExamSession
 from app.models.quiz import Question
 from app.models.telemetry import SessionScore, TelemetryEvent
 from app.services.ai.client import get_ai_client
@@ -41,8 +41,8 @@ from app.services.ai.narrative import (
 )
 from app.services.ai.similarity import (
     AnswerToEmbed,
-    detect_collusion,
     DEFAULT_THRESHOLD,
+    detect_collusion,
 )
 
 logger = logging.getLogger(__name__)
@@ -164,10 +164,7 @@ async def get_integrity_brief(
         event_counts[et] += 1
 
     # Load quiz context
-    quiz_result = await db.execute(select(ExamSession).where(ExamSession.id == exam_id))
     # Count questions
-    from app.models.quiz import Quiz
-
     quiz_q = await db.execute(select(Question).where(Question.quiz_id == exam.quiz_id))
     question_count = len(list(quiz_q.scalars().all()))
 

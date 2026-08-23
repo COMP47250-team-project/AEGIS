@@ -29,7 +29,6 @@ References
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from enum import Enum
 from functools import lru_cache

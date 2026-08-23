@@ -32,8 +32,10 @@ export async function getIntegrityBrief(
   examId: string,
   studentId: string,
 ): Promise<IntegrityBriefResponse> {
+  const safeExamId = encodeURIComponent(examId);
+  const safeStudentId = encodeURIComponent(studentId);
   const { data } = await apiClient.get<IntegrityBriefResponse>(
-    `/ai/exams/${examId}/students/${studentId}/integrity-brief`,
+    `/ai/exams/${safeExamId}/students/${safeStudentId}/integrity-brief`,
   );
   return data;
 }
@@ -63,8 +65,9 @@ export async function suggestGrades(
   rubric?: string,
   questionIds?: string[],
 ): Promise<GradeSuggestResponse> {
+  const safeExamId = encodeURIComponent(examId);
   const { data } = await apiClient.post<GradeSuggestResponse>(
-    `/ai/exams/${examId}/grade/suggest`,
+    `/ai/exams/${safeExamId}/grade/suggest`,
     { rubric: rubric ?? null, question_ids: questionIds ?? null },
   );
   return data;
@@ -96,9 +99,10 @@ export async function getCollusionReport(
   examId: string,
   threshold?: number,
 ): Promise<CollusionResponse> {
+  const safeExamId = encodeURIComponent(examId);
   const params = threshold !== undefined ? { threshold } : {};
   const { data } = await apiClient.get<CollusionResponse>(
-    `/ai/exams/${examId}/collusion`,
+    `/ai/exams/${safeExamId}/collusion`,
     { params },
   );
   return data;
