@@ -1,7 +1,7 @@
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     # Override this in production with the actual Azure frontend FQDN.
     # Multiple origins: comma-separated string is parsed to list in the validator below.
-    backend_cors_origins: list[str] = [
+    backend_cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
