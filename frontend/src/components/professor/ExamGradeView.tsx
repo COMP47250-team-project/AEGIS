@@ -714,21 +714,23 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
 
       {/* 1C — Collusion tab */}
       {activeTab === "collusion" && (
-        <CollusionView
-          examId={examId}
-          studentNames={Object.fromEntries(
-            report.students.map((s) => [
-              s.student_id,
-              s.student_name ?? s.student_email ?? s.student_id,
-            ]),
-          )}
-          questionPrompts={Object.fromEntries(
-            report.students
-              .flatMap((s) => s.answers)
-              .filter((a) => a.question_type === "short")
-              .map((a) => [a.question_id, a.prompt]),
-          )}
-        />
+        <div className="pt-2">
+          <CollusionView
+            examId={examId}
+            studentNames={Object.fromEntries(
+              report.students.map((s) => [
+                s.student_id,
+                s.student_name ?? s.student_email ?? s.student_id,
+              ]),
+            )}
+            questionPrompts={Object.fromEntries(
+              report.students
+                .flatMap((s) => s.answers)
+                .filter((a) => a.question_type === "short")
+                .map((a) => [a.question_id, a.prompt]),
+            )}
+          />
+        </div>
       )}
 
       {/* 1B — AI grading panel (only for exams with short answers) */}

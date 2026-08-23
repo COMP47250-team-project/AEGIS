@@ -2,7 +2,7 @@
 // Renders the AI-generated integrity brief for one student.
 // Used in ProfessorSession.tsx (live detail panel) and ExamGradeView.tsx (report).
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   type AIProvider,
   type IntegrityBriefResponse,

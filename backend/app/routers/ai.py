@@ -39,7 +39,11 @@ from app.services.ai.narrative import (
     ScoreSnapshot,
     build_integrity_brief,
 )
-from app.services.ai.similarity import AnswerToEmbed, detect_collusion
+from app.services.ai.similarity import (
+    AnswerToEmbed,
+    detect_collusion,
+    DEFAULT_THRESHOLD,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +417,3 @@ async def get_collusion_report(
         threshold_used=result.threshold_used,
         pair_count=len(result.flagged_pairs),
     )
-
-
-# Import DEFAULT_THRESHOLD for the route default
-from app.services.ai.similarity import DEFAULT_THRESHOLD  # noqa: E402

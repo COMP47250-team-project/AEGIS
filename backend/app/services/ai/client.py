@@ -19,7 +19,7 @@ Ollama exposes an OpenAI-compatible /v1 API.  Switching is just a base_url swap.
 
 References
 ----------
-- Azure OpenAI (gpt-4.1, text-embedding-3-large):
+- Azure OpenAI (gpt-4.1, text-embedding-3-small):
     https://learn.microsoft.com/azure/ai-services/openai/concepts/models
 - openai Python SDK v3.x:
     https://github.com/openai/openai-python

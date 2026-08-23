@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: str | None = None
     azure_openai_api_version: str = "2025-01-01-preview"
-    # Deploy gpt-4.1 for chat; text-embedding-3-large for embeddings
+    # Deploy gpt-4.1 for chat; text-embedding-3-small for embeddings
     azure_openai_chat_deployment: str = "gpt-4.1"
-    azure_openai_embed_deployment: str = "text-embedding-3-large"
+    azure_openai_embed_deployment: str = "text-embedding-3-small"
 
     # Ollama (local twin — OpenAI-compatible /v1 API)
     # e.g. http://ollama:11434/v1  (docker compose)  or  http://localhost:11434/v1

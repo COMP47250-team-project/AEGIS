@@ -2,7 +2,7 @@
 // Displays pairwise answer-similarity results for a closed exam.
 // Shows a ranked flagged-pairs list and a per-question similarity matrix.
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   type CollusionResponse,
   type SimilarPairItem,

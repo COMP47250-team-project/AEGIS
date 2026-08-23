@@ -7,7 +7,7 @@ Three features, all feature-flagged and locally runnable:
   similarity.py  — 1C: Answer-Similarity / Collusion Detection via embeddings
 
 Backend resolution order (see client.py):
-  Azure OpenAI (gpt-4.1 / text-embedding-3-large)
+  Azure OpenAI (gpt-4.1 / text-embedding-3-small)
     -> Ollama (qwen3:8b / nomic-embed-text)  [local twin]
     -> Dev stub                               [always boots, CI-safe]
 

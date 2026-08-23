@@ -58,6 +58,9 @@
       </ul>
     </li>
     <li><a href="#azure-environment">Azure Environment</a></li>
+    <li><a href="#kubernetes--helm">Kubernetes & Helm</a></li>
+    <li><a href="#makefile-reference">Makefile Reference</a></li>
+    <li><a href="#ai-features">AI Features</a></li>
     <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
@@ -212,17 +215,29 @@ The app is now available at http://localhost:5173.
 
 ### Backend
 
-| Variable                              | Required | Default                                                        | Description                                                                 |
-| ------------------------------------- | -------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `DATABASE_URL`                        | Yes      | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async PostgreSQL connection string (asyncpg)                                |
-| `DATABASE_URL_SYNC`                   | Yes      | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis`         | Sync connection string for Alembic migrations                               |
-| `JWT_SECRET_KEY`                      | Yes      | `change_me_to_a_random_64_char_string`                         | Secret used to sign JWTs — **change in production**                         |
-| `JWT_ALGORITHM`                       | No       | `HS256`                                                        | JWT signing algorithm                                                       |
-| `JWT_EXPIRE_MINUTES`                  | No       | `480`                                                          | Token lifetime in minutes (8 hours)                                         |
-| `APP_ENV`                             | No       | `development`                                                  | Application environment (`development` / `production`)                      |
-| `LOG_LEVEL`                           | No       | `DEBUG`                                                        | Uvicorn log level                                                           |
-| `AZURE_SERVICE_BUS_CONNECTION_STRING` | No       | —                                                              | Azure Service Bus connection string; telemetry dispatch is skipped if unset |
-| `AZURE_SERVICE_BUS_QUEUE_NAME`        | No       | `telemetry-events`                                             | Queue name for telemetry events                                             |
+| Variable                              | Required | Default                                                        | Description                                                                                                              |
+| ------------------------------------- | -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                        | Yes      | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async PostgreSQL connection string (asyncpg)                                                                             |
+| `DATABASE_URL_SYNC`                   | Yes      | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis`         | Sync connection string for Alembic migrations                                                                            |
+| `JWT_SECRET_KEY`                      | Yes      | `change_me_to_a_random_64_char_string`                         | Secret used to sign JWTs — **change in production**                                                                      |
+| `JWT_ALGORITHM`                       | No       | `HS256`                                                        | JWT signing algorithm                                                                                                    |
+| `JWT_EXPIRE_MINUTES`                  | No       | `480`                                                          | Token lifetime in minutes (8 hours)                                                                                      |
+| `APP_ENV`                             | No       | `development`                                                  | Application environment (`development` / `production`)                                                                   |
+| `LOG_LEVEL`                           | No       | `DEBUG`                                                        | Uvicorn log level                                                                                                        |
+| `AZURE_SERVICE_BUS_CONNECTION_STRING` | No       | —                                                              | Azure Service Bus connection string; telemetry dispatch is skipped if unset                                              |
+| `AZURE_SERVICE_BUS_QUEUE_NAME`        | No       | `telemetry-events`                                             | Queue name for telemetry events                                                                                          |
+| `ACS_CONNECTION_STRING`               | No       | —                                                              | Azure Communication Services connection string for email delivery                                                        |
+| `ACS_SENDER_ADDRESS`                  | No       | —                                                              | Verified sender address used for password-reset and grade-notification emails                                            |
+| `FRONTEND_BASE_URL`                   | No       | `http://localhost:5173`                                        | Used to build password-reset links in outgoing emails                                                                    |
+| `AI_FEATURES_ENABLED`                 | No       | `true`                                                         | Master switch for AI features (integrity brief, grading, collusion)                                                      |
+| `AZURE_OPENAI_ENDPOINT`               | No       | —                                                              | Azure OpenAI resource endpoint; AI features fall back to Ollama or a stub when unset                                     |
+| `AZURE_OPENAI_API_KEY`                | No       | —                                                              | Azure OpenAI API key                                                                                                     |
+| `AZURE_OPENAI_API_VERSION`            | No       | `2025-01-01-preview`                                           | Azure OpenAI API version                                                                                                 |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT`        | No       | `gpt-4.1`                                                      | Name of the chat model deployment in your Azure OpenAI resource                                                          |
+| `AZURE_OPENAI_EMBED_DEPLOYMENT`       | No       | `text-embedding-3-small`                                       | Name of the embedding model deployment                                                                                   |
+| `OLLAMA_BASE_URL`                     | No       | —                                                              | Ollama OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1`); used as a local AI twin when Azure keys are absent |
+| `OLLAMA_CHAT_MODEL`                   | No       | `qwen3:8b`                                                     | Ollama chat model name                                                                                                   |
+| `OLLAMA_EMBED_MODEL`                  | No       | `nomic-embed-text`                                             | Ollama embedding model name                                                                                              |
 
 ### Frontend
 
@@ -297,6 +312,7 @@ npx playwright test e2e/exam-flow.spec.ts
 # Run in headed mode (watch the browser)
 npx playwright test --headed
 ```
+
 The CI `e2e` job runs automatically after `backend` and `frontend` checks pass. On failure it
 uploads the Playwright HTML report (screenshots + traces) as a GitHub Actions artifact.
 
@@ -309,6 +325,7 @@ from controlled honest/assisted exam sessions are documented in
 The full evaluation plan (methodology, load test protocol, usability study, signal justification, and limitations) is in [`docs/evaluation_plan.md`](docs/evaluation_plan.md). Academic references and data sources are in [`docs/data_sources.md`](docs/data_sources.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 ---
 
 ## Azure Environment
@@ -384,6 +401,137 @@ az deployment group create -g aegis-prod-rg --template-file infra/main.bicep \
 
 ---
 
+## Kubernetes & Helm
+
+AEGIS ships Kubernetes manifests and a Helm chart for running the full stack on a local cluster (minikube) or on Azure Kubernetes Service (AKS).
+
+```
+k8s/
+  base/          # Kustomize base — Deployments, Services, Ingress, Jobs
+  overlays/
+    local/       # minikube overrides (nip.io hostnames, local images)
+    aks/         # AKS overrides (ACR image refs, cloud ingress)
+helm/
+  aegis/         # Helm chart (values.yaml, values-local.yaml, values-aks.yaml)
+```
+
+### Quick start (minikube)
+
+```sh
+# 1. Start the cluster and enable the ingress controller
+make cluster-up
+
+# 2. Build images and load them into the cluster
+make images
+
+# 3. Deploy with Helm (stamps the live cluster IP into ingress hosts)
+make deploy
+
+# 4. Seed demo data
+make k8s-seed
+
+# 5. Print the app and API URLs
+make url
+```
+
+Run `make smoke` to verify the backend health endpoint, frontend, and admin login in one step.
+
+### AKS deployment
+
+The `k8s/overlays/aks/` overlay and `helm/aegis/values-aks.yaml` target the production AKS cluster provisioned by `infra/aks/main.bicep`. Images are pulled from ACR; secrets are read from Key Vault via the backend's managed identity.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## Makefile Reference
+
+A `Makefile` at the repo root wraps the most common Docker Compose and Kubernetes commands so you do not need to remember long `docker compose` or `kubectl` invocations.
+
+```sh
+make help          # list every target with a description
+```
+
+| Group          | Target           | What it does                                                     |
+| -------------- | ---------------- | ---------------------------------------------------------------- |
+| **Compose**    | `up`             | Start the full stack and wait until healthy                      |
+|                | `down`           | Stop the stack (keep volumes)                                    |
+|                | `down-v`         | Stop the stack and delete all volumes                            |
+|                | `logs`           | Tail logs for a service (`SVC=backend\|frontend\|db`)            |
+|                | `seed`           | Load demo data (admin, professors, students, quiz)               |
+|                | `shell`          | Open a shell inside a running container                          |
+| **Kubernetes** | `cluster-up`     | Start minikube and enable the ingress controller                 |
+|                | `images`         | Build backend + frontend images and load them into the cluster   |
+|                | `deploy`         | Helm-install with the live cluster IP stamped into ingress hosts |
+|                | `k8s-seed`       | Seed demo data into the cluster                                  |
+|                | `k8s-status`     | Show pods, services, and ingress in the `aegis` namespace        |
+|                | `k8s-logs`       | Tail cluster logs for a deployment                               |
+|                | `smoke`          | Curl-check backend health, frontend, and admin login             |
+| **Tests**      | `test`           | Run backend unit tests (pytest)                                  |
+|                | `e2e`            | Run Playwright end-to-end tests                                  |
+|                | `lint`           | Lint backend (ruff) and frontend (ESLint)                        |
+| **Teardown**   | `undeploy`       | Uninstall the Helm release                                       |
+|                | `cluster-delete` | Delete the minikube cluster entirely                             |
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
+## AI Features
+
+AEGIS includes three AI-powered features that help professors review exam integrity. All three are optional and degrade gracefully when no AI backend is configured.
+
+### How it works
+
+The backend resolves an AI provider in this order:
+
+1. **Azure OpenAI** — when `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` are set.
+2. **Ollama** — when `OLLAMA_BASE_URL` is set. Ollama exposes an OpenAI-compatible API, so the same code path handles both Azure and local models.
+3. **Dev stub** — always available; returns clearly labelled placeholder responses so the app boots and CI passes with no credentials.
+
+This means you can run the full AI feature set locally with no Azure account by pointing `OLLAMA_BASE_URL` at a local Ollama instance.
+
+### Feature overview
+
+#### AI Integrity Brief
+
+Generates a short, plain-English summary of a flagged student's behaviour from the six signal sub-scores and aggregated telemetry event counts. Only metadata is sent to the model — no keystroke content, clipboard text, or answer text. Every brief ends with a non-verdict disclaimer.
+
+Available in the student detail panel during a live exam session and in the post-exam report.
+
+#### AI-Assisted Short-Answer Grading
+
+A "Suggest grades" button scores every short answer against the model answer and an optional rubric, returning a suggested score, a one-line justification, and a confidence value. The professor reviews each suggestion and clicks Accept or types a different score. Nothing is saved automatically.
+
+#### Collusion Detection
+
+Embeds each student's short answers and computes pairwise cosine similarity per question. Answer pairs above a configurable threshold are flagged as potentially similar. Results appear in a dedicated Collusion Detection tab on the grade report, with a similarity table and a clear disclaimer that high similarity may reflect common knowledge rather than misconduct.
+
+### Local development with Ollama
+
+```sh
+# Start Ollama alongside the rest of the stack
+docker compose up -d ollama
+
+# Pull the required models (one-time)
+docker exec -it aegis-ollama-1 ollama pull qwen3:8b
+docker exec -it aegis-ollama-1 ollama pull nomic-embed-text
+
+# Point the backend at Ollama
+export OLLAMA_BASE_URL=http://localhost:11434/v1
+```
+
+Check which provider is active at any time:
+
+```sh
+curl http://localhost:8000/ai/status
+# {"provider":"ollama","ai_features_enabled":true}
+```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+---
+
 ## Project Structure
 
 ```
@@ -395,7 +543,9 @@ AEGIS/
 │   │   ├── models/           # SQLAlchemy ORM models
 │   │   ├── schemas/          # Pydantic request/response schemas
 │   │   ├── routers/          # API route handlers
-│   │   └── services/         # Business logic
+│   │   └── services/
+│   │       ├── ai/           # AI features (integrity brief, grading, collusion)
+│   │       └── ...           # Scoring, messaging, email, storage
 │   ├── alembic/              # Database migrations
 │   ├── tests/                # pytest test suite
 │   └── pyproject.toml
@@ -403,16 +553,27 @@ AEGIS/
 ├── frontend/                 # React 18 + TypeScript exam shell
 │   ├── src/
 │   │   ├── pages/            # Route-level page components
+│   │   ├── components/       # Shared UI components (professor, exam)
 │   │   ├── context/          # React context (Auth)
-│   │   └── api/              # Axios API client
+│   │   └── api/              # Axios API client (incl. ai.ts)
 │   ├── env.example           # Environment variable template
 │   └── package.json
 │
 ├── infra/                    # Azure Bicep IaC
-│   └── ...                   # Container Apps, PostgreSQL, Service Bus, Blob
+│   ├── main.bicep            # Full environment (Container Apps, Postgres, Service Bus, Blob, Key Vault, ACS, ACR)
+│   ├── aks/                  # AKS-specific Bicep
+│   └── modules/              # Reusable Bicep modules
 │
-├── docs/                     # Architecture diagrams, sprint notes
-├── .github/workflows/        # GitHub Actions CI
+├── k8s/                      # Kubernetes manifests (Kustomize)
+│   ├── base/                 # Base resources
+│   └── overlays/             # Environment overlays (local, aks)
+│
+├── helm/                     # Helm chart
+│   └── aegis/                # Chart for local and AKS deployment
+│
+├── docs/                     # Architecture diagrams, sprint notes, evaluation
+├── Makefile                  # Developer shortcuts (compose + k8s targets)
+├── .github/workflows/        # GitHub Actions CI/CD
 └── docker-compose.yml        # Full-stack local development
 ```
 

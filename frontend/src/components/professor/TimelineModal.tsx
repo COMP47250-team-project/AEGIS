@@ -314,16 +314,16 @@ const TimelineModal: React.FC<{
 
         <ScoreBreakdown sessionId={sessionId} studentId={student.student_id} />
 
-        {/* 1A — AI Integrity Brief (only shown for closed exams where a score exists) */}
-        <div className="px-4 pb-2">
-          <IntegrityBrief
-            examId={sessionId}
-            studentId={student.student_id}
-            studentName={student.name}
-          />
-        </div>
-
         <div className="overflow-y-auto p-4 flex-1">
+          {/* 1A — AI Integrity Brief sits inside the scroll area so the event
+               list below it remains reachable after the brief expands */}
+          <div className="mb-4">
+            <IntegrityBrief
+              examId={sessionId}
+              studentId={student.student_id}
+              studentName={student.name}
+            />
+          </div>
           {error ? (
             <p className="text-accent-red text-sm">Could not load events.</p>
           ) : isLoading ? (
