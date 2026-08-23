@@ -138,6 +138,7 @@ services:
   # ─────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
+    profiles: [ai]
     restart: unless-stopped
     ports:
       - "11434:11434"

@@ -511,7 +511,7 @@ Embeds each student's short answers and computes pairwise cosine similarity per 
 
 ```sh
 # Start Ollama alongside the rest of the stack
-docker compose up -d ollama
+docker compose --profile ai up -d ollama
 
 # Pull the required models (one-time)
 docker exec -it aegis-ollama-1 ollama pull qwen3:8b
