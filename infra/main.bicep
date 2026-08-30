@@ -90,6 +90,27 @@ var backendKeyVaultSecrets = wireKeyVaultSecrets
         secretName: 'acs-sender-address'
         keyVaultUrl: '${keyVaultSecretBase}acs-sender-address'
       }
+      // AI features (1A integrity brief, 1B grading, 1C collusion)
+      {
+        envVarName: 'AZURE_OPENAI_ENDPOINT'
+        secretName: 'azure-openai-endpoint'
+        keyVaultUrl: '${keyVaultSecretBase}azure-openai-endpoint'
+      }
+      {
+        envVarName: 'AZURE_OPENAI_API_KEY'
+        secretName: 'azure-openai-key'
+        keyVaultUrl: '${keyVaultSecretBase}azure-openai-key'
+      }
+      {
+        envVarName: 'AZURE_OPENAI_CHAT_DEPLOYMENT'
+        secretName: 'azure-openai-chat-deployment'
+        keyVaultUrl: '${keyVaultSecretBase}azure-openai-chat-deployment'
+      }
+      {
+        envVarName: 'AZURE_OPENAI_EMBED_DEPLOYMENT'
+        secretName: 'azure-openai-embed-deployment'
+        keyVaultUrl: '${keyVaultSecretBase}azure-openai-embed-deployment'
+      }
     ]
   : []
 
@@ -153,7 +174,6 @@ module acs 'modules/acs.bicep' = {
   name: 'acs'
   params: {
     name: '${prefix}-acs-${suffix}'
-    location: location
   }
 }
 
@@ -169,6 +189,20 @@ module backendApp 'modules/containerApp.bicep' = {
     minReplicas: 1
     targetPort: 8000
     keyVaultSecrets: backendKeyVaultSecrets
+    plainEnvVars: [
+      {
+        name: 'FRONTEND_BASE_URL'
+        value: 'https://${frontendApp.outputs.fqdn}'
+      }
+      {
+        name: 'AZURE_OPENAI_API_VERSION'
+        value: '2025-01-01-preview'
+      }
+      {
+        name: 'AI_FEATURES_ENABLED'
+        value: 'true'
+      }
+    ]
     registryServer: acrServer
     registryUsername: acrUsername
     registryPassword: acrPassword

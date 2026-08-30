@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import apiClient from "../../api/client";
+import CollusionView from "./CollusionView";
+import { type GradeSuggestionItem, suggestGrades } from "../../api/ai";
 
 // ---------------------------------------------------------------------------
 // Types (mirroring backend ExamGradeReport schema)
@@ -106,6 +108,8 @@ interface StudentRowProps {
   // AEGIS-121: open-book resource usage for this student (undefined = closed-book
   // exam or no access recorded).
   resourceUsage?: StudentResourceUsage[];
+  // 1B: AI grade suggestions keyed by answer_id
+  aiSuggestions?: Record<string, GradeSuggestionItem>;
 }
 
 const StudentRow: React.FC<StudentRowProps> = ({
@@ -113,6 +117,7 @@ const StudentRow: React.FC<StudentRowProps> = ({
   examId,
   onSaved,
   resourceUsage,
+  aiSuggestions = {},
 }) => {
   const [expanded, setExpanded] = useState(false);
   const [scores, setScores] = useState<Record<string, string>>({});
@@ -415,6 +420,42 @@ const StudentRow: React.FC<StudentRowProps> = ({
                                 saved
                               </span>
                             )}
+                            {/* 1B — AI suggestion Accept button */}
+                            {aiSuggestions[ans.answer_id] && (
+                              <div className="flex items-center gap-1 ml-2">
+                                <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                                  AI:{" "}
+                                  {aiSuggestions[ans.answer_id]
+                                    .suggested_score ?? "?"}
+                                  /{ans.max_score} (
+                                  {Math.round(
+                                    (aiSuggestions[ans.answer_id].confidence ??
+                                      0) * 100,
+                                  )}
+                                  % conf)
+                                  {" — "}
+                                  {aiSuggestions[ans.answer_id].rationale}
+                                </span>
+                                {aiSuggestions[ans.answer_id].suggested_score !=
+                                  null && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setScores((s) => ({
+                                        ...s,
+                                        [ans.answer_id!]: String(
+                                          aiSuggestions[ans.answer_id!]
+                                            .suggested_score,
+                                        ),
+                                      }))
+                                    }
+                                    className="text-xs rounded bg-primary px-2 py-0.5 text-white hover:opacity-90"
+                                  >
+                                    Accept
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
                         {ans.answer_id && errors[ans.answer_id] && (
@@ -513,6 +554,30 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
   const [resourcesByStudent, setResourcesByStudent] = useState<
     Record<string, StudentResourceUsage[]>
   >({});
+
+  // AI features
+  const [activeTab, setActiveTab] = useState<"grades" | "collusion">("grades");
+  const [aiRubric, setAiRubric] = useState("");
+  const [aiSuggesting, setAiSuggesting] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<
+    Record<string, GradeSuggestionItem>
+  >({}); // keyed by answer_id
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  async function handleSuggestGrades() {
+    setAiSuggesting(true);
+    setAiError(null);
+    try {
+      const resp = await suggestGrades(examId, aiRubric || undefined);
+      const map: Record<string, GradeSuggestionItem> = {};
+      for (const s of resp.suggestions) map[s.answer_id] = s;
+      setAiSuggestions(map);
+    } catch (e: unknown) {
+      setAiError(e instanceof Error ? e.message : "AI grading request failed.");
+    } finally {
+      setAiSuggesting(false);
+    }
+  }
 
   // AEGIS-112b: release results to students ("Submit Grades").
   const handleRelease = async () => {
@@ -630,6 +695,81 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
         </div>
       )}
 
+      {/* Tabs: Grades | Collusion */}
+      <div className="flex gap-1 mb-4 border-b border-hairline">
+        {(["grades", "collusion"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${
+              activeTab === tab
+                ? "border-b-2 border-primary text-primary"
+                : "text-mute hover:text-ink"
+            }`}
+          >
+            {tab === "collusion" ? "Collusion Detection" : "Grades"}
+          </button>
+        ))}
+      </div>
+
+      {/* 1C — Collusion tab */}
+      {activeTab === "collusion" && (
+        <div className="pt-2">
+          <CollusionView
+            examId={examId}
+            studentNames={Object.fromEntries(
+              report.students.map((s) => [
+                s.student_id,
+                s.student_name ?? s.student_email ?? s.student_id,
+              ]),
+            )}
+            questionPrompts={Object.fromEntries(
+              report.students
+                .flatMap((s) => s.answers)
+                .filter((a) => a.question_type === "short")
+                .map((a) => [a.question_id, a.prompt]),
+            )}
+          />
+        </div>
+      )}
+
+      {/* 1B — AI grading panel (only for exams with short answers) */}
+      {activeTab === "grades" && report.short_total > 0 && (
+        <div className="mb-6 rounded-lg border border-border bg-surface p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-ink">
+              AI Grade Suggestions
+            </h3>
+            <button
+              onClick={handleSuggestGrades}
+              disabled={aiSuggesting}
+              className="rounded bg-primary px-3 py-1 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            >
+              {aiSuggesting ? "Suggesting…" : "Suggest grades"}
+            </button>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted mb-1">
+              Optional rubric (sent to the AI)
+            </label>
+            <textarea
+              value={aiRubric}
+              onChange={(e) => setAiRubric(e.target.value)}
+              rows={2}
+              placeholder="e.g. Award 1 mark for mentioning photosynthesis, 1 mark for CO2…"
+              className="w-full rounded border border-border px-2 py-1 text-sm resize-none"
+            />
+          </div>
+          {aiError && <p className="text-xs text-red-600">{aiError}</p>}
+          {Object.keys(aiSuggestions).length > 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+              ⚠ AI suggestions loaded — click Accept on individual answers below
+              to apply. Nothing is saved until you click Save on each answer.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* AEGIS-112b: Submit Grades — releases results to students. Only shown
           for exams with short answers (MCQ-only results are instant). */}
       {report.short_total > 0 && (
@@ -689,6 +829,7 @@ const ExamGradeView: React.FC<ExamGradeViewProps> = ({ examId, examTitle }) => {
                   ? (resourcesByStudent[student.student_id] ?? [])
                   : undefined
               }
+              aiSuggestions={aiSuggestions}
             />
           ))}
         </div>

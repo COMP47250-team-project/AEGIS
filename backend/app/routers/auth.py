@@ -6,6 +6,7 @@ Tokens generated here are accepted by all other protected routes.
 """
 
 import hashlib
+import logging
 import os
 import secrets
 import uuid
@@ -25,6 +26,8 @@ from app.models.password_reset import PasswordResetToken
 from app.models.user import User
 from app.services.audit import USER_REGISTERED, record_audit_event
 from app.services.email import get_email_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -335,7 +338,7 @@ async def forgot_password(
         try:
             await get_email_service().send_password_reset(user.email, reset_url)
         except Exception:
-            pass  # email failure must never block the response
+            logger.exception("Failed to send password reset email to %s", user.email)
     return {"message": "If that email is registered, a reset link has been sent."}
 
 

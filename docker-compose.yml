@@ -127,6 +127,30 @@ services:
       retries: 5
       start_period: 10s
 
+  # ─────────────────────────────────────────
+  # Ollama — local AI twin (optional)
+  # Provides OpenAI-compatible /v1 API for 1A/1B/1C when Azure creds are absent.
+  # Enable by setting OLLAMA_BASE_URL=http://ollama:11434/v1 in the backend env.
+  #
+  # One-time model pull (run after `docker compose up -d ollama`):
+  #   docker exec -it aegis-ollama-1 ollama pull qwen3:8b
+  #   docker exec -it aegis-ollama-1 ollama pull nomic-embed-text
+  # ─────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    profiles: [ai]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
 # ─────────────────────────────────────────
 # Named volumes — all wiped by `down -v`
 # ─────────────────────────────────────────
@@ -134,3 +158,4 @@ volumes:
   postgres_data:
   azurite_data:
   frontend_node_modules:
+  ollama_data: # Ollama model cache (local AI twin for 1A/1B/1C)

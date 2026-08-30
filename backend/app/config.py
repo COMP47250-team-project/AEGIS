@@ -1,7 +1,7 @@
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     # Override this in production with the actual Azure frontend FQDN.
     # Multiple origins: comma-separated string is parsed to list in the validator below.
-    backend_cors_origins: list[str] = [
+    backend_cors_origins: Annotated[list[str], NoDecode] = [
         "http://localhost:5173",
         "http://localhost:3000",
     ]
@@ -28,6 +28,27 @@ class Settings(BaseSettings):
     acs_connection_string: str | None = None
     acs_sender_address: str | None = None
     frontend_base_url: str = "http://localhost:5173"
+
+    # ---------------------------------------------------------------------------
+    # AI features (1A integrity brief, 1B grading, 1C collusion)
+    # Priority: Azure OpenAI -> Ollama -> dev stub
+    # Unset all azure_openai_* vars to fall back to Ollama or the dev stub.
+    # ---------------------------------------------------------------------------
+    ai_features_enabled: bool = True
+
+    # Azure OpenAI (production)
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_key: str | None = None
+    azure_openai_api_version: str = "2025-01-01-preview"
+    # Deploy gpt-4.1 for chat; text-embedding-3-small for embeddings
+    azure_openai_chat_deployment: str = "gpt-4.1"
+    azure_openai_embed_deployment: str = "text-embedding-3-small"
+
+    # Ollama (local twin — OpenAI-compatible /v1 API)
+    # e.g. http://ollama:11434/v1  (docker compose)  or  http://localhost:11434/v1
+    ollama_base_url: str | None = None
+    ollama_chat_model: str = "qwen3:8b"
+    ollama_embed_model: str = "nomic-embed-text"
 
     @field_validator("backend_cors_origins", mode="before")
     @classmethod

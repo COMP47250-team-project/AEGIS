@@ -20,6 +20,9 @@ param targetPort int
 @description('Key Vault-backed secrets injected as env vars (AEGIS-77). Each item: { secretName, keyVaultUrl, envVarName }. The app reads them via its system-assigned identity.')
 param keyVaultSecrets array = []
 
+@description('Plain (non-secret) env vars. Each item: { name, value }.')
+param plainEnvVars array = []
+
 @description('ACR login server for pulling private images (empty = public image, no registry auth). AEGIS-66.')
 param registryServer string = ''
 
@@ -47,6 +50,15 @@ var registrySecrets = empty(registryServer)
         value: registryPassword
       }
     ]
+
+// Env vars derived from Key Vault secret refs — extracted to a variable so
+// a for-expression is not used directly inside concat() (Bicep BCP138).
+var kvEnvVars = [
+  for s in keyVaultSecrets: {
+    name: s.envVarName
+    secretRef: s.secretName
+  }
+]
 
 resource app 'Microsoft.App/containerApps@2024-03-01' = {
   name: name
@@ -82,12 +94,10 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json(cpu)
             memory: memory
           }
-          env: [
-            for s in keyVaultSecrets: {
-              name: s.envVarName
-              secretRef: s.secretName
-            }
-          ]
+          env: concat(
+            kvEnvVars,
+            plainEnvVars
+          )
         }
       ]
       scale: {
