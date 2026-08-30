@@ -1,67 +1,75 @@
-<a name="readme-top"></a>
+<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
+<a id="readme-top"></a>
 
-<div align="center">
-
+<!-- PROJECT SHIELDS -->
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![Apache License][license-shield]][license-url]
 [![CI][ci-shield]][ci-url]
+[![CD][cd-shield]][cd-url]
+[![Secret scanning][gitleaks-shield]][gitleaks-url]
+[![Known Vulnerabilities](https://snyk.io/test/github/COMP47250-team-project/AEGIS/badge.svg)](https://snyk.io/test/github/COMP47250-team-project/AEGIS)
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=COMP47250-team-project_aegis&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=COMP47250-team-project_aegis&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=COMP47250-team-project_aegis&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=COMP47250-team-project_aegis&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=COMP47250-team-project_aegis&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
+[![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg)](https://sonarcloud.io/summary/new_code?id=COMP47250-team-project_aegis)
 
-</div>
 
+<!-- PROJECT LOGO -->
 <br />
-
 <div align="center">
-  <h1>AEGIS</h1>
-  <p><strong>Adaptive Exam Guardian and Integrity System</strong></p>
-  <p>
-    A browser-native anti-cheat exam portal that monitors student behaviour in real time using privacy-minimised telemetry, scores six signals into a single confidence score, and surfaces integrity reports for human review: without webcams, browser extensions, or invasive surveillance.
-  </p>
-  <p>
-    <a href="http://localhost:8000/docs"><strong>API Docs (local) »</strong></a>
-    &nbsp;·&nbsp;
+  <a href="https://github.com/COMP47250-team-project/AEGIS">
+    <img src="docs/images/aegis-logo.png" alt="AEGIS logo" width="96" height="96">
+  </a>
+
+  <h3 align="center">AEGIS</h3>
+
+  <p align="center">
+    <strong>Adaptive Exam Guardian and Integrity System</strong>
+    <br />
+    <br />
+    <a href="#about-the-project">Explore the docs »</a>
+    <br />
     <a href="https://github.com/COMP47250-team-project/AEGIS/issues/new?labels=bug">Report Bug</a>
-    &nbsp;·&nbsp;
+    &middot;
     <a href="https://github.com/COMP47250-team-project/AEGIS/issues/new?labels=enhancement">Request Feature</a>
   </p>
 </div>
 
----
-
-## Table of Contents
-
+<!-- TABLE OF CONTENTS -->
 <details>
-  <summary>Expand</summary>
+  <summary>Table of Contents</summary>
   <ol>
     <li>
       <a href="#about-the-project">About The Project</a>
       <ul>
-        <li><a href="#core-design-principles">Core Design Principles</a></li>
         <li><a href="#built-with">Built With</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#integrity-scoring">Integrity Scoring</a></li>
+        <li><a href="#privacy-posture">Privacy Posture</a></li>
       </ul>
     </li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#option-a--docker-compose-recommended">Option A: Docker Compose (recommended)</a></li>
-        <li><a href="#option-b--manual-local-setup">Option B: Manual local setup</a></li>
+        <li><a href="#installation">Installation</a></li>
+        <li><a href="#configuration">Configuration</a></li>
       </ul>
     </li>
-    <li><a href="#environment-variables">Environment Variables</a></li>
     <li>
-      <a href="#running-tests--ci-checks">Running Tests & CI Checks</a>
+      <a href="#usage">Usage</a>
       <ul>
-        <li><a href="#detection-evaluation-results">Detection Evaluation Results</a></li>
+        <li><a href="#make-targets">Make Targets</a></li>
+        <li><a href="#api-surface">API Surface</a></li>
+        <li><a href="#tests">Tests</a></li>
+        <li><a href="#deployment">Deployment</a></li>
       </ul>
     </li>
-    <li><a href="#azure-environment">Azure Environment</a></li>
-    <li><a href="#kubernetes--helm">Kubernetes & Helm</a></li>
-    <li><a href="#makefile-reference">Makefile Reference</a></li>
-    <li><a href="#ai-features">AI Features</a></li>
-    <li><a href="#project-structure">Project Structure</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
@@ -69,20 +77,23 @@
   </ol>
 </details>
 
----
-
+<!-- ABOUT THE PROJECT -->
 ## About The Project
 
-AEGIS is built by a 6-person MSc Computer Science team at University College Dublin for the **COMP47250 Team Software Project** (Microsoft partnership, 2026).
+Remote proctoring normally means a webcam, an installed agent, and an algorithm deciding whether a student looks guilty. AEGIS drops all three. It runs in a plain browser tab and records only metadata about how the exam was produced: focus loss, paste length, keystroke spacing, answer timing, window resizes.
 
-Professors create and schedule online exams. During an exam, the student's browser emits privacy-minimised telemetry (tab visibility, paste events, keystroke intervals, window focus/blur, answer timing). A scoring engine combines these six signals into a 0–1 confidence score. After the exam, professors review a flagged-event timeline and decide whether to investigate: no automatic academic-misconduct verdicts are ever issued.
+Six of those signals combine into one score between 0 and 1. The professor reads the score, opens the event timeline behind it, and decides. The system issues no misconduct verdict on its own.
 
-### Core Design Principles
+What it ships with:
 
-- **Non-blocking**: telemetry collection and answer submission are fully independent; a network hiccup never pauses the exam.
-- **Privacy by design**: event metadata only; no key content, clipboard text, screen recordings, or biometrics.
-- **Human review**: the system provides evidence for professors, not verdicts.
-- **Data minimisation**: six behavioural signals, nothing more.
+* Quiz authoring with a question bank, exam scheduling per course, and a per-exam scoring preset.
+* Enrolment by roster pick, pasted email list, or saved student group.
+* Open-book mode with an allowlisted PDF and link panel, each access timed.
+* Live monitor pushing per-student risk over a WebSocket every 5 seconds.
+* Post-exam signal breakdown, event timeline, and CSV export.
+* Short-answer grading with staged release, plus an optional AI copilot for integrity briefs, grade suggestions, and answer-similarity collusion detection.
+
+Screenshots are present in [screenshots.md](docs/screenshots.md) file.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -91,541 +102,358 @@ Professors create and schedule online exams. During an exam, the student's brows
 [![FastAPI][fastapi-badge]][fastapi-url]
 [![Python][python-badge]][python-url]
 [![React][react-badge]][react-url]
-[![TypeScript][typescript-badge]][typescript-url]
+[![TypeScript][ts-badge]][ts-url]
 [![Vite][vite-badge]][vite-url]
-[![TailwindCSS][tailwind-badge]][tailwind-url]
+[![Tailwind CSS][tailwind-badge]][tailwind-url]
 [![PostgreSQL][postgres-badge]][postgres-url]
 [![Docker][docker-badge]][docker-url]
+[![Kubernetes][k8s-badge]][k8s-url]
+[![Helm][helm-badge]][helm-url]
+[![Bicep][bicep-badge]][bicep-url]
 [![Azure][azure-badge]][azure-url]
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
+### Architecture
 
-## Getting Started
+[![AEGIS architecture][product-screenshot]](#architecture)
 
-### Prerequisites
+Telemetry and answers travel on separate paths. That is the load-bearing decision: if the WebSocket dies, the student keeps answering and submitting, and only monitoring degrades.
 
-| Tool                          | Minimum version | Check              |
-| ----------------------------- | --------------- | ------------------ |
-| Docker + Docker Compose       | 24.x / 2.x      | `docker --version` |
-| Node.js (for manual setup)    | 22              | `node --version`   |
-| uv (for manual setup)         | 0.4+            | `uv --version`     |
-| PostgreSQL (for manual setup) | 16              | `psql --version`   |
+The browser SDK batches events into a bounded ring buffer and reconnects with exponential backoff. Under sustained failure it drops the oldest events, because an incomplete telemetry stream is acceptable and a stalled exam is not.
 
-Install uv via the [official installer](https://docs.astral.sh/uv/getting-started/installation/): `curl -LsSf https://astral.sh/uv/install.sh \| sh`
+Service Bus decouples ingestion from scoring. With no connection string set, the same events are scored in-process, so a local stack behaves identically without Azure. The AI client resolves Azure OpenAI, then a local Ollama endpoint, then a labelled stub, so every copilot feature degrades cleanly with zero credentials.
 
----
+Live and final scores are computed differently on purpose. The live monitor reads in-memory counters, so 100 concurrent students cost no queries per tick, which makes it an estimate. At exam close the session is rescored from stored events against the student's own typing baseline, and that number is what reports show.
 
-### Option A: Docker Compose (recommended)
-
-This spins up **PostgreSQL 16**, the **FastAPI backend** (with Alembic migrations), the **React/Vite frontend**, and an **Azurite** Azure Storage emulator — all with hot-reload.
-
-```sh
-# 1. Clone the repository
-git clone https://github.com/COMP47250-team-project/AEGIS.git
-cd AEGIS
-
-# 2. Create the frontend env file (defaults work for Docker)
-cp frontend/env.example frontend/.env
-
-# 3. (Optional) Set a real JWT secret — defaults to a dev placeholder
-export JWT_SECRET_KEY="$(openssl rand -hex 32)"
-
-# 4. Build and start all services
-docker compose up --build
-```
-
-| Service      | URL                         |
-| ------------ | --------------------------- |
-| Frontend     | http://localhost:5173       |
-| Backend API  | http://localhost:8000       |
-| Swagger UI   | http://localhost:8000/docs  |
-| ReDoc        | http://localhost:8000/redoc |
-| Azurite Blob | http://localhost:10000      |
-
-To stop and remove volumes (wipes database):
-
-```sh
-docker compose down -v
-```
+Persistence is 18 tables over 17 Alembic migrations: users, courses, quizzes, questions, exam sessions, enrolments, answers, telemetry events, typing baselines, session scores, risk flags, groups, open-book resources and access records, an append-only audit log, and password reset tokens.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
+### Integrity Scoring
 
-### Option B: Manual local setup
+Six components, each normalised to 0.0–1.0, combined as a weighted sum. Weights stay server-side so the frontend never exposes the rules.
 
-Use this path when you want faster iteration on a single service without Docker.
+| Signal | Measures | Standard weight |
+| --- | --- | --- |
+| Tab switching | Focus and visibility loss, weighted by time away | 0.30 |
+| Paste | Paste events and pasted length | 0.25 |
+| Keystroke intervals | Outliers against the student's own rhythm | 0.20 |
+| First keypress delay | Silence between question load and first key | 0.10 |
+| Answer time | Answers finished implausibly fast for their length | 0.10 |
+| Window resize | Resizes consistent with tiling beside another window | 0.05 |
 
-#### 1. PostgreSQL
+Professors pick one preset per exam. Lenient exists for open-book research exams where multi-tab work is expected; strict is for closed-book conditions.
 
-Create a database and user for local development:
+| Preset | Tab | Paste | Keystrokes | First keypress | Answer time | Resize |
+| --- | --- | --- | --- | --- | --- | --- |
+| Strict | 0.35 | 0.30 | 0.20 | 0.07 | 0.05 | 0.03 |
+| Standard | 0.30 | 0.25 | 0.20 | 0.10 | 0.10 | 0.05 |
+| Lenient | 0.15 | 0.20 | 0.25 | 0.15 | 0.20 | 0.05 |
 
-```sql
-CREATE USER dev WITH PASSWORD 'dev';
-CREATE DATABASE appdb OWNER dev;
-```
+Two thresholds: crossing 0.70 mid-exam raises a risk flag and alerts the live monitor; reporting treats 0.40 and above as flagged for review, deliberately lower so borderline sessions reach a human instead of being filtered out.
 
-#### 2. Backend
+No single signal can flag a session. Maxing out tab switching alone yields 0.30 under the standard preset, below the review threshold. Reaching it requires two or more signals agreeing.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Privacy Posture
+
+* No webcam, microphone, screen recording, or browser extension.
+* Keystroke timing only. Key values are never transmitted or stored.
+* Paste events record length and target field, never clipboard contents.
+* Questions are withheld until consent is recorded. The check is server-side and returns 403 while consent is null, so it cannot be bypassed from the client.
+* No automated decision-making. A human makes every call, and students see their own score.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- GETTING STARTED -->
+## Getting Started
+
+Docker Compose is the fastest path to a working stack. The manual path is better for a tight edit-reload loop on one service.
+
+### Prerequisites
+
+Compose path:
+
+* Docker and Docker Compose
+  ```sh
+  docker compose version
+  ```
+
+Manual path, additionally:
+
+* Python 3.12 with [uv](https://docs.astral.sh/uv/)
+  ```sh
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+* Node 20
+  ```sh
+  node --version
+  ```
+* PostgreSQL 16
+  ```sh
+  psql --version
+  ```
+
+### Installation
+
+1. Clone the repo
+   ```sh
+   git clone https://github.com/COMP47250-team-project/AEGIS.git
+   cd AEGIS
+   ```
+2. Copy the environment file. Defaults work as-is for local development.
+   ```sh
+   cp .env.example .env
+   ```
+3. Build and start the stack, then load demo data. `make seed` prints the credentials it creates.
+   ```sh
+   make up
+   make seed
+   ```
+4. Open the app. Stop with `make down`, or `make down-v` to drop the volumes.
+
+   | Service | Address |
+   | --- | --- |
+   | Frontend | http://localhost:5173 |
+   | Backend | http://localhost:8000 |
+   | Swagger UI | http://localhost:8000/docs |
+   | ReDoc | http://localhost:8000/redoc |
+   | PostgreSQL | localhost:5432 |
+   | Azurite blob | http://localhost:10000 |
+
+5. Optional, run the AI copilot against a local model instead of Azure OpenAI, then set `OLLAMA_BASE_URL=http://ollama:11434/v1` in `.env` and restart the backend.
+   ```sh
+   docker compose --profile ai up -d ollama
+   docker exec -it aegis-ollama-1 ollama pull qwen3:8b
+   docker exec -it aegis-ollama-1 ollama pull nomic-embed-text
+   ```
+
+<details>
+  <summary>Manual setup without Docker</summary>
 
 ```sh
+# 1. Database
+createdb aegis
+psql -c "CREATE USER aegis WITH PASSWORD 'aegis_dev_pw'; ALTER DATABASE aegis OWNER TO aegis;"
+
+# 2. Backend
 cd backend
-
-# Install all dependencies (creates .venv automatically)
 uv sync
-
-# Set required environment variables
-export DATABASE_URL="postgresql+asyncpg://dev:dev@localhost:5432/appdb"
-export DATABASE_URL_SYNC="postgresql://dev:dev@localhost:5432/appdb"
-export JWT_SECRET_KEY="change_me_to_a_random_64_char_string"
-
-# Run database migrations
+export DATABASE_URL="postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis"
+export DATABASE_URL_SYNC="postgresql://aegis:aegis_dev_pw@localhost:5432/aegis"
+export JWT_SECRET_KEY="$(openssl rand -hex 32)"
 uv run alembic upgrade head
-
-# Start the development server (hot-reload)
 uv run uvicorn app.main:app --reload
-```
 
-The API is now available at http://localhost:8000. Interactive docs at http://localhost:8000/docs.
-
-#### 3. Frontend
-
-```sh
+# 3. Frontend, second terminal
 cd frontend
-
-# Copy env file and configure API URL
 cp env.example .env
-# .env already points to http://localhost:8000 by default
-
-# Install dependencies
 npm install
-
-# Start the development server (HMR)
 npm run dev
 ```
 
-The app is now available at http://localhost:5173.
+On Windows PowerShell, replace `export FOO=bar` with `$env:FOO = "bar"`.
+</details>
+
+### Configuration
+
+Secrets are read from the environment only. Nothing is hardcoded, and gitleaks runs as a pre-commit hook to keep it that way. Replace `JWT_SECRET_KEY` before anything leaves your machine.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async driver, used by the app |
+| `DATABASE_URL_SYNC` | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis` | Sync driver, used by Alembic |
+| `JWT_SECRET_KEY` | placeholder | Replace: `openssl rand -hex 32` |
+| `JWT_ALGORITHM` | `HS256` | |
+| `JWT_EXPIRE_MINUTES` | `15` | Access token lifetime |
+| `APP_ENV` | `development` | |
+| `LOG_LEVEL` | `DEBUG` | |
+| `BACKEND_CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Comma-separated. Any `*.azurecontainerapps.io` origin is additionally allowed by regex |
+| `VITE_API_URL` | `http://localhost:8000` | Frontend. WebSocket URL is derived by swapping the scheme |
+
+Azure services are all optional, and each has a local fallback.
+
+| Variable | Default | Behaviour when unset |
+| --- | --- | --- |
+| `AZURE_SERVICE_BUS_CONNECTION_STRING` | unset | Telemetry scored in-process instead of via a queue |
+| `AZURE_SERVICE_BUS_QUEUE_NAME` | `telemetry-events` | |
+| `SCORE_QUEUE_NAME` | `score-jobs` | |
+| `AZURE_STORAGE_CONNECTION_STRING` | unset | Compose points this at Azurite |
+| `AZURE_STORAGE_CONTAINER_NAME` | `exam-resources` | Open-book PDF uploads |
+| `ACS_CONNECTION_STRING` | unset | Password reset emails printed to stdout |
+| `ACS_SENDER_ADDRESS` | unset | Verified Communication Services sender |
+| `FRONTEND_BASE_URL` | `http://localhost:5173` | Builds reset links |
+
+AI copilot. With no provider configured it returns clearly labelled stub output, so the UI stays testable without credentials.
+
+| Variable | Default | Notes |
+| --- | --- | --- |
+| `AI_FEATURES_ENABLED` | `true` | Set false to hide the copilot |
+| `AZURE_OPENAI_ENDPOINT` | unset | First choice provider |
+| `AZURE_OPENAI_API_KEY` | unset | |
+| `AZURE_OPENAI_API_VERSION` | `2025-01-01-preview` | |
+| `AZURE_OPENAI_CHAT_DEPLOYMENT` | `gpt-4.1` | |
+| `AZURE_OPENAI_EMBED_DEPLOYMENT` | `text-embedding-3-small` | Collusion detection embeddings |
+| `OLLAMA_BASE_URL` | unset | Second choice, OpenAI-compatible `/v1` endpoint |
+| `OLLAMA_CHAT_MODEL` | `qwen3:8b` | |
+| `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | |
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
+<!-- USAGE EXAMPLES -->
+## Usage
 
-## Environment Variables
+After `make seed`, sign in as the seeded professor and walk the loop:
 
-### Backend
+1. Build a quiz, or import questions from a published one.
+2. Schedule it against a course with a start time, duration, and scoring preset. Turn on open-book mode to attach allowlisted PDFs and links.
+3. Enrol students individually, by pasted email list, or by student group.
+4. Open the exam. Students consent, then sit it. Monitored actions surface a banner and never block them.
+5. Watch the live monitor while it runs, then close the exam.
+6. Read the signal breakdown per student, grade short answers, release results, and export CSV.
 
-| Variable                              | Required | Default                                                        | Description                                                                                                              |
-| ------------------------------------- | -------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                        | Yes      | `postgresql+asyncpg://aegis:aegis_dev_pw@localhost:5432/aegis` | Async PostgreSQL connection string (asyncpg)                                                                             |
-| `DATABASE_URL_SYNC`                   | Yes      | `postgresql://aegis:aegis_dev_pw@localhost:5432/aegis`         | Sync connection string for Alembic migrations                                                                            |
-| `JWT_SECRET_KEY`                      | Yes      | `change_me_to_a_random_64_char_string`                         | Secret used to sign JWTs — **change in production**                                                                      |
-| `JWT_ALGORITHM`                       | No       | `HS256`                                                        | JWT signing algorithm                                                                                                    |
-| `JWT_EXPIRE_MINUTES`                  | No       | `480`                                                          | Token lifetime in minutes (8 hours)                                                                                      |
-| `APP_ENV`                             | No       | `development`                                                  | Application environment (`development` / `production`)                                                                   |
-| `LOG_LEVEL`                           | No       | `DEBUG`                                                        | Uvicorn log level                                                                                                        |
-| `AZURE_SERVICE_BUS_CONNECTION_STRING` | No       | —                                                              | Azure Service Bus connection string; telemetry dispatch is skipped if unset                                              |
-| `AZURE_SERVICE_BUS_QUEUE_NAME`        | No       | `telemetry-events`                                             | Queue name for telemetry events                                                                                          |
-| `ACS_CONNECTION_STRING`               | No       | —                                                              | Azure Communication Services connection string for email delivery                                                        |
-| `ACS_SENDER_ADDRESS`                  | No       | —                                                              | Verified sender address used for password-reset and grade-notification emails                                            |
-| `FRONTEND_BASE_URL`                   | No       | `http://localhost:5173`                                        | Used to build password-reset links in outgoing emails                                                                    |
-| `AI_FEATURES_ENABLED`                 | No       | `true`                                                         | Master switch for AI features (integrity brief, grading, collusion)                                                      |
-| `AZURE_OPENAI_ENDPOINT`               | No       | —                                                              | Azure OpenAI resource endpoint; AI features fall back to Ollama or a stub when unset                                     |
-| `AZURE_OPENAI_API_KEY`                | No       | —                                                              | Azure OpenAI API key                                                                                                     |
-| `AZURE_OPENAI_API_VERSION`            | No       | `2025-01-01-preview`                                           | Azure OpenAI API version                                                                                                 |
-| `AZURE_OPENAI_CHAT_DEPLOYMENT`        | No       | `gpt-4.1`                                                      | Name of the chat model deployment in your Azure OpenAI resource                                                          |
-| `AZURE_OPENAI_EMBED_DEPLOYMENT`       | No       | `text-embedding-3-small`                                       | Name of the embedding model deployment                                                                                   |
-| `OLLAMA_BASE_URL`                     | No       | —                                                              | Ollama OpenAI-compatible endpoint (e.g. `http://localhost:11434/v1`); used as a local AI twin when Azure keys are absent |
-| `OLLAMA_CHAT_MODEL`                   | No       | `qwen3:8b`                                                     | Ollama chat model name                                                                                                   |
-| `OLLAMA_EMBED_MODEL`                  | No       | `nomic-embed-text`                                             | Ollama embedding model name                                                                                              |
+Sign in as a seeded student in a second browser profile to drive the other side.
 
-### Frontend
+### Make Targets
 
-| Variable       | Required | Default                 | Description                     |
-| -------------- | -------- | ----------------------- | ------------------------------- |
-| `VITE_API_URL` | Yes      | `http://localhost:8000` | Base URL of the FastAPI backend |
+`make help` prints the generated list. The four groups:
 
-> **Security note:** Never commit `.env` files. Both `.env` files are already listed in `.gitignore`. Use the provided `*.example` files as templates.
+| Group | Targets |
+| --- | --- |
+| Docker Compose | `up`, `down`, `down-v`, `build`, `logs`, `ps`, `restart`, `shell`, `seed` |
+| Kubernetes (minikube) | `cluster-up`, `images`, `deploy`, `k8s-seed`, `k8s-status`, `k8s-logs`, `k8s-shell`, `url`, `expose`, `unexpose`, `diagnose`, `tunnel`, `tunnel-stop` |
+| Tests and verification | `test`, `e2e`, `lint`, `smoke` |
+| Teardown | `undeploy`, `clean`, `cluster-down`, `cluster-delete`, `nuke` |
+
+Service-scoped targets take `SVC=`, for example `make logs SVC=frontend`. The Helm chart can be exercised on minikube, which is closer to the deployed topology than Compose:
+
+```sh
+make cluster-up   # start minikube, enable ingress
+make images       # build both images into the cluster
+make deploy       # helm install, stamping the live cluster IP into ingress hosts and CORS
+make k8s-seed     # create blob containers, load demo data
+make url          # print the app and api URLs
+```
+
+`make expose` port-forwards the ingress when the minikube IP is not routable from the host, and `make diagnose` explains why the URLs are unreachable when they are.
+
+### API Surface
+
+71 REST routes and 2 WebSocket endpoints across 14 routers. Interactive docs are generated at `/docs` and `/redoc` on any running instance.
+
+| Area | Prefix | Covers |
+| --- | --- | --- |
+| Auth | `/auth` | Register, login, refresh, logout, forgot and reset password |
+| Admin | `/admin` | Super-admin users, exams, audit log |
+| Courses | `/courses` | Courses and enrolled students |
+| Quizzes | `/quizzes` | Quiz and question authoring, question bank import |
+| Exams | `/exams` | Scheduling, state transitions, enrolment, answers, grading, release |
+| Resources | `/exams/{id}/resources` | Open-book uploads, links, access tracking |
+| Groups | `/groups` | Student groups and bulk enrolment |
+| Student | `/student` | Dashboard, exam list, results |
+| Users | `/users` | Roster lookups |
+| Sessions | `/sessions` | Session scores, signal breakdowns, event timelines |
+| Export | `/api/sessions/{exam_id}/export` | Streaming CSV of scores, flags, event counts |
+| AI | `/ai` | Integrity brief, grade suggestions, collusion detection |
+| Health | `/healthz`, `/api/health` | Liveness, and per-subsystem checks for database, Service Bus, blob |
+| WebSocket | `/ws/exam/{id}`, `/ws/professor/{id}` | Student telemetry upstream, professor snapshots downstream |
+
+### Tests
+
+```sh
+make test     # 370 backend tests across 40 files
+make lint     # ruff on backend, eslint on frontend
+make e2e      # Playwright against a live compose stack
+```
+
+Backend tests run on in-memory SQLite, so they need no database and no Docker. The scoring engine is pure with no I/O, which is what makes each of the six components testable in isolation. Frontend unit tests are 79 vitest cases across 12 files (`cd frontend && npm run test`), and types are checked with `uv run pyright` and `npm run build`.
+
+The end-to-end spec drives the loop that matters: a professor creates and opens an exam, a student consents, sits it, triggers monitored behaviour and submits, then the professor reads the resulting integrity report.
+
+Install the hooks once and they run on every commit (gitleaks, ruff lint and format, whitespace and merge-conflict checks):
+
+```sh
+uv tool install pre-commit
+pre-commit install
+```
+
+Measured results, with sample sizes stated because they are small:
+
+* **Detection:** 10 controlled sessions, 5 honest and 5 simulated AI-assisted, standard preset at the 0.40 threshold: precision 1.00, recall 1.00, FPR 0.00, AUC-ROC 1.00. Honest scores 0.06–0.175, assisted 0.438–0.641, nothing near the boundary. This shows the pipeline works end to end, not that it is accurate at scale.
+* **Load:** k6 at 50 concurrent WebSocket students: 100% connection success, answer p99 390–545 ms. At 100: 100% connection success, p99 686–952 ms, which misses the 800 ms target at the top end. Backend memory held at 172–173 MiB, so the ceiling is request handling rather than telemetry.
+* **Usability:** SUS mean 92.86 over 7 participants, grade A.
+
+### Deployment
+
+Two independent tracks share one container registry. Both are infrastructure-as-code; neither needs portal work.
+
+| Track | Defined in | Driven by |
+| --- | --- | --- |
+| Azure Container Apps (primary) | `infra/main.bicep` | `infra.yml` provisions, `cd.yml` builds, pushes, deploys, smoke-tests |
+| AKS with Helm | `infra/aks/`, `helm/aegis/` | `deploy-aks.yml` on manual dispatch |
+
+The Bicep stack provisions a container registry, a Container Apps environment wired to Log Analytics, PostgreSQL Flexible Server, Service Bus, Blob Storage, Communication Services, Key Vault, and a budget with email alerts, then deploys backend and frontend as Container Apps. Azure login uses OIDC federated credentials, so no long-lived service principal secret is stored in GitHub. CD curls `/healthz` and `/health` before reporting green.
+
+On the AKS track, ingress routes two hostnames rather than paths, one to the frontend and one to the backend, because the backend mounts routers at the root and the SPA owns client-side routes such as `/student` and `/admin`. That track's backend secret is created by the workflow from GitHub secrets; Key Vault and managed identity apply to the Container Apps track only. The `k8s/` Kustomize tree describes the same topology and is kept for reference, while the Helm chart is what the Makefile and workflows deploy.
+
+The project's own Azure environment is being decommissioned at the end of the module, so no live URLs are listed here. Everything needed to stand up a fresh environment is in `infra/`.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
 
-## Running Tests & CI Checks
-
-The CI pipeline runs two independent jobs on every push and pull request to `main`.
-
-### Backend (Python)
-
-```sh
-cd backend
-
-# Lint (ruff)
-uv run ruff check .
-
-# Type check (pyright)
-uv run pyright
-
-# Tests (pytest)
-uv run pytest -q
-```
-
-### Frontend (Node)
-
-```sh
-cd frontend
-
-# Lint (ESLint)
-npx eslint .
-
-# Type check (tsc)
-npx tsc --noEmit
-
-# Production build
-npm run build
-```
-
-CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and runs on GitHub Actions.
-
-### E2E Tests (Playwright)
-
-End-to-end tests drive a real Chromium browser through the full professor → student → report flow.
-They require the full stack (`docker compose up`) to be running.
-
-```sh
-# Start the full stack (from repo root, one-time)
-docker compose up -d --wait
-
-# Install Playwright browsers (one-time per machine)
-cd frontend
-npx playwright install chromium
-
-# Run all E2E tests
-npx playwright test
-
-# View the HTML report after a run
-npx playwright show-report
-
-# Run a single test file
-npx playwright test e2e/exam-flow.spec.ts
-
-# Run in headed mode (watch the browser)
-npx playwright test --headed
-```
-
-The CI `e2e` job runs automatically after `backend` and `frontend` checks pass. On failure it
-uploads the Playwright HTML report (screenshots + traces) as a GitHub Actions artifact.
-
-### Detection Evaluation Results
-
-Formal detection metrics (precision, recall, false positive rate, AUC-ROC) computed
-from controlled honest/assisted exam sessions are documented in
-[`docs/evaluation_results.md`](docs/evaluation_results.md).
-
-The full evaluation plan (methodology, load test protocol, usability study, signal justification, and limitations) is in [`docs/evaluation_plan.md`](docs/evaluation_plan.md). Academic references and data sources are in [`docs/data_sources.md`](docs/data_sources.md).
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-## Azure Environment
-
-Infrastructure-as-Code under [`infra/azure/`](infra/azure/) bootstraps the cloud environment:
-
-- Resource group **`aegis-prod-rg`** in **West Europe**
-- A **subscription-wide €30/month budget** with email alerts (80% / 100% actual, 100% forecast)
-- **Contributor** role for the DevOps leads
-
-| File                          | Purpose                                           |
-| ----------------------------- | ------------------------------------------------- |
-| `infra/azure/main.bicep`      | Resource group + cost budget (subscription scope) |
-| `infra/azure/main.bicepparam` | Parameter values — **edit the alert emails here** |
-| `infra/azure/provision.ps1`   | Windows runner: deploy Bicep + assign roles       |
-| `infra/azure/provision.sh`    | macOS/Linux runner (same steps)                   |
-
-### Prerequisites
-
-1. **Azure CLI** — https://aka.ms/installazurecli, then `az bicep install`
-2. **Sign in**: `az login` (confirm the subscription with `az account show`)
-3. **Owner** or **User Access Administrator** on the subscription is required to assign roles (a student subscription normally makes you Owner).
-
-### Provision
-
-```sh
-cd infra/azure
-# 1. Edit main.bicepparam — replace the REPLACE_WITH_*_EMAIL placeholders.
-# 2. Edit the runner — set the subscription id + the Contributor emails.
-# 3. Preview (no changes):
-az deployment sub what-if --location westeurope \
-  --template-file main.bicep --parameters main.bicepparam
-# 4. Apply:  ./provision.ps1   (Windows)   |   ./provision.sh   (macOS/Linux)
-```
-
-### Secrets — Azure Key Vault
-
-Production secrets live in an Azure Key Vault (`infra/modules/keyVault.bicep`), **never in git**. The backend Container App reads them at runtime via its **system-assigned managed identity** — no secret values are baked into images or env files.
-
-**Architecture:** Key Vault stores `database-url`, `jwt-secret`, `service-bus-connection-string`, `storage-connection-string`. The vault uses **access policies** (not RBAC): the deploying user gets secret management; the backend app's managed identity gets read-only. The Container App injects each secret as an env var via a `keyVaultUrl` secret reference.
-
-**Setup (run once, in three phases — the secrets must exist before the app references them):**
-
-```sh
-# 1. Create the vault (wireKeyVaultSecrets stays false) — grants you + the
-#    backend identity access. Pass your object id so you can write secrets.
-az deployment group create -g aegis-prod-rg --template-file infra/main.bicep \
-  --parameters infra/main.bicepparam \
-      postgresAdminPassword='<strong>' \
-      postgresLocation=northeurope \
-      deployerObjectId="$(az ad signed-in-user show --query id -o tsv)"
-
-# 2. Store the secrets (values come from the deployment outputs; JWT is generated).
-VAULT=$(az deployment group show -g aegis-prod-rg -n main --query properties.outputs.keyVaultName.value -o tsv)
-az keyvault secret set --vault-name "$VAULT" --name jwt-secret --value "$(openssl rand -hex 32)"
-az keyvault secret set --vault-name "$VAULT" --name database-url --value "<databaseUrl output>"
-az keyvault secret set --vault-name "$VAULT" --name service-bus-connection-string --value "<serviceBusConnectionString output>"
-az keyvault secret set --vault-name "$VAULT" --name storage-connection-string --value "<storageConnectionString output>"
-
-# 3. Re-deploy with wireKeyVaultSecrets=true so the backend app pulls them.
-az deployment group create -g aegis-prod-rg --template-file infra/main.bicep \
-  --parameters infra/main.bicepparam \
-      postgresAdminPassword='<strong>' postgresLocation=northeurope \
-      deployerObjectId="$(az ad signed-in-user show --query id -o tsv)" \
-      wireKeyVaultSecrets=true
-```
-
-**Verify retrieval:** `az containerapp show -g aegis-prod-rg -n backend-app --query properties.template.containers[0].env` shows the env vars wired to `secretRef`s, and the revision is healthy (an unresolved Key Vault reference would fail it). `az keyvault secret list --vault-name "$VAULT" -o table` lists the stored secrets.
-
-> **Notes:** the apps run placeholder images until real images are published, at which point they consume these env vars. CI/CD GitHub secrets for the deploy pipeline are configured separately. gitleaks continues to guard against any secret reaching git.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-## Kubernetes & Helm
-
-AEGIS ships Kubernetes manifests and a Helm chart for running the full stack on a local cluster (minikube) or on Azure Kubernetes Service (AKS).
-
-```
-k8s/
-  base/          # Kustomize base — Deployments, Services, Ingress, Jobs
-  overlays/
-    local/       # minikube overrides (nip.io hostnames, local images)
-    aks/         # AKS overrides (ACR image refs, cloud ingress)
-helm/
-  aegis/         # Helm chart (values.yaml, values-local.yaml, values-aks.yaml)
-```
-
-### Quick start (minikube)
-
-```sh
-# 1. Start the cluster and enable the ingress controller
-make cluster-up
-
-# 2. Build images and load them into the cluster
-make images
-
-# 3. Deploy with Helm (stamps the live cluster IP into ingress hosts)
-make deploy
-
-# 4. Seed demo data
-make k8s-seed
-
-# 5. Print the app and API URLs
-make url
-```
-
-Run `make smoke` to verify the backend health endpoint, frontend, and admin login in one step.
-
-### AKS deployment
-
-The `k8s/overlays/aks/` overlay and `helm/aegis/values-aks.yaml` target the production AKS cluster provisioned by `infra/aks/main.bicep`. Images are pulled from ACR; secrets are read from Key Vault via the backend's managed identity.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-## Makefile Reference
-
-A `Makefile` at the repo root wraps the most common Docker Compose and Kubernetes commands so you do not need to remember long `docker compose` or `kubectl` invocations.
-
-```sh
-make help          # list every target with a description
-```
-
-| Group          | Target           | What it does                                                     |
-| -------------- | ---------------- | ---------------------------------------------------------------- |
-| **Compose**    | `up`             | Start the full stack and wait until healthy                      |
-|                | `down`           | Stop the stack (keep volumes)                                    |
-|                | `down-v`         | Stop the stack and delete all volumes                            |
-|                | `logs`           | Tail logs for a service (`SVC=backend\|frontend\|db`)            |
-|                | `seed`           | Load demo data (admin, professors, students, quiz)               |
-|                | `shell`          | Open a shell inside a running container                          |
-| **Kubernetes** | `cluster-up`     | Start minikube and enable the ingress controller                 |
-|                | `images`         | Build backend + frontend images and load them into the cluster   |
-|                | `deploy`         | Helm-install with the live cluster IP stamped into ingress hosts |
-|                | `k8s-seed`       | Seed demo data into the cluster                                  |
-|                | `k8s-status`     | Show pods, services, and ingress in the `aegis` namespace        |
-|                | `k8s-logs`       | Tail cluster logs for a deployment                               |
-|                | `smoke`          | Curl-check backend health, frontend, and admin login             |
-| **Tests**      | `test`           | Run backend unit tests (pytest)                                  |
-|                | `e2e`            | Run Playwright end-to-end tests                                  |
-|                | `lint`           | Lint backend (ruff) and frontend (ESLint)                        |
-| **Teardown**   | `undeploy`       | Uninstall the Helm release                                       |
-|                | `cluster-delete` | Delete the minikube cluster entirely                             |
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-## AI Features
-
-AEGIS includes three AI-powered features that help professors review exam integrity. All three are optional and degrade gracefully when no AI backend is configured.
-
-### How it works
-
-The backend resolves an AI provider in this order:
-
-1. **Azure OpenAI** — when `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_API_KEY` are set.
-2. **Ollama** — when `OLLAMA_BASE_URL` is set. Ollama exposes an OpenAI-compatible API, so the same code path handles both Azure and local models.
-3. **Dev stub** — always available; returns clearly labelled placeholder responses so the app boots and CI passes with no credentials.
-
-This means you can run the full AI feature set locally with no Azure account by pointing `OLLAMA_BASE_URL` at a local Ollama instance.
-
-### Feature overview
-
-#### AI Integrity Brief
-
-Generates a short, plain-English summary of a flagged student's behaviour from the six signal sub-scores and aggregated telemetry event counts. Only metadata is sent to the model — no keystroke content, clipboard text, or answer text. Every brief ends with a non-verdict disclaimer.
-
-Available in the student detail panel during a live exam session and in the post-exam report.
-
-#### AI-Assisted Short-Answer Grading
-
-A "Suggest grades" button scores every short answer against the model answer and an optional rubric, returning a suggested score, a one-line justification, and a confidence value. The professor reviews each suggestion and clicks Accept or types a different score. Nothing is saved automatically.
-
-#### Collusion Detection
-
-Embeds each student's short answers and computes pairwise cosine similarity per question. Answer pairs above a configurable threshold are flagged as potentially similar. Results appear in a dedicated Collusion Detection tab on the grade report, with a similarity table and a clear disclaimer that high similarity may reflect common knowledge rather than misconduct.
-
-### Local development with Ollama
-
-```sh
-# Start Ollama alongside the rest of the stack
-docker compose --profile ai up -d ollama
-
-# Pull the required models (one-time)
-docker exec -it aegis-ollama-1 ollama pull qwen3:8b
-docker exec -it aegis-ollama-1 ollama pull nomic-embed-text
-
-# Point the backend at Ollama
-export OLLAMA_BASE_URL=http://localhost:11434/v1
-```
-
-Check which provider is active at any time:
-
-```sh
-curl http://localhost:8000/ai/status
-# {"provider":"ollama","ai_features_enabled":true}
-```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-## Project Structure
-
-```
-AEGIS/
-├── backend/                  # FastAPI REST API
-│   ├── app/
-│   │   ├── main.py           # Application entry point
-│   │   ├── config.py         # Pydantic settings
-│   │   ├── models/           # SQLAlchemy ORM models
-│   │   ├── schemas/          # Pydantic request/response schemas
-│   │   ├── routers/          # API route handlers
-│   │   └── services/
-│   │       ├── ai/           # AI features (integrity brief, grading, collusion)
-│   │       └── ...           # Scoring, messaging, email, storage
-│   ├── alembic/              # Database migrations
-│   ├── tests/                # pytest test suite
-│   └── pyproject.toml
-│
-├── frontend/                 # React 18 + TypeScript exam shell
-│   ├── src/
-│   │   ├── pages/            # Route-level page components
-│   │   ├── components/       # Shared UI components (professor, exam)
-│   │   ├── context/          # React context (Auth)
-│   │   └── api/              # Axios API client (incl. ai.ts)
-│   ├── env.example           # Environment variable template
-│   └── package.json
-│
-├── infra/                    # Azure Bicep IaC
-│   ├── main.bicep            # Full environment (Container Apps, Postgres, Service Bus, Blob, Key Vault, ACS, ACR)
-│   ├── aks/                  # AKS-specific Bicep
-│   └── modules/              # Reusable Bicep modules
-│
-├── k8s/                      # Kubernetes manifests (Kustomize)
-│   ├── base/                 # Base resources
-│   └── overlays/             # Environment overlays (local, aks)
-│
-├── helm/                     # Helm chart
-│   └── aegis/                # Chart for local and AKS deployment
-│
-├── docs/                     # Architecture diagrams, sprint notes, evaluation
-├── Makefile                  # Developer shortcuts (compose + k8s targets)
-├── .github/workflows/        # GitHub Actions CI/CD
-└── docker-compose.yml        # Full-stack local development
-```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
+<!-- CONTRIBUTING -->
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b AEGIS-<ticket>/your-feature`
-3. Commit your changes using [Conventional Commits](https://www.conventionalcommits.org): `git commit -m "feat: add telemetry SDK"`
-4. Push to your branch: `git push origin AEGIS-<ticket>/your-feature`
-5. Open a pull request against `main`
+Work is tracked as Jira issues under the AEGIS project key, one branch and one pull request per issue.
 
-Before opening a PR, make sure all CI checks pass locally (see [Running Tests & CI Checks](#running-tests--ci-checks)).
+1. Branch as `type/short-description`, for example `feat/collusion-threshold`.
+2. Commit with Conventional Commits and the issue key: `feat(scoring): add lenient preset (AEGIS-84)`.
+3. Run `make lint && make test` before pushing.
+4. Open a pull request against `main`. CI runs backend lint, types and tests, frontend lint, types, unit tests and build, then Playwright against a live compose stack. Reviewers come from `CODEOWNERS`.
+
+New behaviour needs a test. New telemetry needs a line in the student-facing consent notice, and a good reason.
+
+### Contributors:
+
+<a href="https://github.com/COMP47250-team-project/AEGIS/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=COMP47250-team-project/AEGIS" alt="contrib.rocks image" />
+</a>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
-
+<!-- LICENSE -->
 ## License
 
-Distributed under the Apache License 2.0. See [`LICENSE`](LICENSE) for details.
+Distributed under the Apache License 2.0. See `LICENSE` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
-
+<!-- CONTACT -->
 ## Contact
 
-COMP47250 Team Project — University College Dublin, MSc Computer Science, 2026
+Built by a six-person MSc Computer Science team at University College Dublin for COMP47250 Team Software Project, in partnership with Microsoft, 2026.
 
-Project repository: [https://github.com/COMP47250-team-project/AEGIS](https://github.com/COMP47250-team-project/AEGIS)
+Project Link: [https://github.com/COMP47250-team-project/AEGIS](https://github.com/COMP47250-team-project/AEGIS)
+
+Issue tracker: [AEGIS board on Jira](https://comp47250-ucd.atlassian.net/jira/software/projects/AEGIS/boards/1)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
----
-
+<!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
-- [FastAPI](https://fastapi.tiangolo.com/) — the async Python web framework powering the backend
-- [Vite](https://vitejs.dev/) — lightning-fast frontend build tooling
-- [Tailwind CSS](https://tailwindcss.com/) — utility-first CSS framework
-- [Alembic](https://alembic.sqlalchemy.org/) — database schema migrations
-- [othneildrew/Best-README-Template](https://github.com/othneildrew/Best-README-Template) — README structure
+* [UCD School of Computer Science](https://www.ucd.ie/cs/)
+* Mentors from [Microsoft Ireland](https://www.microsoft.com/en-ie/aboutireland), for weekly architecture and Azure review
+* [Best-README-Template](https://github.com/othneildrew/Best-README-Template)
+* [Img Shields](https://shields.io)
+* [FastAPI](https://fastapi.tiangolo.com/) and [SQLAlchemy](https://www.sqlalchemy.org/)
+* [Playwright](https://playwright.dev/) and [k6](https://k6.io/), for end-to-end and load testing
+* [Ollama](https://ollama.com/), which made the AI features developable without cloud credentials
+* [gitleaks](https://github.com/gitleaks/gitleaks) and [pre-commit](https://pre-commit.com/)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
----
-
-<!-- MARKDOWN REFERENCE LINKS & BADGES -->
 
 [contributors-shield]: https://img.shields.io/github/contributors/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [contributors-url]: https://github.com/COMP47250-team-project/AEGIS/graphs/contributors
@@ -637,23 +465,34 @@ Project repository: [https://github.com/COMP47250-team-project/AEGIS](https://gi
 [issues-url]: https://github.com/COMP47250-team-project/AEGIS/issues
 [license-shield]: https://img.shields.io/github/license/COMP47250-team-project/AEGIS.svg?style=for-the-badge
 [license-url]: https://github.com/COMP47250-team-project/AEGIS/blob/main/LICENSE
-[ci-shield]: https://github.com/COMP47250-team-project/AEGIS/actions/workflows/ci.yml/badge.svg?branch=main
+[ci-shield]: https://img.shields.io/github/actions/workflow/status/COMP47250-team-project/AEGIS/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI
 [ci-url]: https://github.com/COMP47250-team-project/AEGIS/actions/workflows/ci.yml
-[fastapi-badge]: https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi
+[cd-shield]: https://img.shields.io/github/actions/workflow/status/COMP47250-team-project/AEGIS/cd.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CD
+[cd-url]: https://github.com/COMP47250-team-project/AEGIS/actions/workflows/cd.yml
+[gitleaks-shield]: https://img.shields.io/badge/secret_scanning-gitleaks-4C4A73?style=for-the-badge&logo=git&logoColor=white
+[gitleaks-url]: https://github.com/COMP47250-team-project/AEGIS/blob/main/.pre-commit-config.yaml
+[product-screenshot]: docs/images/ArchitectureDiagram.png
+[fastapi-badge]: https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white
 [fastapi-url]: https://fastapi.tiangolo.com/
 [python-badge]: https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white
 [python-url]: https://www.python.org/
 [react-badge]: https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
 [react-url]: https://react.dev/
-[typescript-badge]: https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white
-[typescript-url]: https://www.typescriptlang.org/
+[ts-badge]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
+[ts-url]: https://www.typescriptlang.org/
 [vite-badge]: https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white
-[vite-url]: https://vitejs.dev/
-[tailwind-badge]: https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white
+[vite-url]: https://vite.dev/
+[tailwind-badge]: https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white
 [tailwind-url]: https://tailwindcss.com/
-[postgres-badge]: https://img.shields.io/badge/PostgreSQL_16-316192?style=for-the-badge&logo=postgresql&logoColor=white
+[postgres-badge]: https://img.shields.io/badge/PostgreSQL_16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white
 [postgres-url]: https://www.postgresql.org/
 [docker-badge]: https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white
 [docker-url]: https://www.docker.com/
-[azure-badge]: https://img.shields.io/badge/Azure-0089D6?style=for-the-badge&logo=microsoft-azure&logoColor=white
+[k8s-badge]: https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white
+[k8s-url]: https://kubernetes.io/
+[helm-badge]: https://img.shields.io/badge/Helm-0F1689?style=for-the-badge&logo=helm&logoColor=white
+[helm-url]: https://helm.sh/
+[bicep-badge]: https://img.shields.io/badge/Bicep-00A4EF?style=for-the-badge&logo=microsoftazure&logoColor=white
+[bicep-url]: https://learn.microsoft.com/azure/azure-resource-manager/bicep/
+[azure-badge]: https://img.shields.io/badge/Azure-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white
 [azure-url]: https://azure.microsoft.com/
